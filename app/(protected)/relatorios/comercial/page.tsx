@@ -1582,82 +1582,71 @@ function AnaliseCanalGrid({
     )
   }
 
+  const totalLeads = items.reduce((acc, item) => acc + item.leads, 0)
+  const totalFechados = items.reduce((acc, item) => acc + item.fechados, 0)
+  const taxaConversao = totalLeads > 0 ? (totalFechados / totalLeads) * 100 : 0
+
   return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
-      {items.map((item) => (
-        <CanalFunnelCard key={item.canal} item={item} />
-      ))}
+    <div className="flex justify-center">
+      <div className="w-full max-w-[560px] rounded-[28px] border border-slate-200 bg-slate-50 p-6">
+        <div className="flex flex-col items-center gap-3">
+          <FunilEtapa
+            titulo="Total de Leads"
+            valor={String(totalLeads)}
+            largura="100%"
+            cor="bg-sky-500"
+            clipPath="polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%)"
+          />
+
+          <FunilEtapa
+            titulo="Leads Fechados"
+            valor={String(totalFechados)}
+            largura="78%"
+            cor="bg-emerald-500"
+            clipPath="polygon(8% 0%, 92% 0%, 97% 100%, 3% 100%)"
+          />
+
+          <FunilEtapa
+            titulo="Taxa de Conversão"
+            valor={`${taxaConversao.toFixed(2)}%`}
+            largura="56%"
+            cor="bg-violet-500"
+            clipPath="polygon(10% 0%, 90% 0%, 95% 100%, 5% 100%)"
+          />
+        </div>
+      </div>
     </div>
   )
 }
 
-function CanalFunnelCard({
-  item,
+function FunilEtapa({
+  titulo,
+  valor,
+  largura,
+  cor,
+  clipPath,
 }: {
-  item: {
-    canal: string
-    leads: number
-    fechados: number
-    taxa: number
-  }
+  titulo: string
+  valor: string
+  largura: string
+  cor: string
+  clipPath: string
 }) {
-  const etapas = [
-    {
-      label: 'Total de Leads',
-      valorNumerico: item.leads,
-      valorTexto: String(item.leads),
-      cor: 'bg-sky-500',
-      largura: '100%',
-    },
-    {
-      label: 'Leads Fechados',
-      valorNumerico: item.fechados,
-      valorTexto: String(item.fechados),
-      cor: 'bg-emerald-500',
-      largura: '78%',
-    },
-    {
-      label: 'Taxa de Conversão',
-      valorNumerico: item.taxa,
-      valorTexto: `${item.taxa.toFixed(2)}%`,
-      cor: 'bg-violet-500',
-      largura: '56%',
-    },
-  ].sort((a, b) => b.valorNumerico - a.valorNumerico)
-
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-4">
-        <h3 className="text-center text-sm font-black text-slate-900">
-          {item.canal}
-        </h3>
-      </div>
-
-      <div className="flex flex-col items-center gap-2">
-        {etapas.map((etapa, index) => (
-          <div
-            key={`${item.canal}-${etapa.label}-${index}`}
-            className={`${etapa.cor} flex min-h-[72px] items-center justify-center rounded-md px-3 py-3 text-center text-white shadow-sm`}
-            style={{
-              width: etapa.largura,
-              clipPath:
-                index === 0
-                  ? 'polygon(4% 0%, 96% 0%, 100% 100%, 0% 100%)'
-                  : index === 1
-                    ? 'polygon(8% 0%, 92% 0%, 96% 100%, 4% 100%)'
-                    : 'polygon(12% 0%, 88% 0%, 92% 100%, 8% 100%)',
-            }}
-          >
-            <div>
-              <div className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-90">
-                {etapa.label}
-              </div>
-              <div className="mt-1 text-lg font-black leading-none">
-                {etapa.valorTexto}
-              </div>
-            </div>
-          </div>
-        ))}
+    <div
+      className={`${cor} flex min-h-[96px] items-center justify-center px-4 py-4 text-center text-white shadow-sm`}
+      style={{
+        width: largura,
+        clipPath,
+      }}
+    >
+      <div>
+        <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-90">
+          {titulo}
+        </div>
+        <div className="mt-2 text-2xl font-black leading-none">
+          {valor}
+        </div>
       </div>
     </div>
   )
