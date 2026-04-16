@@ -765,14 +765,14 @@ setGraficoStatusValor([
         </ChartCard>
 
         <ChartCard
-          title="Status comerciais por quantidade"
+          title="Status por quantidade"
           subtitle="Comparativo entre fechados, cancelados e aguardando"
         >
           <HorizontalBarChart items={graficoStatusQtd} formatter={(valor) => String(valor)} />
         </ChartCard>
 
         <ChartCard
-          title="Status comerciais por valor"
+          title="Status por valor"
           subtitle="Comparativo financeiro por status no período filtrado"
         >
           <HorizontalBarChart items={graficoStatusValor} formatter={(valor) => formatCurrency(valor)} />
