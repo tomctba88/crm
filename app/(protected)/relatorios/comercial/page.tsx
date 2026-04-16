@@ -430,21 +430,26 @@ const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
 
     setGraficoVendasMes(vendasPorMes)
 
-    const funilLeads = leadsFiltrados.length
-    const funilOrcamentos = orcamentos.length
-    const funilNegociando = leadsFiltrados.filter(
-      (lead) =>
-        temValorOrcamento(lead.valor_orcamento) &&
-        isNegociando(lead.status)
-    ).length
-    const funilFechados = pedidos.length
+    const totalLeads = leadsFiltrados.length
 
-    setGraficoFunil([
-      { label: 'Leads', valor: funilLeads },
-      { label: 'Orçamentos', valor: funilOrcamentos },
-      { label: 'Negociando', valor: funilNegociando },
-      { label: 'Fechados', valor: funilFechados },
-    ])
+const leadsDesqualificados = leadsFiltrados.filter((lead) => {
+  const status = normalizeText(lead.status)
+  return status === 'DESQUALIFICADO' || status === 'DESQUALIFICADA'
+}).length
+
+const leadsRecompra = leadsFiltrados.filter((lead) => {
+  const tipoContato = normalizeText(lead.tipo_contato)
+  return tipoContato === 'RECOMPRA'
+}).length
+
+const leadsNovos = Math.max(totalLeads - leadsDesqualificados - leadsRecompra, 0)
+
+setGraficoFunil([
+  { label: 'Total de Lead', valor: totalLeads },
+  { label: 'Desqualificados', valor: leadsDesqualificados },
+  { label: 'Recompra', valor: leadsRecompra },
+  { label: 'Novos', valor: leadsNovos },
+])
 
     const produtosMap = new Map<string, number>()
 
@@ -788,11 +793,11 @@ setGraficoStatusValor([
         </ChartCard>
 
         <ChartCard
-          title="Funil comercial"
-          subtitle="Leads, orçamentos, negociações e fechamentos do período"
-        >
-          <HorizontalBarChart items={graficoFunil} formatter={(valor) => String(valor)} />
-        </ChartCard>
+  title="Funil comercial"
+  subtitle="Qualidade do lead"
+>
+  <HorizontalBarChart items={graficoFunil} formatter={(valor) => String(valor)} />
+</ChartCard>
       </section>
 
       <section className="grid grid-cols-1 gap-6">
