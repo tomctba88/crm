@@ -208,10 +208,18 @@ export default function ComercialPage() {
   const [graficoProdutos, setGraficoProdutos] = useState<GraficoItem[]>([])
   const [graficoStatusQtd, setGraficoStatusQtd] = useState<GraficoItem[]>([])
   const [graficoStatusValor, setGraficoStatusValor] = useState<GraficoItem[]>([])
-  const [graficoStatusMes, setGraficoStatusMes] = useState<StatusMesItem[]>([])
-  const [rankingVendedoresDetalhado, setRankingVendedoresDetalhado] = useState<
-    RankingVendedorItem[]
-  >([])
+const [graficoStatusMes, setGraficoStatusMes] = useState<StatusMesItem[]>([])
+const [rankingVendedoresDetalhado, setRankingVendedoresDetalhado] = useState<
+  RankingVendedorItem[]
+>([])
+const [analiseCanais, setAnaliseCanais] = useState<
+  {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }[]
+>([])
 
   useEffect(() => {
     buscarDados()
@@ -450,6 +458,54 @@ setGraficoFunil([
   { label: 'Recompra', valor: leadsRecompra },
   { label: 'Novos', valor: leadsNovos },
 ])
+
+const canaisConfig = [
+  { canal: 'Google', tipos: ['GOOGLE'] },
+  { canal: 'Site', tipos: ['SITE'] },
+  { canal: 'Email', tipos: ['EMAIL'] },
+  { canal: 'Telefone', tipos: ['TELEFONE'] },
+  { canal: 'Organico', tipos: ['ORGANICO'] },
+  { canal: 'Recompra', tipos: ['RECOMPRA'] },
+  { canal: 'Retorno', tipos: ['RETORNO'] },
+  { canal: 'Megaflex', tipos: ['MEGAFLEX'] },
+  { canal: 'Loja', tipos: ['LOJA'] },
+  { canal: 'Indicação', tipos: ['INDICACAO'] },
+]
+
+const canaisBase = canaisConfig.map((config) => {
+  const base = leadsFiltrados.filter((lead) =>
+    config.tipos.includes(normalizeText(lead.tipo_contato))
+  )
+
+  const leadsCanal = base.length
+  const fechadosCanal = base.filter(
+    (lead) =>
+      temValorOrcamento(lead.valor_orcamento) &&
+      isPedido(lead.status)
+  ).length
+
+  return {
+    canal: config.canal,
+    leads: leadsCanal,
+    fechados: fechadosCanal,
+    taxa: leadsCanal > 0 ? (fechadosCanal / leadsCanal) * 100 : 0,
+  }
+})
+
+const geralLeads = canaisBase.reduce((acc, item) => acc + item.leads, 0)
+const geralFechados = canaisBase.reduce((acc, item) => acc + item.fechados, 0)
+
+const analiseCanalFinal = [
+  {
+    canal: 'Geral',
+    leads: geralLeads,
+    fechados: geralFechados,
+    taxa: geralLeads > 0 ? (geralFechados / geralLeads) * 100 : 0,
+  },
+  ...canaisBase,
+].filter((item) => item.canal === 'Geral' || item.leads > 0 || item.fechados > 0)
+
+setAnaliseCanais(analiseCanalFinal)
 
     const produtosMap = new Map<string, number>()
 
@@ -785,20 +841,33 @@ setGraficoStatusValor([
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <ChartCard
-          title="Vendas por mês"
-          subtitle="Valores fechados por mês no ano selecionado"
-        >
-          <VerticalBarChart items={graficoVendasMes} formatter={(valor) => formatCurrency(valor)} compactCurrency />
-        </ChartCard>
+  <ChartCard
+    title="Vendas por mês"
+    subtitle="Valores fechados por mês no ano selecionado"
+  >
+    <VerticalBarChart
+      items={graficoVendasMes}
+      formatter={(valor) => formatCurrency(valor)}
+      compactCurrency
+    />
+  </ChartCard>
 
-        <ChartCard
-  title="Funil comercial"
-  subtitle="Qualidade do lead"
->
-  <HorizontalBarChart items={graficoFunil} formatter={(valor) => String(valor)} />
-</ChartCard>
-      </section>
+  <ChartCard
+    title="Funil comercial"
+    subtitle="Qualidade do lead"
+  >
+    <HorizontalBarChart items={graficoFunil} formatter={(valor) => String(valor)} />
+  </ChartCard>
+</section>
+
+<section className="grid grid-cols-1 gap-6">
+  <ChartCard
+    title="Analise por canal de vendas"
+    subtitle="Quantidade de leads, fechados e taxa por canal"
+  >
+    <AnaliseCanalGrid items={analiseCanais} />
+  </ChartCard>
+</section>
 
       <section className="grid grid-cols-1 gap-6">
         <ChartCard
@@ -935,6 +1004,124 @@ setGraficoStatusValor([
           </div>
         </ChartCard>
       </section>
+    </div>
+  )
+}
+
+function AnaliseCanalGrid({
+  items,
+}: {
+  items: {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }[]
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500">
+        Sem dados para exibir.
+      </div>
+    )
+  }
+
+  const maxLeads = Math.max(...items.map((item) => item.leads), 1)
+  const maxFechados = Math.max(...items.map((item) => item.fechados), 1)
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {items.map((item) => (
+        <CanalFunnelCard
+          key={item.canal}
+          item={item}
+          maxLeads={maxLeads}
+          maxFechados={maxFechados}
+        />
+      ))}
+    </div>
+  )
+}
+
+function CanalFunnelCard({
+  item,
+  maxLeads,
+  maxFechados,
+}: {
+  item: {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }
+  maxLeads: number
+  maxFechados: number
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-4">
+        <h3 className="text-base font-black text-slate-900">{item.canal}</h3>
+      </div>
+
+      <FunnelMetricBar
+        label="Quantidade Leads"
+        value={item.leads}
+        max={maxLeads}
+        formatter={(value) => String(value)}
+        barClass="bg-sky-500"
+      />
+
+      <FunnelMetricBar
+        label="Fechados"
+        value={item.fechados}
+        max={maxFechados}
+        formatter={(value) => String(value)}
+        barClass="bg-emerald-500"
+      />
+
+      <FunnelMetricBar
+        label="Taxa"
+        value={item.taxa}
+        max={100}
+        formatter={(value) => `${value.toFixed(2)}%`}
+        barClass="bg-amber-400"
+      />
+    </div>
+  )
+}
+
+function FunnelMetricBar({
+  label,
+  value,
+  max,
+  formatter,
+  barClass,
+}: {
+  label: string
+  value: number
+  max: number
+  formatter: (value: number) => string
+  barClass: string
+}) {
+  const width = value > 0 ? Math.max((value / max) * 100, 8) : 0
+
+  return (
+    <div className="mb-4 last:mb-0">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
+          {label}
+        </span>
+        <span className="text-sm font-black text-slate-900">
+          {formatter(value)}
+        </span>
+      </div>
+
+      <div className="h-4 rounded-full bg-white">
+        <div
+          className={`h-4 rounded-full ${barClass}`}
+          style={{ width: `${width}%` }}
+        />
+      </div>
     </div>
   )
 }
