@@ -217,18 +217,46 @@ export default function ComercialPage() {
     buscarDados()
   }, [vendedorFiltro, mesFiltro, anoFiltro, ordenacaoRanking])
 
-  async function buscarDados() {
-    setLoading(true)
+  async function buscarTodosOsLeads() {
+  const limite = 1000
+  let inicio = 0
+  let todos: Lead[] = []
 
-    const { data, error } = await supabase.from('leads').select('*')
+  while (true) {
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .range(inicio, inicio + limite - 1)
 
     if (error) {
-      console.error('Erro ao buscar dados comerciais:', error)
-      setLoading(false)
-      return
+      throw error
     }
 
-    const leadsData = (data || []) as Lead[]
+    const lote = (data || []) as Lead[]
+    todos = [...todos, ...lote]
+
+    if (lote.length < limite) {
+      break
+    }
+
+    inicio += limite
+  }
+
+  return todos
+}
+
+async function buscarDados() {
+  setLoading(true)
+
+  let leadsData: Lead[] = []
+
+  try {
+    leadsData = await buscarTodosOsLeads()
+  } catch (error) {
+    console.error('Erro ao buscar dados comerciais:', error)
+    setLoading(false)
+    return
+  }
 
     const vendedoresUnicos = Array.from(
       new Set(
@@ -677,36 +705,33 @@ export default function ComercialPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-green-700" />
-          <Card titulo="Quantidade de Vendas" valor={String(dados.pedidos)} cor="bg-green-500" />
-          <Card titulo="Ticket Médio" valor={formatCurrency(dados.ticketMedio)} cor="bg-green-300" textoEscuro />
-          <Card titulo="Tx de Conversão" valor={`${dados.conversao.toFixed(2)}%`} cor="bg-sky-600" />
-          <Card titulo="Tx Cancelamento" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-rose-600" />
-          <Card titulo="Tx Aguardando" valor={`${dados.taxaAguardando.toFixed(2)}%`} cor="bg-amber-500" textoEscuro />
-        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-slate-50" />
+  <Card titulo="Qtd. Vendas" valor={String(dados.pedidos)} cor="bg-blue-50" />
+  <Card titulo="Ticket Médio" valor={formatCurrency(dados.ticketMedio)} cor="bg-cyan-50" />
+  <Card titulo="Tx. Conversão" valor={`${dados.conversao.toFixed(2)}%`} cor="bg-emerald-50" />
+</div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card titulo="Leads" valor={String(dados.leads)} cor="bg-orange-400" />
-<Card titulo="Valor Orçado + Frete" valor={formatCurrency(dados.totalOrcamentos)} cor="bg-orange-500" />
-          <Card titulo="Quantidade de Orçamentos" valor={String(dados.orcamentos)} cor="bg-orange-300" textoEscuro />
-        </div>
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card titulo="Leads" valor={String(dados.leads)} cor="bg-indigo-50" />
+  <Card titulo="Valor Orçado + Frete" valor={formatCurrency(dados.totalOrcamentos)} cor="bg-violet-50" />
+  <Card titulo="Qtd. Orçamentos" valor={String(dados.orcamentos)} cor="bg-sky-50" />
+  <Card titulo="Tx. Cancelamento" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-rose-50" />
+</div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Card titulo="Valor Cancelado" valor={formatCurrency(dados.valorCancelado)} cor="bg-rose-300" textoEscuro />
-          <Card titulo="Quantidade de Cancelados" valor={String(dados.cancelados)} cor="bg-rose-500" />
-          <Card titulo="Ticket Médio Cancelado" valor={formatCurrency(dados.ticketCancelado)} cor="bg-rose-400" />
-        </div>
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card titulo="Valor Cancelado" valor={formatCurrency(dados.valorCancelado)} cor="bg-red-50" />
+  <Card titulo="Qtd. Cancelados" valor={String(dados.cancelados)} cor="bg-pink-50" />
+  <Card titulo="Ticket Cancelado" valor={formatCurrency(dados.ticketCancelado)} cor="bg-orange-50" />
+  <Card titulo="Tx. Aguardando" valor={`${dados.taxaAguardando.toFixed(2)}%`} cor="bg-amber-50" />
+</div>
 
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Card titulo="Aguardando" valor={String(dados.aguardando)} cor="bg-red-600" />
-          <Card titulo="Valor Aguardando" valor={formatCurrency(dados.valorAguardando)} cor="bg-red-700" />
-        </div>
-
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Card titulo="Meta" valor={formatCurrency(dados.meta)} cor="bg-lime-700" />
-          <Card titulo="Comissão" valor={formatCurrency(dados.comissao)} cor="bg-lime-800" />
-        </div>
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card titulo="Aguardando" valor={String(dados.aguardando)} cor="bg-yellow-50" />
+  <Card titulo="Valor Aguardando" valor={formatCurrency(dados.valorAguardando)} cor="bg-lime-50" />
+  <Card titulo="Meta" valor={formatCurrency(dados.meta)} cor="bg-teal-50" />
+  <Card titulo="Comissão" valor={formatCurrency(dados.comissao)} cor="bg-cyan-50" />
+</div>
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr_1fr]">
@@ -1285,28 +1310,29 @@ function Card({
   const tamanho = valorLimpo.length
 
   const tamanhoTexto =
-    tamanho <= 6
-      ? 'text-5xl md:text-6xl'
-      : tamanho <= 10
-        ? 'text-4xl md:text-5xl'
-        : tamanho <= 14
-          ? 'text-3xl md:text-4xl'
-          : tamanho <= 18
-            ? 'text-2xl md:text-3xl'
-            : 'text-xl md:text-2xl'
+    tamanho <= 8
+      ? 'text-2xl md:text-3xl'
+      : tamanho <= 14
+        ? 'text-xl md:text-2xl'
+        : tamanho <= 20
+          ? 'text-lg md:text-xl'
+          : 'text-base md:text-lg'
 
   return (
     <div
-      className={`min-w-0 rounded-2xl p-6 shadow-sm ${cor} ${
-        textoEscuro ? 'text-slate-900' : 'text-white'
+      className={`min-w-0 rounded-2xl border border-slate-200 p-5 shadow-sm ${cor} ${
+        textoEscuro ? 'text-slate-900' : 'text-slate-900'
       }`}
     >
-      <p className="text-sm font-bold uppercase tracking-[0.12em] opacity-90">
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
         {titulo}
       </p>
 
-      <div className="mt-4 overflow-hidden">
-        <p className={`whitespace-nowrap font-black leading-none tracking-tight ${tamanhoTexto}`}>
+      <div className="mt-3 overflow-hidden">
+        <p
+          className={`truncate font-black leading-none tracking-tight ${tamanhoTexto}`}
+          title={valor}
+        >
           {valor}
         </p>
       </div>
