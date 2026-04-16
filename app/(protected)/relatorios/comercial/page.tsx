@@ -1396,20 +1396,28 @@ function VerticalBarChart({
 
         return (
           <div key={item.label} className="col-span-1 flex min-w-0 flex-col justify-end">
-            <div className="mb-2 text-center text-[10px] font-bold text-slate-500">
-              {item.valor > 0
-                ? compactCurrency
-                  ? formatter(item.valor).replace(',00', '')
-                  : formatter(item.valor)
-                : ''}
-            </div>
             <div className="flex h-[250px] items-end justify-center rounded-2xl bg-slate-50 px-1 py-2">
-              <div
-                className="w-full rounded-t-xl bg-blue-600 transition-all"
-                style={{ height: `${altura}%` }}
-                title={`${item.label}: ${formatter(item.valor)}`}
-              />
-            </div>
+  <div
+    className="w-full rounded-t-xl bg-blue-600 transition-all flex items-end justify-center relative overflow-hidden"
+    style={{ height: `${altura}%` }}
+    title={`${item.label}: ${formatter(item.valor)}`}
+  >
+    {item.valor > 0 && (
+      <span
+        className="text-white font-bold leading-none mb-1"
+        style={{
+          writingMode: 'vertical-rl',
+          transform: 'rotate(180deg)',
+          fontSize: `${Math.max(10, altura * 0.12)}px`,
+        }}
+      >
+        {compactCurrency
+          ? formatter(item.valor).replace(',00', '')
+          : formatter(item.valor)}
+      </span>
+    )}
+  </div>
+</div>
             <div className="mt-2 text-center text-xs font-bold text-slate-600">
               {item.label}
             </div>
