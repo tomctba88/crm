@@ -1694,17 +1694,17 @@ function LineChartComercial({
     1
   )
 
-  const chartWidth = 1000
-  const chartHeight = 320
-  const leftPad = 28
-  const rightPad = 18
+  const chartWidth = 1200
+  const chartHeight = 340
+  const leftPad = 8
+  const rightPad = 8
   const topPad = 24
-  const bottomPad = 46
+  const bottomPad = 54
   const usableWidth = chartWidth - leftPad - rightPad
   const usableHeight = chartHeight - topPad - bottomPad
 
   function getX(index: number) {
-    if (items.length <= 1) return leftPad + usableWidth / 2
+    if (items.length <= 1) return chartWidth / 2
     return leftPad + (index / (items.length - 1)) * usableWidth
   }
 
@@ -1720,27 +1720,10 @@ function LineChartComercial({
 
   return (
     <div className="w-full">
-      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[340px]">
-        <polyline
-          fill="none"
-          stroke="#22c55e"
-          strokeWidth="3"
-          points={buildPoints('fechados')}
-        />
-
-        <polyline
-          fill="none"
-          stroke="#f43f5e"
-          strokeWidth="3"
-          points={buildPoints('cancelados')}
-        />
-
-        <polyline
-          fill="none"
-          stroke="#f59e0b"
-          strokeWidth="3"
-          points={buildPoints('aguardando')}
-        />
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[360px]">
+        <polyline fill="none" stroke="#22c55e" strokeWidth="3" points={buildPoints('fechados')} />
+        <polyline fill="none" stroke="#f43f5e" strokeWidth="3" points={buildPoints('cancelados')} />
+        <polyline fill="none" stroke="#f59e0b" strokeWidth="3" points={buildPoints('aguardando')} />
 
         {items.map((item, i) => {
           const x = getX(i)
@@ -1754,46 +1737,19 @@ function LineChartComercial({
               <circle cx={x} cy={yCancelados} r="4" fill="#f43f5e" />
               <circle cx={x} cy={yAguardando} r="4" fill="#f59e0b" />
 
-              <text
-                x={x}
-                y={yFechados - 14}
-                textAnchor="middle"
-                fontSize="12"
-                fontWeight="700"
-                fill="#16a34a"
-              >
+              <text x={x} y={yFechados - 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="#16a34a">
                 {item.fechados}
               </text>
 
-              <text
-                x={x + 18}
-                y={yCancelados - 6}
-                textAnchor="start"
-                fontSize="12"
-                fontWeight="700"
-                fill="#e11d48"
-              >
+              <text x={x + 18} y={yCancelados - 6} textAnchor="start" fontSize="12" fontWeight="700" fill="#e11d48">
                 {item.cancelados}
               </text>
 
-              <text
-                x={x - 18}
-                y={yAguardando - 6}
-                textAnchor="end"
-                fontSize="12"
-                fontWeight="700"
-                fill="#d97706"
-              >
+              <text x={x - 18} y={yAguardando - 6} textAnchor="end" fontSize="12" fontWeight="700" fill="#d97706">
                 {item.aguardando}
               </text>
 
-              <text
-                x={x}
-                y={chartHeight - 12}
-                textAnchor="middle"
-                fontSize="12"
-                fill="#64748b"
-              >
+              <text x={x} y={chartHeight - 14} textAnchor="middle" fontSize="14" fontWeight="700" fill="#64748b">
                 {item.mes}
               </text>
             </g>
@@ -1801,7 +1757,7 @@ function LineChartComercial({
         })}
       </svg>
 
-      <div className="mt-4 flex gap-6 text-sm font-semibold">
+      <div className="mt-4 flex items-center justify-center gap-8 text-sm font-semibold">
         <span className="text-green-600">● Fechados</span>
         <span className="text-rose-500">● Cancelados</span>
         <span className="text-amber-500">● Aguardando</span>
