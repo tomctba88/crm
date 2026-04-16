@@ -348,12 +348,16 @@ async function buscarDados() {
 
     const comissao = calcularComissao(meta)
 
-    const metaMensal =
-      vendedorFiltro === 'TODOS'
-        ? META_MENSAL_EMPRESA
-        : META_MENSAL_VENDEDOR
+const metaBase =
+  vendedorFiltro === 'TODOS'
+    ? META_MENSAL_EMPRESA
+    : META_MENSAL_VENDEDOR
 
-    const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
+const multiplicadorMes = mesFiltro === 0 ? 12 : 1
+
+const metaMensal = metaBase * multiplicadorMes
+
+const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
 
     const taxaCancelamento =
       orcamentos.length > 0
