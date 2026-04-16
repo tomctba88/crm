@@ -1694,76 +1694,117 @@ function LineChartComercial({
     1
   )
 
+  const chartWidth = 1000
+  const chartHeight = 320
+  const leftPad = 28
+  const rightPad = 18
+  const topPad = 24
+  const bottomPad = 46
+  const usableWidth = chartWidth - leftPad - rightPad
+  const usableHeight = chartHeight - topPad - bottomPad
+
+  function getX(index: number) {
+    if (items.length <= 1) return leftPad + usableWidth / 2
+    return leftPad + (index / (items.length - 1)) * usableWidth
+  }
+
+  function getY(value: number) {
+    return topPad + usableHeight - (value / max) * usableHeight
+  }
+
+  function buildPoints(key: 'fechados' | 'cancelados' | 'aguardando') {
+    return items
+      .map((item, i) => `${getX(i)},${getY(item[key])}`)
+      .join(' ')
+  }
+
   return (
-    <div className="w-full overflow-x-auto">
-      <div className="min-w-[900px]">
-        <svg width="100%" height="300">
-          {/* LINHA FECHADOS */}
-          <polyline
-            fill="none"
-            stroke="#22c55e"
-            strokeWidth="3"
-            points={items
-              .map((item, i) => {
-                const x = (i / (items.length - 1)) * 900
-                const y = 250 - (item.fechados / max) * 200
-                return `${x},${y}`
-              })
-              .join(' ')}
-          />
+    <div className="w-full">
+      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[340px]">
+        <polyline
+          fill="none"
+          stroke="#22c55e"
+          strokeWidth="3"
+          points={buildPoints('fechados')}
+        />
 
-          {/* LINHA CANCELADOS */}
-          <polyline
-            fill="none"
-            stroke="#f43f5e"
-            strokeWidth="3"
-            points={items
-              .map((item, i) => {
-                const x = (i / (items.length - 1)) * 900
-                const y = 250 - (item.cancelados / max) * 200
-                return `${x},${y}`
-              })
-              .join(' ')}
-          />
+        <polyline
+          fill="none"
+          stroke="#f43f5e"
+          strokeWidth="3"
+          points={buildPoints('cancelados')}
+        />
 
-          {/* LINHA AGUARDANDO */}
-          <polyline
-            fill="none"
-            stroke="#f59e0b"
-            strokeWidth="3"
-            points={items
-              .map((item, i) => {
-                const x = (i / (items.length - 1)) * 900
-                const y = 250 - (item.aguardando / max) * 200
-                return `${x},${y}`
-              })
-              .join(' ')}
-          />
+        <polyline
+          fill="none"
+          stroke="#f59e0b"
+          strokeWidth="3"
+          points={buildPoints('aguardando')}
+        />
 
-          {/* LABELS */}
-          {items.map((item, i) => {
-            const x = (i / (items.length - 1)) * 900
-            return (
+        {items.map((item, i) => {
+          const x = getX(i)
+          const yFechados = getY(item.fechados)
+          const yCancelados = getY(item.cancelados)
+          const yAguardando = getY(item.aguardando)
+
+          return (
+            <g key={item.mes}>
+              <circle cx={x} cy={yFechados} r="4" fill="#22c55e" />
+              <circle cx={x} cy={yCancelados} r="4" fill="#f43f5e" />
+              <circle cx={x} cy={yAguardando} r="4" fill="#f59e0b" />
+
               <text
-                key={item.mes}
                 x={x}
-                y="280"
+                y={yFechados - 14}
+                textAnchor="middle"
+                fontSize="12"
+                fontWeight="700"
+                fill="#16a34a"
+              >
+                {item.fechados}
+              </text>
+
+              <text
+                x={x + 18}
+                y={yCancelados - 6}
+                textAnchor="start"
+                fontSize="12"
+                fontWeight="700"
+                fill="#e11d48"
+              >
+                {item.cancelados}
+              </text>
+
+              <text
+                x={x - 18}
+                y={yAguardando - 6}
+                textAnchor="end"
+                fontSize="12"
+                fontWeight="700"
+                fill="#d97706"
+              >
+                {item.aguardando}
+              </text>
+
+              <text
+                x={x}
+                y={chartHeight - 12}
                 textAnchor="middle"
                 fontSize="12"
                 fill="#64748b"
               >
                 {item.mes}
               </text>
-            )
-          })}
-        </svg>
+            </g>
+          )
+        })}
+      </svg>
 
-        {/* LEGENDA */}
-        <div className="mt-4 flex gap-6 text-sm font-semibold">
-          <span className="text-green-600">● Fechados</span>
-          <span className="text-rose-500">● Cancelados</span>
-          <span className="text-amber-500">● Aguardando</span>
-        </div>
+      <div className="mt-4 flex gap-6 text-sm font-semibold">
+        <span className="text-green-600">● Fechados</span>
+        <span className="text-rose-500">● Cancelados</span>
+        <span className="text-amber-500">● Aguardando</span>
       </div>
     </div>
   )
