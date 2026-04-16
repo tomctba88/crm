@@ -283,25 +283,25 @@ setLoading(false)
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <KpiCard title="Leads" value={String(dados.leads)} classes="bg-blue-600 text-white" />
-              <KpiCard title="Orçamentos" value={String(dados.orcamentos)} classes="bg-teal-700 text-white" />
-              <KpiCard title="Pedidos" value={String(dados.pedidos)} classes="bg-violet-600 text-white" />
-              <KpiCard title="Valor de Pedidos" value={formatCurrency(dados.valorPedidos)} classes="bg-orange-500 text-white" />
-            </div>
+  <KpiCard title="Leads" value={String(dados.leads)} classes="bg-orange-50 text-orange-700 border border-orange-100" />
+  <KpiCard title="Orçamentos" value={String(dados.orcamentos)} classes="bg-orange-100 text-orange-800 border border-orange-200" />
+  <KpiCard title="Pedidos" value={String(dados.pedidos)} classes="bg-green-50 text-green-700 border border-green-100" />
+  <KpiCard title="Valor de Pedidos" value={formatCurrency(dados.valorPedidos)} classes="bg-green-100 text-green-800 border border-green-200" />
+</div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <KpiCard title="Tx. Qualificação" value={`${dados.txQualificacao.toFixed(2)}%`} classes="bg-slate-700 text-white" />
-              <KpiCard title="Tx. de Conversão" value={`${dados.txConversao.toFixed(2)}%`} classes="bg-slate-600 text-white" />
-              <KpiCard title="Orçamentos em Aberto" value={String(dados.orcamentosEmAberto)} classes="bg-yellow-600 text-white" />
-              <KpiCard title="Ticket Médio Pedido" value={formatCurrency(dados.ticketPedidos)} classes="bg-slate-800 text-white" />
-            </div>
+<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <KpiCard title="Tx. Qualificação" value={`${dados.txQualificacao.toFixed(2)}%`} classes="bg-blue-50 text-blue-700 border border-blue-100" />
+  <KpiCard title="Tx. de Conversão" value={`${dados.txConversao.toFixed(2)}%`} classes="bg-blue-100 text-blue-800 border border-blue-200" />
+  <KpiCard title="Orçamentos em Aberto" value={String(dados.orcamentosEmAberto)} classes="bg-amber-50 text-amber-700 border border-amber-100" />
+  <KpiCard title="Ticket Médio Pedido" value={formatCurrency(dados.ticketPedidos)} classes="bg-green-50 text-green-700 border border-green-100" />
+</div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <KpiCard title="Valor Orçamento" value={formatCurrency(dados.valorOrcamento)} classes="bg-red-600 text-white" />
-              <KpiCard title="Ticket Orçamento" value={formatCurrency(dados.ticketOrcamento)} classes="bg-indigo-800 text-white" />
-              <KpiCard title="Tx de Conversão por Valor" value={`${dados.txConversaoValor.toFixed(2)}%`} classes="bg-slate-700 text-white" />
-              <KpiCard title="Valor de Orçamentos em Aberto" value={formatCurrency(dados.valorEmAberto)} classes="bg-pink-700 text-white" />
-            </div>
+<div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <KpiCard title="Valor Orçamento" value={formatCurrency(dados.valorOrcamento)} classes="bg-orange-50 text-orange-700 border border-orange-100" />
+  <KpiCard title="Ticket Orçamento" value={formatCurrency(dados.ticketOrcamento)} classes="bg-orange-100 text-orange-800 border border-orange-200" />
+  <KpiCard title="Tx de Conversão por Valor" value={`${dados.txConversaoValor.toFixed(2)}%`} classes="bg-blue-50 text-blue-700 border border-blue-100" />
+  <KpiCard title="Valor de Orçamentos em Aberto" value={formatCurrency(dados.valorEmAberto)} classes="bg-amber-100 text-amber-800 border border-amber-200" />
+</div>
 
             <div className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-4">
