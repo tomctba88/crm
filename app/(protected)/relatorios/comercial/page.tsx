@@ -860,11 +860,11 @@ setGraficoStatusValor([
 
       <section className="grid grid-cols-1 gap-6">
         <ChartCard
-          title="Evolução mensal por status"
-          subtitle="Comparativo mensal entre fechados, cancelados e aguardando"
-        >
-          <StatusMonthChart items={graficoStatusMes} />
-        </ChartCard>
+  title="Evolução mensal (Leads, Orçamentos e Fechados)"
+  subtitle="Comparativo mensal em linha"
+>
+  <LineChartComercial items={graficoStatusMes} />
+</ChartCard>
       </section>
 
       <section className="grid grid-cols-1 gap-6">
@@ -1675,6 +1675,94 @@ function FunilEtapa({
         </div>
         <div className={`mt-2 font-black leading-none ${tamanhoTexto}`}>
           {valor}
+        </div>
+      </div>
+    </div>
+  )
+}
+function LineChartComercial({
+  items,
+}: {
+  items: StatusMesItem[]
+}) {
+  const max = Math.max(
+    ...items.flatMap((item) => [
+      item.fechados,
+      item.cancelados,
+      item.aguardando,
+    ]),
+    1
+  )
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <div className="min-w-[900px]">
+        <svg width="100%" height="300">
+          {/* LINHA FECHADOS */}
+          <polyline
+            fill="none"
+            stroke="#22c55e"
+            strokeWidth="3"
+            points={items
+              .map((item, i) => {
+                const x = (i / (items.length - 1)) * 900
+                const y = 250 - (item.fechados / max) * 200
+                return `${x},${y}`
+              })
+              .join(' ')}
+          />
+
+          {/* LINHA CANCELADOS */}
+          <polyline
+            fill="none"
+            stroke="#f43f5e"
+            strokeWidth="3"
+            points={items
+              .map((item, i) => {
+                const x = (i / (items.length - 1)) * 900
+                const y = 250 - (item.cancelados / max) * 200
+                return `${x},${y}`
+              })
+              .join(' ')}
+          />
+
+          {/* LINHA AGUARDANDO */}
+          <polyline
+            fill="none"
+            stroke="#f59e0b"
+            strokeWidth="3"
+            points={items
+              .map((item, i) => {
+                const x = (i / (items.length - 1)) * 900
+                const y = 250 - (item.aguardando / max) * 200
+                return `${x},${y}`
+              })
+              .join(' ')}
+          />
+
+          {/* LABELS */}
+          {items.map((item, i) => {
+            const x = (i / (items.length - 1)) * 900
+            return (
+              <text
+                key={item.mes}
+                x={x}
+                y="280"
+                textAnchor="middle"
+                fontSize="12"
+                fill="#64748b"
+              >
+                {item.mes}
+              </text>
+            )
+          })}
+        </svg>
+
+        {/* LEGENDA */}
+        <div className="mt-4 flex gap-6 text-sm font-semibold">
+          <span className="text-green-600">● Fechados</span>
+          <span className="text-rose-500">● Cancelados</span>
+          <span className="text-amber-500">● Aguardando</span>
         </div>
       </div>
     </div>
