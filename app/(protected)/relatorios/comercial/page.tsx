@@ -1582,38 +1582,60 @@ function AnaliseCanalGrid({
     )
   }
 
-  const totalLeads = items.reduce((acc, item) => acc + item.leads, 0)
-  const totalFechados = items.reduce((acc, item) => acc + item.fechados, 0)
-  const taxaConversao = totalLeads > 0 ? (totalFechados / totalLeads) * 100 : 0
-
   return (
-    <div className="flex justify-center">
-      <div className="w-full max-w-[560px] rounded-[28px] border border-slate-200 bg-slate-50 p-6">
-        <div className="flex flex-col items-center gap-3">
-          <FunilEtapa
-            titulo="Total de Leads"
-            valor={String(totalLeads)}
-            largura="100%"
-            cor="bg-sky-500"
-            clipPath="polygon(6% 0%, 94% 0%, 100% 100%, 0% 100%)"
-          />
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <CanalFunnelCard key={item.canal} item={item} />
+      ))}
+    </div>
+  )
+}
 
-          <FunilEtapa
-            titulo="Leads Fechados"
-            valor={String(totalFechados)}
-            largura="78%"
-            cor="bg-emerald-500"
-            clipPath="polygon(8% 0%, 92% 0%, 97% 100%, 3% 100%)"
-          />
+function CanalFunnelCard({
+  item,
+}: {
+  item: {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-4">
+        <h3 className="text-center text-sm font-black text-slate-900">
+          {item.canal}
+        </h3>
+      </div>
 
-          <FunilEtapa
-            titulo="Taxa de Conversão"
-            valor={`${taxaConversao.toFixed(2)}%`}
-            largura="56%"
-            cor="bg-violet-500"
-            clipPath="polygon(10% 0%, 90% 0%, 95% 100%, 5% 100%)"
-          />
-        </div>
+      <div className="flex flex-col items-center gap-[6px]">
+        <FunilEtapa
+          titulo="Total de Leads"
+          valor={String(item.leads)}
+          cor="bg-sky-500"
+          largura="100%"
+          altura="86px"
+          clipPath="polygon(5% 0%, 95% 0%, 88% 100%, 12% 100%)"
+        />
+
+        <FunilEtapa
+          titulo="Leads Fechados"
+          valor={String(item.fechados)}
+          cor="bg-emerald-500"
+          largura="78%"
+          altura="82px"
+          clipPath="polygon(8% 0%, 92% 0%, 84% 100%, 16% 100%)"
+        />
+
+        <FunilEtapa
+          titulo="Taxa de Conversão"
+          valor={`${item.taxa.toFixed(2)}%`}
+          cor="bg-orange-500"
+          largura="56%"
+          altura="78px"
+          clipPath="polygon(11% 0%, 89% 0%, 80% 100%, 20% 100%)"
+        />
       </div>
     </div>
   )
@@ -1622,29 +1644,36 @@ function AnaliseCanalGrid({
 function FunilEtapa({
   titulo,
   valor,
-  largura,
   cor,
+  largura,
+  altura,
   clipPath,
 }: {
   titulo: string
   valor: string
-  largura: string
   cor: string
+  largura: string
+  altura: string
   clipPath: string
 }) {
+  const tamanho = valor.length
+  const tamanhoTexto =
+    tamanho <= 6 ? 'text-2xl' : tamanho <= 10 ? 'text-xl' : 'text-lg'
+
   return (
     <div
-      className={`${cor} flex min-h-[96px] items-center justify-center px-4 py-4 text-center text-white shadow-sm`}
+      className={`${cor} flex items-center justify-center px-3 text-center text-white shadow-sm`}
       style={{
         width: largura,
+        height: altura,
         clipPath,
       }}
     >
       <div>
-        <div className="text-[11px] font-bold uppercase tracking-[0.12em] opacity-90">
+        <div className="text-[10px] font-bold uppercase tracking-[0.10em] opacity-90">
           {titulo}
         </div>
-        <div className="mt-2 text-2xl font-black leading-none">
+        <div className={`mt-2 font-black leading-none ${tamanhoTexto}`}>
           {valor}
         </div>
       </div>
