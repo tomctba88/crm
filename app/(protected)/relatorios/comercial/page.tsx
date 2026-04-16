@@ -577,16 +577,18 @@ const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
     setRankingVendedoresDetalhado(rankingDetalhado)
 
     setGraficoStatusQtd([
-      { label: 'Fechados', valor: pedidos.length },
-      { label: 'Cancelados', valor: canceladosQuantidade.length },
-      { label: 'Aguardando', valor: aguardandoQuantidade.length },
-    ])
+  { label: 'Total Orçado', valor: orcamentos.length },
+  { label: 'Fechados', valor: pedidos.length },
+  { label: 'Perdidos', valor: canceladosQuantidade.length },
+  { label: 'Oportunidades', valor: aguardandoQuantidade.length },
+])
 
-    setGraficoStatusValor([
-      { label: 'Fechados', valor: totalPedidos },
-      { label: 'Cancelados', valor: valorCancelado },
-      { label: 'Aguardando', valor: valorAguardando },
-    ])
+setGraficoStatusValor([
+  { label: 'Total Orçado', valor: totalOrcamentos },
+  { label: 'Fechados', valor: totalPedidos },
+  { label: 'Perdidos', valor: valorCancelado },
+  { label: 'Oportunidades', valor: valorAguardando },
+])
 
     setGraficoStatusMes(
       MESES.map((_, index) => {
@@ -1429,6 +1431,14 @@ function HorizontalBarChart({
 }) {
   const max = Math.max(...items.map((item) => item.valor), 1)
 
+  function getBarClass(label: string) {
+    if (label === 'Total Orçado') return 'bg-sky-300'       // azul claro
+    if (label === 'Fechados') return 'bg-emerald-500'       // verde
+    if (label === 'Perdidos') return 'bg-rose-400'          // vermelho/rosa
+    if (label === 'Oportunidades') return 'bg-orange-400'   // laranja
+    return 'bg-slate-400'
+  }
+
   return (
     <div className="space-y-4">
       {items.length === 0 ? (
@@ -1442,24 +1452,18 @@ function HorizontalBarChart({
           return (
             <div key={item.label}>
               <div className="mb-2 flex items-center justify-between gap-4">
-                <div
-                  className={`text-sm font-bold text-slate-700 ${
-                    compactLabels ? 'max-w-[60%] truncate' : ''
-                  }`}
-                  title={item.label}
-                >
+                <div className="text-sm font-semibold text-slate-700">
                   {item.label}
                 </div>
-                <div className="text-sm font-black text-slate-900">
+                <div className="text-sm font-bold text-slate-900">
                   {formatter(item.valor)}
                 </div>
               </div>
 
               <div className="h-4 rounded-full bg-slate-100">
                 <div
-                  className="h-4 rounded-full bg-emerald-600"
+                  className={`h-4 rounded-full ${getBarClass(item.label)}`}
                   style={{ width: `${largura}%` }}
-                  title={`${item.label}: ${formatter(item.valor)}`}
                 />
               </div>
             </div>
