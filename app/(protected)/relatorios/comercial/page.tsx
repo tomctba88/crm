@@ -1448,10 +1448,16 @@ function HorizontalBarChart({
   const max = Math.max(...items.map((item) => item.valor), 1)
 
   function getBarClass(label: string) {
-    if (label === 'Total Orçado') return 'bg-sky-300'       // azul claro
-    if (label === 'Fechados') return 'bg-emerald-500'       // verde
-    if (label === 'Perdidos') return 'bg-rose-400'          // vermelho/rosa
-    if (label === 'Oportunidades') return 'bg-orange-400'   // laranja
+    if (label === 'Total Orçado') return 'bg-sky-300'
+    if (label === 'Fechados') return 'bg-emerald-500'
+    if (label === 'Perdidos') return 'bg-rose-400'
+    if (label === 'Oportunidades') return 'bg-orange-400'
+
+    if (label === 'Total de Lead') return 'bg-blue-600'
+    if (label === 'Desqualificados') return 'bg-red-500'
+    if (label === 'Recompra') return 'bg-purple-600'
+    if (label === 'Novos') return 'bg-green-600'
+
     return 'bg-slate-400'
   }
 
@@ -1468,7 +1474,12 @@ function HorizontalBarChart({
           return (
             <div key={item.label}>
               <div className="mb-2 flex items-center justify-between gap-4">
-                <div className="text-sm font-semibold text-slate-700">
+                <div
+                  className={`text-sm font-semibold text-slate-700 ${
+                    compactLabels ? 'max-w-[60%] truncate' : ''
+                  }`}
+                  title={item.label}
+                >
                   {item.label}
                 </div>
                 <div className="text-sm font-bold text-slate-900">
@@ -1480,6 +1491,7 @@ function HorizontalBarChart({
                 <div
                   className={`h-4 rounded-full ${getBarClass(item.label)}`}
                   style={{ width: `${largura}%` }}
+                  title={`${item.label}: ${formatter(item.valor)}`}
                 />
               </div>
             </div>
