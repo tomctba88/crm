@@ -461,18 +461,20 @@ setGraficoFunil([
 
 const canaisConfig = [
   { canal: 'Google', tipos: ['GOOGLE'] },
-  { canal: 'Site', tipos: ['SITE'] },
-  { canal: 'Email', tipos: ['EMAIL'] },
-  { canal: 'Telefone', tipos: ['TELEFONE'] },
-  { canal: 'Organico', tipos: ['ORGANICO'] },
   { canal: 'Recompra', tipos: ['RECOMPRA'] },
   { canal: 'Retorno', tipos: ['RETORNO'] },
   { canal: 'Megaflex', tipos: ['MEGAFLEX'] },
+  { canal: 'Email', tipos: ['EMAIL'] },
+  { canal: 'Lojista/Revenda', tipos: ['LOJISTA', 'REVENDA', 'LOJISTA/REVENDA'] },
+  { canal: 'Indicação/Particular', tipos: ['INDICACAO', 'PARTICULAR', 'INDICACAO/PARTICULAR'] },
+  { canal: 'Telefone', tipos: ['TELEFONE'] },
+  { canal: 'Organico', tipos: ['ORGANICO'] },
+  { canal: 'Site', tipos: ['SITE'] },
+  { canal: 'Instagram', tipos: ['INSTAGRAM'] },
   { canal: 'Loja', tipos: ['LOJA'] },
-  { canal: 'Indicação', tipos: ['INDICACAO'] },
 ]
 
-const canaisBase = canaisConfig.map((config) => {
+const analiseCanalFinal = canaisConfig.map((config) => {
   const base = leadsFiltrados.filter((lead) =>
     config.tipos.includes(normalizeText(lead.tipo_contato))
   )
@@ -492,22 +494,9 @@ const canaisBase = canaisConfig.map((config) => {
   }
 })
 
-const geralLeads = canaisBase.reduce((acc, item) => acc + item.leads, 0)
-const geralFechados = canaisBase.reduce((acc, item) => acc + item.fechados, 0)
-
-const analiseCanalFinal = [
-  {
-    canal: 'Geral',
-    leads: geralLeads,
-    fechados: geralFechados,
-    taxa: geralLeads > 0 ? (geralFechados / geralLeads) * 100 : 0,
-  },
-  ...canaisBase,
-].filter((item) => item.canal === 'Geral' || item.leads > 0 || item.fechados > 0)
-
 setAnaliseCanais(analiseCanalFinal)
 
-    const produtosMap = new Map<string, number>()
+const produtosMap = new Map<string, number>()
 
     leadsFiltrados
       .filter(
@@ -863,7 +852,7 @@ setGraficoStatusValor([
 <section className="grid grid-cols-1 gap-6">
   <ChartCard
     title="Analise por canal de vendas"
-    subtitle="Quantidade de leads, fechados e taxa por canal"
+    subtitle="Funis por canal com total de leads, fechados e taxa de conversão"
   >
     <AnaliseCanalGrid items={analiseCanais} />
   </ChartCard>
@@ -1008,122 +997,8 @@ setGraficoStatusValor([
   )
 }
 
-function AnaliseCanalGrid({
-  items,
-}: {
-  items: {
-    canal: string
-    leads: number
-    fechados: number
-    taxa: number
-  }[]
-}) {
-  if (items.length === 0) {
-    return (
-      <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500">
-        Sem dados para exibir.
-      </div>
-    )
-  }
-
-  const maxLeads = Math.max(...items.map((item) => item.leads), 1)
-  const maxFechados = Math.max(...items.map((item) => item.fechados), 1)
-
-  return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-      {items.map((item) => (
-        <CanalFunnelCard
-          key={item.canal}
-          item={item}
-          maxLeads={maxLeads}
-          maxFechados={maxFechados}
-        />
-      ))}
-    </div>
-  )
-}
-
-function CanalFunnelCard({
-  item,
-  maxLeads,
-  maxFechados,
-}: {
-  item: {
-    canal: string
-    leads: number
-    fechados: number
-    taxa: number
-  }
-  maxLeads: number
-  maxFechados: number
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-      <div className="mb-4">
-        <h3 className="text-base font-black text-slate-900">{item.canal}</h3>
-      </div>
-
-      <FunnelMetricBar
-        label="Quantidade Leads"
-        value={item.leads}
-        max={maxLeads}
-        formatter={(value) => String(value)}
-        barClass="bg-sky-500"
-      />
-
-      <FunnelMetricBar
-        label="Fechados"
-        value={item.fechados}
-        max={maxFechados}
-        formatter={(value) => String(value)}
-        barClass="bg-emerald-500"
-      />
-
-      <FunnelMetricBar
-        label="Taxa"
-        value={item.taxa}
-        max={100}
-        formatter={(value) => `${value.toFixed(2)}%`}
-        barClass="bg-amber-400"
-      />
-    </div>
-  )
-}
-
-function FunnelMetricBar({
-  label,
-  value,
-  max,
-  formatter,
-  barClass,
-}: {
-  label: string
-  value: number
-  max: number
-  formatter: (value: number) => string
-  barClass: string
-}) {
-  const width = value > 0 ? Math.max((value / max) * 100, 8) : 0
-
-  return (
-    <div className="mb-4 last:mb-0">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-bold uppercase tracking-[0.08em] text-slate-500">
-          {label}
-        </span>
-        <span className="text-sm font-black text-slate-900">
-          {formatter(value)}
-        </span>
-      </div>
-
-      <div className="h-4 rounded-full bg-white">
-        <div
-          className={`h-4 rounded-full ${barClass}`}
-          style={{ width: `${width}%` }}
-        />
-      </div>
-    </div>
-  )
+function FunnelMetricBar() {
+  return null
 }
 
 function RankingGeralVendedoresCard({
@@ -1685,6 +1560,105 @@ function HorizontalBarChart({
           )
         })
       )}
+    </div>
+  )
+}
+
+function AnaliseCanalGrid({
+  items,
+}: {
+  items: {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }[]
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl bg-slate-50 px-4 py-6 text-sm text-slate-500">
+        Sem dados para exibir.
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+      {items.map((item) => (
+        <CanalFunnelCard key={item.canal} item={item} />
+      ))}
+    </div>
+  )
+}
+
+function CanalFunnelCard({
+  item,
+}: {
+  item: {
+    canal: string
+    leads: number
+    fechados: number
+    taxa: number
+  }
+}) {
+  const etapas = [
+    {
+      label: 'Total de Leads',
+      valorNumerico: item.leads,
+      valorTexto: String(item.leads),
+      cor: 'bg-sky-500',
+      largura: '100%',
+    },
+    {
+      label: 'Leads Fechados',
+      valorNumerico: item.fechados,
+      valorTexto: String(item.fechados),
+      cor: 'bg-emerald-500',
+      largura: '78%',
+    },
+    {
+      label: 'Taxa de Conversão',
+      valorNumerico: item.taxa,
+      valorTexto: `${item.taxa.toFixed(2)}%`,
+      cor: 'bg-violet-500',
+      largura: '56%',
+    },
+  ].sort((a, b) => b.valorNumerico - a.valorNumerico)
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+      <div className="mb-4">
+        <h3 className="text-center text-sm font-black text-slate-900">
+          {item.canal}
+        </h3>
+      </div>
+
+      <div className="flex flex-col items-center gap-2">
+        {etapas.map((etapa, index) => (
+          <div
+            key={`${item.canal}-${etapa.label}-${index}`}
+            className={`${etapa.cor} flex min-h-[72px] items-center justify-center rounded-md px-3 py-3 text-center text-white shadow-sm`}
+            style={{
+              width: etapa.largura,
+              clipPath:
+                index === 0
+                  ? 'polygon(4% 0%, 96% 0%, 100% 100%, 0% 100%)'
+                  : index === 1
+                    ? 'polygon(8% 0%, 92% 0%, 96% 100%, 4% 100%)'
+                    : 'polygon(12% 0%, 88% 0%, 92% 100%, 8% 100%)',
+            }}
+          >
+            <div>
+              <div className="text-[11px] font-bold uppercase tracking-[0.06em] opacity-90">
+                {etapa.label}
+              </div>
+              <div className="mt-1 text-lg font-black leading-none">
+                {etapa.valorTexto}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
