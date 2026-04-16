@@ -1759,8 +1759,8 @@ function LineChartComercial({
 
       <div className="mt-4 flex items-center justify-center gap-8 text-sm font-semibold">
         <span className="text-green-600">● Fechados</span>
-        <span className="text-rose-500">● Cancelados</span>
-        <span className="text-amber-500">● Aguardando</span>
+        <span className="text-rose-500">● Perdidos</span>
+        <span className="text-amber-500">● Oportunidades</span>
       </div>
     </div>
   )
