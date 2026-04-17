@@ -129,6 +129,73 @@ function formatDateBR(value: string | null) {
   return `${dia}/${mes}/${ano}`
 }
 
+function parseDateSafe(value: string | null) {
+  if (!value) return null
+
+  const normalized = value.slice(0, 10)
+  const [ano, mes, dia] = normalized.split('-').map(Number)
+
+  if (!ano || !mes || !dia) return null
+
+  return new Date(ano, mes - 1, dia, 0, 0, 0, 0)
+}
+
+function getLeadBaseDate(lead: Lead) {
+  return parseDateSafe(lead.data_contato || lead.created_at)
+}
+
+function getLeadYear(lead: Lead) {
+  const date = getLeadBaseDate(lead)
+  return date ? String(date.getFullYear()) : ''
+}
+
+function getLeadMonth(lead: Lead) {
+  const date = getLeadBaseDate(lead)
+  return date ? String(date.getMonth() + 1).padStart(2, '0') : ''
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function parseFlexibleMoney(value: string | null | undefined) {
+  if (!value) return null
+
+  const normalized = value
+    .toString()
+    .replace(/\s/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[^\d.-]/g, '')
+
+  if (!normalized) return null
+
+  const parsed = Number(normalized)
+  return Number.isNaN(parsed) ? null : parsed
+}
+
+function isWithinCustomPeriod(date: Date | null, start: string, end: string) {
+  if (!date) return false
+
+  const startDate = start ? parseDateSafe(start) : null
+  const endDate = end ? parseDateSafe(end) : null
+
+  if (startDate && date < startDate) return false
+
+  if (endDate) {
+    const endLimit = new Date(endDate)
+    endLimit.setHours(23, 59, 59, 999)
+    if (date > endLimit) return false
+  }
+
+  return true
+}
+
 function getStatusBadgeClassByColor(cor?: string | null) {
   switch ((cor || '').toLowerCase()) {
     case 'green':
@@ -167,17 +234,22 @@ export default function LeadsManager() {
   const tabelaScrollBottomRef = useRef<HTMLDivElement | null>(null)
   const tabelaScrollContentRef = useRef<HTMLDivElement | null>(null)
   const [loading, setLoading] = useState(false)
-  const [carregandoLista, setCarregandoLista] = useState(true)
-  const [busca, setBusca] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState('Todos')
-  const [selecionados, setSelecionados] = useState<number[]>([])
-  const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
-  const [leadAutoOpenDone, setLeadAutoOpenDone] = useState(false)
+const [carregandoLista, setCarregandoLista] = useState(true)
+const [busca, setBusca] = useState('')
+const [filtroStatus, setFiltroStatus] = useState('Todos')
+const [filtroVendedor, setFiltroVendedor] = useState('Todos')
+const [filtroAno, setFiltroAno] = useState('Todos')
+const [filtroMes, setFiltroMes] = useState('Todos')
+const [periodoInicial, setPeriodoInicial] = useState('')
+const [periodoFinal, setPeriodoFinal] = useState('')
+const [selecionados, setSelecionados] = useState<number[]>([])
+const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
+const [leadAutoOpenDone, setLeadAutoOpenDone] = useState(false)
 
-  const [vendedores, setVendedores] = useState<CadastroOption[]>([])
-  const [tiposContato, setTiposContato] = useState<CadastroOption[]>([])
-  const [statusLead, setStatusLead] = useState<CadastroOption[]>([])
-  const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
+const [vendedores, setVendedores] = useState<CadastroOption[]>([])
+const [tiposContato, setTiposContato] = useState<CadastroOption[]>([])
+const [statusLead, setStatusLead] = useState<CadastroOption[]>([])
+const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
 
   const leadIdFromUrl = useMemo(() => {
     const value = searchParams.get('lead')
@@ -215,12 +287,18 @@ export default function LeadsManager() {
   }
 
   async function buscarLeads() {
-    setCarregandoLista(true)
+  setCarregandoLista(true)
 
+  const pageSize = 1000
+  let from = 0
+  let todosLeads: Lead[] = []
+
+  while (true) {
     const { data, error } = await supabase
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1)
 
     if (error) {
       console.error('Erro ao buscar leads:', error)
@@ -228,9 +306,17 @@ export default function LeadsManager() {
       return
     }
 
-    setLeads(data || [])
-    setCarregandoLista(false)
+    const lote = data || []
+    todosLeads = [...todosLeads, ...lote]
+
+    if (lote.length < pageSize) break
+
+    from += pageSize
   }
+
+  setLeads(todosLeads)
+  setCarregandoLista(false)
+}
 
   useEffect(() => {
     buscarCadastros()
@@ -437,21 +523,74 @@ setTimeout(() => {
     
   }, [leadIdFromUrl, leads, leadAutoOpenDone])
 
+  const anosDisponiveis = useMemo(() => {
+  const anos = new Set(
+    leads
+      .map((lead) => getLeadYear(lead))
+      .filter(Boolean)
+  )
+
+  return Array.from(anos).sort((a, b) => Number(b) - Number(a))
+}, [leads])
+
+const mesesDisponiveis = [
+  { value: '01', label: 'Janeiro' },
+  { value: '02', label: 'Fevereiro' },
+  { value: '03', label: 'Março' },
+  { value: '04', label: 'Abril' },
+  { value: '05', label: 'Maio' },
+  { value: '06', label: 'Junho' },
+  { value: '07', label: 'Julho' },
+  { value: '08', label: 'Agosto' },
+  { value: '09', label: 'Setembro' },
+  { value: '10', label: 'Outubro' },
+  { value: '11', label: 'Novembro' },
+  { value: '12', label: 'Dezembro' },
+]
+
   const leadsFiltrados = leads.filter((lead) => {
-    const termo = busca.toLowerCase()
+  const termo = normalizeText(busca)
+  const leadDate = getLeadBaseDate(lead)
 
-    const bateBusca =
-      lead.nome_cliente?.toLowerCase().includes(termo) ||
-      lead.nome_empresa?.toLowerCase().includes(termo) ||
-      lead.telefone?.toLowerCase().includes(termo) ||
-      lead.vendedor?.toLowerCase().includes(termo) ||
-      lead.produto_interesse?.toLowerCase().includes(termo)
+  const valorBuscaNumero = parseFlexibleMoney(busca)
 
-    const bateStatus =
-      filtroStatus === 'Todos' ? true : lead.status === filtroStatus
+  const bateBusca =
+    !termo ||
+    normalizeText(lead.nome_cliente).includes(termo) ||
+    normalizeText(lead.nome_empresa).includes(termo) ||
+    normalizeText(lead.telefone).includes(termo) ||
+    normalizeText(lead.vendedor).includes(termo) ||
+    normalizeText(lead.produto_interesse).includes(termo) ||
+    (valorBuscaNumero !== null &&
+      (lead.valor_orcamento === valorBuscaNumero ||
+        lead.valor_frete === valorBuscaNumero))
 
-    return Boolean(bateBusca) && bateStatus
-  })
+  const bateStatus =
+    filtroStatus === 'Todos' ? true : lead.status === filtroStatus
+
+  const bateVendedor =
+    filtroVendedor === 'Todos' ? true : lead.vendedor === filtroVendedor
+
+  const bateAno =
+    filtroAno === 'Todos' ? true : getLeadYear(lead) === filtroAno
+
+  const bateMes =
+    filtroMes === 'Todos' ? true : getLeadMonth(lead) === filtroMes
+
+  const batePeriodo =
+    !periodoInicial && !periodoFinal
+      ? true
+      : isWithinCustomPeriod(leadDate, periodoInicial, periodoFinal)
+
+  return (
+    bateBusca &&
+    bateStatus &&
+    bateVendedor &&
+    bateAno &&
+    bateMes &&
+    batePeriodo
+  )
+})
 
   const mapaCoresStatus = new Map(statusLead.map((item) => [item.nome, item.cor || null]))
 
@@ -459,6 +598,7 @@ setTimeout(() => {
   leadsFiltrados.length > 0 &&
   leadsFiltrados.every((lead) => selecionados.includes(lead.id))
 
+  const totalLeadsFiltrados = leadsFiltrados.length
 useEffect(() => {
   const topEl = tabelaScrollTopRef.current
   const bottomEl = tabelaScrollBottomRef.current
@@ -752,38 +892,57 @@ useEffect(() => {
             </p>
           </div>
 
-          <div className="grid w-full max-w-2xl grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Buscar
-              </label>
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Cliente, empresa, telefone, vendedor..."
-                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              />
-            </div>
+          <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Filtrar status
-              </label>
-              <select
-                value={filtroStatus}
-                onChange={(e) => setFiltroStatus(e.target.value)}
-                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              >
-                <option value="Todos">Todos</option>
-                {statusLead.map((item) => (
-                  <option key={item.id} value={item.nome}>
-                    {item.nome}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+  <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Busca geral" className="h-12 w-full rounded-xl border px-4" />
+
+  <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Status</option>
+    {statusLead.map((item) => (
+      <option key={item.id} value={item.nome}>{item.nome}</option>
+    ))}
+  </select>
+
+  <select value={filtroVendedor} onChange={(e) => setFiltroVendedor(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Vendedor</option>
+    {vendedores.map((item) => (
+      <option key={item.id} value={item.nome}>{item.nome}</option>
+    ))}
+  </select>
+
+  <select value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Ano</option>
+    {anosDisponiveis.map((ano) => (
+      <option key={ano} value={ano}>{ano}</option>
+    ))}
+  </select>
+
+  <select value={filtroMes} onChange={(e) => setFiltroMes(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Mês</option>
+    {mesesDisponiveis.map((mes) => (
+      <option key={mes.value} value={mes.value}>{mes.label}</option>
+    ))}
+  </select>
+
+  <input type="date" value={periodoInicial} onChange={(e) => setPeriodoInicial(e.target.value)} className="h-12 rounded-xl border px-4" />
+  <input type="date" value={periodoFinal} onChange={(e) => setPeriodoFinal(e.target.value)} className="h-12 rounded-xl border px-4" />
+
+  <button
+    onClick={() => {
+      setBusca('')
+      setFiltroStatus('Todos')
+      setFiltroVendedor('Todos')
+      setFiltroAno('Todos')
+      setFiltroMes('Todos')
+      setPeriodoInicial('')
+      setPeriodoFinal('')
+    }}
+    className="h-12 rounded-xl border font-bold"
+  >
+    Limpar
+  </button>
+
+</div>
         </div>
 
         {selecionados.length > 0 ? (
