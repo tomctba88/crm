@@ -27,11 +27,16 @@ export default function UsuariosPage() {
   const [usuarioEditando, setUsuarioEditando] = useState<UsuarioSistema | null>(null)
 
   const [nomeEdit, setNomeEdit] = useState('')
-  const [emailEdit, setEmailEdit] = useState('')
-  const [telefoneEdit, setTelefoneEdit] = useState('')
-  const [cargoEdit, setCargoEdit] = useState('')
-  const [nivelEdit, setNivelEdit] = useState<NivelAcesso>('operacional')
-  const [ativoEdit, setAtivoEdit] = useState(true)
+const [emailEdit, setEmailEdit] = useState('')
+const [telefoneEdit, setTelefoneEdit] = useState('')
+const [cargoEdit, setCargoEdit] = useState('')
+const [nivelEdit, setNivelEdit] = useState<NivelAcesso>('operacional')
+const [ativoEdit, setAtivoEdit] = useState(true)
+
+const [modalSenhaAberto, setModalSenhaAberto] = useState(false)
+const [usuarioSenha, setUsuarioSenha] = useState<UsuarioSistema | null>(null)
+const [novaSenhaEdit, setNovaSenhaEdit] = useState('')
+const [confirmarNovaSenhaEdit, setConfirmarNovaSenhaEdit] = useState('')
 
   const [novoNome, setNovoNome] = useState('')
   const [novoEmail, setNovoEmail] = useState('')
@@ -108,15 +113,38 @@ export default function UsuariosPage() {
   }
 
   function fecharModal() {
-    setModalAberto(false)
-    setUsuarioEditando(null)
-    setNomeEdit('')
-    setEmailEdit('')
-    setTelefoneEdit('')
-    setCargoEdit('')
-    setNivelEdit('operacional')
-    setAtivoEdit(true)
+  setModalAberto(false)
+  setUsuarioEditando(null)
+  setNomeEdit('')
+  setEmailEdit('')
+  setTelefoneEdit('')
+  setCargoEdit('')
+  setNivelEdit('operacional')
+  setAtivoEdit(true)
+}
+
+function abrirModalSenha(usuario: UsuarioSistema) {
+  setUsuarioSenha(usuario)
+  setNovaSenhaEdit('')
+  setConfirmarNovaSenhaEdit('')
+  setModalSenhaAberto(true)
+}
+
+function fecharModalSenha() {
+  setModalSenhaAberto(false)
+  setUsuarioSenha(null)
+  setNovaSenhaEdit('')
+  setConfirmarNovaSenhaEdit('')
+}
+
+function exigirAdministrador() {
+  if (nivelUsuarioLogado !== 'administrador') {
+    alert('Somente administradores podem executar esta ação.')
+    return false
   }
+
+  return true
+}
 
   async function salvarUsuario() {
     if (!usuarioEditando) return
@@ -193,21 +221,48 @@ export default function UsuariosPage() {
     setSalvandoId(null)
   }
 
-  function excluirUsuario(usuario: UsuarioSistema) {
-    alert(
-      `A exclusão real do usuário "${usuario.nome || usuario.email || usuario.id}" precisa ser feita por backend seguro/administrativo do Supabase. Nesta etapa, já deixamos a gestão visual pronta.`
-    )
+  async function excluirUsuario(usuario: UsuarioSistema) {
+  if (!exigirAdministrador()) return
+
+  const nomeExibicao = usuario.nome || usuario.email || usuario.id
+  const confirmar = confirm(`Deseja realmente excluir o usuário "${nomeExibicao}"?`)
+  if (!confirmar) return
+
+  setSalvandoId(usuario.id)
+
+  try {
+    const response = await fetch('/api/usuarios/excluir', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: usuario.id }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      alert(result.error || 'Erro ao excluir usuário.')
+      setSalvandoId(null)
+      return
+    }
+
+    setUsuarios((prev) => prev.filter((item) => item.id !== usuario.id))
+    alert('Usuário excluído com sucesso.')
+  } catch (error) {
+    alert('Erro ao excluir usuário.')
   }
 
-  function cadastrarNovoUsuario() {
-    setNovoNome('')
-    setNovoEmail('')
-    setNovaSenha('')
-    setNovoTelefone('')
-    setNovoCargo('')
-    setNovoNivel('operacional')
-    setModalNovoUsuarioAberto(true)
-  }
+  setSalvandoId(null)
+}
+
+function cadastrarNovoUsuario() {
+  setNovoNome('')
+  setNovoEmail('')
+  setNovaSenha('')
+  setNovoTelefone('')
+  setNovoCargo('')
+  setNovoNivel('operacional')
+  setModalNovoUsuarioAberto(true)
+}
 
     async function salvarNovoUsuario() {
     if (!novoNome || !novoEmail || !novaSenha) {
@@ -249,6 +304,54 @@ export default function UsuariosPage() {
       setCriandoUsuario(false)
     }
   }
+
+async function salvarNovaSenha() {
+  if (!exigirAdministrador()) return
+  if (!usuarioSenha) return
+
+  if (!novaSenhaEdit || !confirmarNovaSenhaEdit) {
+    alert('Preencha a nova senha e a confirmação.')
+    return
+  }
+
+  if (novaSenhaEdit.length < 6) {
+    alert('A senha deve ter pelo menos 6 caracteres.')
+    return
+  }
+
+  if (novaSenhaEdit !== confirmarNovaSenhaEdit) {
+    alert('A confirmação da senha não confere.')
+    return
+  }
+
+  setSalvandoId(usuarioSenha.id)
+
+  try {
+    const response = await fetch('/api/usuarios/alterar-senha', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: usuarioSenha.id,
+        novaSenha: novaSenhaEdit,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      alert(result.error || 'Erro ao alterar senha.')
+      setSalvandoId(null)
+      return
+    }
+
+    alert('Senha alterada com sucesso.')
+    fecharModalSenha()
+  } catch (error) {
+    alert('Erro ao alterar senha.')
+  }
+
+  setSalvandoId(null)
+}
 
   return (
     <div className="space-y-6">
@@ -382,41 +485,74 @@ export default function UsuariosPage() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-2">
                         <button
-                          type="button"
-                          onClick={() => {
-  if (nivelUsuarioLogado !== 'consulta') {
-    abrirModalEdicao(usuario)
-  }
-}}
-                          className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 transition hover:bg-blue-100"
-                        >
-                          Editar
-                        </button>
+  type="button"
+  onClick={() => {
+    if (nivelUsuarioLogado === 'administrador') {
+      abrirModalEdicao(usuario)
+    } else {
+      alert('Somente administradores podem editar usuários.')
+    }
+  }}
+  disabled={nivelUsuarioLogado !== 'administrador'}
+  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+    nivelUsuarioLogado === 'administrador'
+      ? 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+  }`}
+>
+  Editar
+</button>
+
+<button
+  type="button"
+  onClick={() => {
+    if (nivelUsuarioLogado === 'administrador') {
+      abrirModalSenha(usuario)
+    } else {
+      alert('Somente administradores podem alterar senha.')
+    }
+  }}
+  disabled={nivelUsuarioLogado !== 'administrador'}
+  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+    nivelUsuarioLogado === 'administrador'
+      ? 'border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+  }`}
+>
+  Trocar senha
+</button>
 
                         <button
-                          type="button"
-                          onClick={() => {
-  if (nivelUsuarioLogado === 'administrador') {
-    alternarStatus(usuario)
-  }
-}}
-                          disabled={salvandoId === usuario.id}
-                          className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100"
-                        >
-                          {usuario.ativo ? 'Inativar' : 'Ativar'}
-                        </button>
+  type="button"
+  onClick={() => {
+    if (nivelUsuarioLogado === 'administrador') {
+      alternarStatus(usuario)
+    } else {
+      alert('Somente administradores podem alterar o status.')
+    }
+  }}
+  disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
+  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+    nivelUsuarioLogado === 'administrador'
+      ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+  }`}
+>
+  {usuario.ativo ? 'Inativar' : 'Ativar'}
+</button>
 
                         <button
-                          type="button"
-                          onClick={() => {
-                            if (nivelUsuarioLogado === 'administrador') {
-                              alert('A exclusão direta está bloqueada por segurança. Utilize a inativação do usuário.')
-                            }
-                          }}
-                          className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 transition hover:bg-red-100"
-                        >
-                          Exclusão bloqueada
-                        </button>
+  type="button"
+  onClick={() => excluirUsuario(usuario)}
+  disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
+  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+    nivelUsuarioLogado === 'administrador'
+      ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+  }`}
+>
+  Excluir
+</button>
                       </div>
                     </td>
                   </tr>
@@ -519,17 +655,23 @@ export default function UsuariosPage() {
               </button>
 
               <button
-                type="button"
-                onClick={() => {
-  if (nivelUsuarioLogado !== 'consulta') {
-    salvarUsuario()
-  }
-}}
-                disabled={salvandoId === usuarioEditando.id}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white"
-              >
-                Salvar alterações
-              </button>
+  type="button"
+  onClick={() => {
+    if (nivelUsuarioLogado === 'administrador') {
+      salvarUsuario()
+    } else {
+      alert('Somente administradores podem salvar alterações.')
+    }
+  }}
+  disabled={salvandoId === usuarioEditando.id || nivelUsuarioLogado !== 'administrador'}
+  className={`rounded-lg px-4 py-2 text-sm font-bold ${
+    nivelUsuarioLogado === 'administrador'
+      ? 'bg-blue-600 text-white'
+      : 'cursor-not-allowed bg-slate-300 text-slate-500'
+  }`}
+>
+  Salvar alterações
+</button>
             </div>
           </div>
         </div>
@@ -632,6 +774,65 @@ export default function UsuariosPage() {
     </div>
   </div>
 ) : null}
+
+      {modalSenhaAberto && usuarioSenha ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-black text-slate-900">
+              Alterar senha do usuário
+            </h2>
+
+            <p className="mb-4 text-sm text-slate-500">
+              Usuário: <span className="font-bold text-slate-700">{usuarioSenha.nome || usuarioSenha.email || usuarioSenha.id}</span>
+            </p>
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Nova senha
+                </label>
+                <input
+                  type="password"
+                  value={novaSenhaEdit}
+                  onChange={(e) => setNovaSenhaEdit(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-300 px-3 outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Confirmar nova senha
+                </label>
+                <input
+                  type="password"
+                  value={confirmarNovaSenhaEdit}
+                  onChange={(e) => setConfirmarNovaSenhaEdit(e.target.value)}
+                  className="h-11 w-full rounded-lg border border-slate-300 px-3 outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={fecharModalSenha}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={salvarNovaSenha}
+                disabled={salvandoId === usuarioSenha.id}
+                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-bold text-white"
+              >
+                Salvar nova senha
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
