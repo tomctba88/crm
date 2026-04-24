@@ -613,11 +613,10 @@ const produtosMap = new Map<string, number>()
       })
 
     setGraficoProdutos(
-      Array.from(produtosMap.entries())
-        .map(([label, valor]) => ({ label, valor }))
-        .sort((a, b) => b.valor - a.valor)
-        .slice(0, 5)
-    )
+  Array.from(produtosMap.entries())
+    .map(([label, valor]) => ({ label, valor }))
+    .sort((a, b) => b.valor - a.valor)
+)
 
     const rankingMap = new Map<
       string,
@@ -1035,10 +1034,11 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
           subtitle="Top 5 produtos por valor de fechamento no período"
         >
           <HorizontalBarChart
-            items={graficoProdutos}
-            formatter={(valor) => formatCurrency(valor)}
-            compactLabels
-          />
+  items={graficoProdutos}
+  formatter={(valor) => formatCurrency(valor)}
+  compactLabels
+  initialLimit={5}
+/>
         </ChartCard>
 
         <ChartCard
@@ -1203,10 +1203,12 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
     )
   }
 
+    const itensVisiveis = items.slice(0, 5)
+
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {items.slice(0, 5).map((item) => (
+        {itensVisiveis.map((item) => (
           <div
             key={item.localizacao}
             className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
@@ -1223,8 +1225,9 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
               {item.percentualVendas.toFixed(2)}% das vendas
             </p>
           </div>
+          
         ))}
-      </div>
+              </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200">
         <table className="min-w-[980px] w-full text-sm">
@@ -1836,11 +1839,18 @@ function HorizontalBarChart({
   items,
   formatter,
   compactLabels = false,
+  initialLimit,
 }: {
   items: GraficoItem[]
   formatter: (value: number) => string
   compactLabels?: boolean
+  initialLimit?: number
 }) {
+  const [expandido, setExpandido] = useState(false)
+
+  const itemsVisiveis =
+    initialLimit && !expandido ? items.slice(0, initialLimit) : items
+
   const max = Math.max(...items.map((item) => item.valor), 1)
 
   function getBarClass(label: string) {
@@ -1864,40 +1874,56 @@ function HorizontalBarChart({
           Sem dados para exibir.
         </div>
       ) : (
-        items.map((item) => {
-          const largura = item.valor > 0 ? Math.max((item.valor / max) * 100, 6) : 0
+        <>
+          {itemsVisiveis.map((item) => {
+            const largura =
+              item.valor > 0 ? Math.max((item.valor / max) * 100, 6) : 0
 
-          return (
-            <div key={item.label}>
-              <div className="mb-2 flex items-center justify-between gap-4">
-                <div
-                  className={`text-sm font-semibold text-slate-700 ${
-                    compactLabels ? 'max-w-[60%] truncate' : ''
-                  }`}
-                  title={item.label}
-                >
-                  {item.label}
+            return (
+              <div key={item.label}>
+                <div className="mb-2 flex items-center justify-between gap-4">
+                  <div
+                    className={`text-sm font-semibold text-slate-700 ${
+                      compactLabels ? 'max-w-[60%] truncate' : ''
+                    }`}
+                    title={item.label}
+                  >
+                    {item.label}
+                  </div>
+
+                  <div className="text-sm font-bold text-slate-900">
+                    {formatter(item.valor)}
+                  </div>
                 </div>
-                <div className="text-sm font-bold text-slate-900">
-                  {formatter(item.valor)}
+
+                <div className="h-4 rounded-full bg-slate-100">
+                  <div
+                    className={`h-4 rounded-full ${getBarClass(item.label)}`}
+                    style={{ width: `${largura}%` }}
+                    title={`${item.label}: ${formatter(item.valor)}`}
+                  />
                 </div>
               </div>
+            )
+          })}
 
-              <div className="h-4 rounded-full bg-slate-100">
-                <div
-                  className={`h-4 rounded-full ${getBarClass(item.label)}`}
-                  style={{ width: `${largura}%` }}
-                  title={`${item.label}: ${formatter(item.valor)}`}
-                />
-              </div>
+          {initialLimit && items.length > initialLimit ? (
+            <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
+              <button
+                type="button"
+                onClick={() => setExpandido((prev) => !prev)}
+                className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                {expandido ? 'Recolher produtos' : 'Expandir todos os produtos'}
+              </button>
             </div>
-          )
-        })
+          ) : null}
+        </>
       )}
     </div>
   )
 }
-
+  
 function AnaliseCanalGrid({
   items,
 }: {
