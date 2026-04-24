@@ -1209,7 +1209,8 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
     )
   }
 
-    const itensVisiveis = expandido ? itemsOrdenados : itemsOrdenados.slice(0, 5)
+    const topRegioes = itemsOrdenados.slice(0, 5)
+const itensVisiveis = expandido ? itemsOrdenados : topRegioes
 
   return (
     <div className="space-y-5">
@@ -1302,7 +1303,7 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
 </thead>
 
           <tbody>
-            {itemsOrdenados.map((item) => (
+            {itensVisiveis.map((item) => (
               <tr key={item.localizacao} className="border-t border-slate-200">
                 <td className="px-4 py-3 font-bold text-slate-800">
                   {item.localizacao}
