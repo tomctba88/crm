@@ -14,6 +14,10 @@ type Lead = {
   data_retorno?: string | null
   created_at?: string | null
   produto_interesse: string | null
+  uf?: string | null
+  cidade?: string | null
+  municipio?: string | null
+  cidade_cliente?: string | null
 }
 
 type DashboardComercial = {
@@ -61,6 +65,15 @@ type StatusMesItem = {
   fechados: number
   cancelados: number
   aguardando: number
+}
+
+type PedidoLocalizacaoItem = {
+  localizacao: string
+  valorOrcado: number
+  valorFechado: number
+  quantidadeVendas: number
+  ticketMedio: number
+  percentualVendas: number
 }
 
 const MESES = [
@@ -190,6 +203,57 @@ function getLeadMonthKey(lead: Lead) {
   )
 }
 
+const UF_LABELS: Record<string, string> = {
+  AC: 'Acre (AC)',
+  AL: 'Alagoas (AL)',
+  AP: 'Amapá (AP)',
+  AM: 'Amazonas (AM)',
+  BA: 'Bahia (BA)',
+  CE: 'Ceará (CE)',
+  DF: 'Distrito Federal (DF)',
+  ES: 'Espírito Santo (ES)',
+  GO: 'Goiás (GO)',
+  MA: 'Maranhão (MA)',
+  MT: 'Mato Grosso (MT)',
+  MS: 'Mato Grosso do Sul (MS)',
+  MG: 'Minas Gerais (MG)',
+  PA: 'Pará (PA)',
+  PB: 'Paraíba (PB)',
+  PR: 'Paraná (PR)',
+  PE: 'Pernambuco (PE)',
+  PI: 'Piauí (PI)',
+  RJ: 'Rio de Janeiro (RJ)',
+  RN: 'Rio Grande do Norte (RN)',
+  RS: 'Rio Grande do Sul (RS)',
+  RO: 'Rondônia (RO)',
+  RR: 'Roraima (RR)',
+  SC: 'Santa Catarina (SC)',
+  SP: 'São Paulo (SP)',
+  SE: 'Sergipe (SE)',
+  TO: 'Tocantins (TO)',
+}
+
+function getLeadLocalizacao(lead: Lead) {
+  const cidade = normalizeText(
+    lead.cidade || lead.municipio || lead.cidade_cliente || ''
+  )
+
+  const uf = normalizeText(lead.uf || '')
+
+  const isCuritiba =
+    cidade.includes('CURITIBA') ||
+    cidade === 'CTBA' ||
+    cidade.includes('CTBA')
+
+  if (isCuritiba) return 'Curitiba (CTBA)'
+
+  if (uf === 'PR' || uf === 'PARANA') return 'Paraná (PR)'
+
+  if (UF_LABELS[uf]) return UF_LABELS[uf]
+
+  return uf || 'Não informado'
+}
+
 export default function ComercialPage() {
   const supabase = useMemo(() => createClient(), [])
   const hoje = new Date()
@@ -211,6 +275,9 @@ export default function ComercialPage() {
 const [graficoStatusMes, setGraficoStatusMes] = useState<StatusMesItem[]>([])
 const [rankingVendedoresDetalhado, setRankingVendedoresDetalhado] = useState<
   RankingVendedorItem[]
+>([])
+const [pedidosPorLocalizacao, setPedidosPorLocalizacao] = useState<
+  PedidoLocalizacaoItem[]
 >([])
 
 const [analiseCanais, setAnaliseCanais] = useState<
@@ -692,6 +759,50 @@ setGraficoStatusValor([
       })
     )
 
+const localizacaoMap = new Map<string, PedidoLocalizacaoItem>()
+
+leadsFiltrados.forEach((lead) => {
+  const localizacao = getLeadLocalizacao(lead)
+
+  const atual = localizacaoMap.get(localizacao) || {
+    localizacao,
+    valorOrcado: 0,
+    valorFechado: 0,
+    quantidadeVendas: 0,
+    ticketMedio: 0,
+    percentualVendas: 0,
+  }
+
+  if (temValorOrcamento(lead.valor_orcamento)) {
+    atual.valorOrcado +=
+      parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+  }
+
+  if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
+    atual.valorFechado +=
+      parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+
+    atual.quantidadeVendas += 1
+  }
+
+  localizacaoMap.set(localizacao, atual)
+})
+
+const pedidosLocalizacaoFinal = Array.from(localizacaoMap.values())
+  .filter((item) => item.valorOrcado > 0 || item.quantidadeVendas > 0)
+  .map((item) => ({
+    ...item,
+    ticketMedio:
+      item.quantidadeVendas > 0
+        ? item.valorFechado / item.quantidadeVendas
+        : 0,
+    percentualVendas:
+      totalPedidos > 0 ? (item.valorFechado / totalPedidos) * 100 : 0,
+  }))
+  .sort((a, b) => b.valorFechado - a.valorFechado)
+
+setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
+
     setLoading(false)
   }
 
@@ -883,13 +994,22 @@ setGraficoStatusValor([
 </section>
 
       <section className="grid grid-cols-1 gap-6">
-        <ChartCard
-  title="Evolução mensal (Leads, Orçamentos e Fechados)"
-  subtitle="Comparativo mensal em linha"
->
-  <LineChartComercial items={graficoStatusMes} />
-</ChartCard>
-      </section>
+  <ChartCard
+    title="Evolução mensal (Leads, Orçamentos e Fechados)"
+    subtitle="Comparativo mensal em linha"
+  >
+    <LineChartComercial items={graficoStatusMes} />
+  </ChartCard>
+</section>
+
+<section className="grid grid-cols-1 gap-6">
+  <ChartCard
+    title="Pedidos por localização"
+    subtitle="Curitiba separado do Paraná, com valores, vendas, ticket médio e participação no total"
+  >
+    <PedidosPorLocalizacaoCard items={pedidosPorLocalizacao} />
+  </ChartCard>
+</section>
 
       <section className="grid grid-cols-1 gap-6">
         <ChartCard
@@ -1017,6 +1137,94 @@ setGraficoStatusValor([
           </div>
         </ChartCard>
       </section>
+    </div>
+  )
+}
+
+function PedidosPorLocalizacaoCard({
+  items,
+}: {
+  items: PedidoLocalizacaoItem[]
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+        Nenhum pedido encontrado para os filtros selecionados.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {items.slice(0, 5).map((item) => (
+          <div
+            key={item.localizacao}
+            className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+              {item.localizacao}
+            </p>
+
+            <p className="mt-3 text-xl font-black text-slate-900">
+              {formatCurrency(item.valorFechado)}
+            </p>
+
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {item.percentualVendas.toFixed(2)}% das vendas
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="min-w-[980px] w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-600">
+            <tr>
+              <th className="px-4 py-3 font-bold">Localização</th>
+              <th className="px-4 py-3 text-right font-bold">Valor Orçado</th>
+              <th className="px-4 py-3 text-right font-bold">Valor Fechado</th>
+              <th className="px-4 py-3 text-right font-bold">Qtd. Vendas</th>
+              <th className="px-4 py-3 text-right font-bold">Ticket Médio</th>
+              <th className="px-4 py-3 text-right font-bold">% sobre vendas</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.localizacao} className="border-t border-slate-200">
+                <td className="px-4 py-3 font-bold text-slate-800">
+                  {item.localizacao}
+                </td>
+
+                <td className="px-4 py-3 text-right text-slate-700">
+                  {formatCurrency(item.valorOrcado)}
+                </td>
+
+                <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                  {formatCurrency(item.valorFechado)}
+                </td>
+
+                <td className="px-4 py-3 text-right text-slate-700">
+                  {item.quantidadeVendas}
+                </td>
+
+                <td className="px-4 py-3 text-right text-slate-700">
+                  {formatCurrency(item.ticketMedio)}
+                </td>
+
+                <td className="px-4 py-3 text-right font-bold text-blue-700">
+                  {item.percentualVendas.toFixed(2)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-xs text-slate-400">
+        Curitiba é calculada separadamente. O Paraná não inclui Curitiba neste quadro.
+      </p>
     </div>
   )
 }
