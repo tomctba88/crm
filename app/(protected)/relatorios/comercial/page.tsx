@@ -1177,29 +1177,28 @@ function PedidosPorLocalizacaoCard({
   }
   onOrdenar: (campo: keyof PedidoLocalizacaoItem) => void
 }) {
+  const itemsOrdenados = [...items].sort((a, b) => {
+    const valorA = a[ordenacao.campo]
+    const valorB = b[ordenacao.campo]
 
-const itemsOrdenados = [...items].sort((a, b) => {
-  const valorA = a[ordenacao.campo]
-  const valorB = b[ordenacao.campo]
+    if (typeof valorA === 'string' && typeof valorB === 'string') {
+      return ordenacao.direcao === 'asc'
+        ? valorA.localeCompare(valorB)
+        : valorB.localeCompare(valorA)
+    }
 
-  if (typeof valorA === 'string' && typeof valorB === 'string') {
+    const numeroA = Number(valorA) || 0
+    const numeroB = Number(valorB) || 0
+
     return ordenacao.direcao === 'asc'
-      ? valorA.localeCompare(valorB)
-      : valorB.localeCompare(valorA)
+      ? numeroA - numeroB
+      : numeroB - numeroA
+  })
+
+  function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
+    if (ordenacao.campo !== campo) return '↕'
+    return ordenacao.direcao === 'asc' ? '↑' : '↓'
   }
-
-  const numeroA = Number(valorA) || 0
-  const numeroB = Number(valorB) || 0
-
-  return ordenacao.direcao === 'asc'
-    ? numeroA - numeroB
-    : numeroB - numeroA
-})
-
-function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
-  if (ordenacao.campo !== campo) return '↕'
-  return ordenacao.direcao === 'asc' ? '↑' : '↓'
-}
 
   if (items.length === 0) {
     return (
@@ -1209,13 +1208,13 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
     )
   }
 
-    const topRegioes = itemsOrdenados.slice(0, 5)
-const itensVisiveis = expandido ? itemsOrdenados : topRegioes
+  const topRegioes = itemsOrdenados.slice(0, 5)
+  const rankingVisivel = expandido ? itemsOrdenados : itemsOrdenados.slice(0, 5)
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {itensVisiveis.map((item) => (
+        {topRegioes.map((item) => (
           <div
             key={item.localizacao}
             className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
@@ -1232,78 +1231,77 @@ const itensVisiveis = expandido ? itemsOrdenados : topRegioes
               {item.percentualVendas.toFixed(2)}% das vendas
             </p>
           </div>
-          
         ))}
-              </div>
+      </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200">
         <table className="min-w-[980px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
-  <tr>
-    <th className="px-4 py-3 font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('localizacao')}
-        className="flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        Localização {iconeOrdenacao('localizacao')}
-      </button>
-    </th>
+            <tr>
+              <th className="px-4 py-3 font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('localizacao')}
+                  className="flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  Localização {iconeOrdenacao('localizacao')}
+                </button>
+              </th>
 
-    <th className="px-4 py-3 text-right font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('valorOrcado')}
-        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        Valor Orçado {iconeOrdenacao('valorOrcado')}
-      </button>
-    </th>
+              <th className="px-4 py-3 text-right font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('valorOrcado')}
+                  className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  Valor Orçado {iconeOrdenacao('valorOrcado')}
+                </button>
+              </th>
 
-    <th className="px-4 py-3 text-right font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('valorFechado')}
-        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        Valor Fechado {iconeOrdenacao('valorFechado')}
-      </button>
-    </th>
+              <th className="px-4 py-3 text-right font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('valorFechado')}
+                  className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  Valor Fechado {iconeOrdenacao('valorFechado')}
+                </button>
+              </th>
 
-    <th className="px-4 py-3 text-right font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('quantidadeVendas')}
-        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        Qtd. Vendas {iconeOrdenacao('quantidadeVendas')}
-      </button>
-    </th>
+              <th className="px-4 py-3 text-right font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('quantidadeVendas')}
+                  className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  Qtd. Vendas {iconeOrdenacao('quantidadeVendas')}
+                </button>
+              </th>
 
-    <th className="px-4 py-3 text-right font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('ticketMedio')}
-        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        Ticket Médio {iconeOrdenacao('ticketMedio')}
-      </button>
-    </th>
+              <th className="px-4 py-3 text-right font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('ticketMedio')}
+                  className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  Ticket Médio {iconeOrdenacao('ticketMedio')}
+                </button>
+              </th>
 
-    <th className="px-4 py-3 text-right font-bold">
-      <button
-        type="button"
-        onClick={() => onOrdenar('percentualVendas')}
-        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
-      >
-        % sobre vendas {iconeOrdenacao('percentualVendas')}
-      </button>
-    </th>
-  </tr>
-</thead>
+              <th className="px-4 py-3 text-right font-bold">
+                <button
+                  type="button"
+                  onClick={() => onOrdenar('percentualVendas')}
+                  className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+                >
+                  % sobre vendas {iconeOrdenacao('percentualVendas')}
+                </button>
+              </th>
+            </tr>
+          </thead>
 
           <tbody>
-            {itensVisiveis.map((item) => (
+            {rankingVisivel.map((item) => (
               <tr key={item.localizacao} className="border-t border-slate-200">
                 <td className="px-4 py-3 font-bold text-slate-800">
                   {item.localizacao}
@@ -1334,21 +1332,21 @@ const itensVisiveis = expandido ? itemsOrdenados : topRegioes
         </table>
       </div>
 
-{itemsOrdenados.length > 5 ? (
-  <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
-    <button
-      type="button"
-      onClick={onToggleExpandido}
-      className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-    >
-      {expandido ? 'Recolher estados' : 'Expandir todos os estados'}
-    </button>
-  </div>
-) : null}
+      {itemsOrdenados.length > 5 ? (
+        <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
+          <button
+            type="button"
+            onClick={onToggleExpandido}
+            className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            {expandido ? 'Recolher estados' : 'Expandir todos os estados'}
+          </button>
+        </div>
+      ) : null}
 
-<p className="text-xs text-slate-400">
-  Curitiba é calculada separadamente. O Paraná não inclui Curitiba neste quadro.
-</p>
+      <p className="text-xs text-slate-400">
+        Curitiba é calculada separadamente. O Paraná não inclui Curitiba neste quadro.
+      </p>
     </div>
   )
 }
