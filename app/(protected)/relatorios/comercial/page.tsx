@@ -212,11 +212,14 @@ const [graficoStatusMes, setGraficoStatusMes] = useState<StatusMesItem[]>([])
 const [rankingVendedoresDetalhado, setRankingVendedoresDetalhado] = useState<
   RankingVendedorItem[]
 >([])
+
 const [analiseCanais, setAnaliseCanais] = useState<
   {
     canal: string
     leads: number
+    valorLeads: number
     fechados: number
+    valorFechados: number
     taxa: number
   }[]
 >([])
@@ -480,16 +483,37 @@ const analiseCanalFinal = canaisConfig.map((config) => {
   )
 
   const leadsCanal = base.length
-  const fechadosCanal = base.filter(
+
+  const fechadosBase = base.filter(
     (lead) =>
       temValorOrcamento(lead.valor_orcamento) &&
       isPedido(lead.status)
-  ).length
+  )
+
+  const fechadosCanal = fechadosBase.length
+
+  const valorLeads = base.reduce(
+    (acc, lead) =>
+      acc +
+      parseMoney(lead.valor_orcamento) +
+      parseMoney(lead.valor_frete),
+    0
+  )
+
+  const valorFechados = fechadosBase.reduce(
+    (acc, lead) =>
+      acc +
+      parseMoney(lead.valor_orcamento) +
+      parseMoney(lead.valor_frete),
+    0
+  )
 
   return {
     canal: config.canal,
     leads: leadsCanal,
+    valorLeads,
     fechados: fechadosCanal,
+    valorFechados,
     taxa: leadsCanal > 0 ? (fechadosCanal / leadsCanal) * 100 : 0,
   }
 })
@@ -1570,7 +1594,9 @@ function AnaliseCanalGrid({
   items: {
     canal: string
     leads: number
+    valorLeads: number
     fechados: number
+    valorFechados: number
     taxa: number
   }[]
 }) {
@@ -1594,12 +1620,14 @@ function AnaliseCanalGrid({
 function CanalFunnelCard({
   item,
 }: {
-  item: {
-    canal: string
-    leads: number
-    fechados: number
-    taxa: number
-  }
+item: {
+  canal: string
+  leads: number
+  valorLeads: number
+  fechados: number
+  valorFechados: number
+  taxa: number
+}
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1611,31 +1639,34 @@ function CanalFunnelCard({
 
       <div className="flex flex-col items-center gap-[6px]">
         <FunilEtapa
-          titulo="Total de Leads"
-          valor={String(item.leads)}
-          cor="bg-sky-500"
-          largura="100%"
-          altura="86px"
-          clipPath="polygon(5% 0%, 95% 0%, 88% 100%, 12% 100%)"
-        />
+  titulo="Total de Leads"
+  valor={String(item.leads)}
+  valorSecundario={formatCurrency(item.valorLeads)}
+  cor="bg-sky-500"
+  largura="100%"
+  altura="92px"
+  clipPath="polygon(5% 0%, 95% 0%, 88% 100%, 12% 100%)"
+/>
 
-        <FunilEtapa
-          titulo="Leads Fechados"
-          valor={String(item.fechados)}
-          cor="bg-emerald-500"
-          largura="78%"
-          altura="82px"
-          clipPath="polygon(8% 0%, 92% 0%, 84% 100%, 16% 100%)"
-        />
+<FunilEtapa
+  titulo="Leads Fechados"
+  valor={String(item.fechados)}
+  valorSecundario={formatCurrency(item.valorFechados)}
+  cor="bg-emerald-500"
+  largura="78%"
+  altura="88px"
+  clipPath="polygon(8% 0%, 92% 0%, 84% 100%, 16% 100%)"
+/>
 
-        <FunilEtapa
-          titulo="Taxa de Conversão"
-          valor={`${item.taxa.toFixed(2)}%`}
-          cor="bg-orange-500"
-          largura="56%"
-          altura="78px"
-          clipPath="polygon(11% 0%, 89% 0%, 80% 100%, 20% 100%)"
-        />
+<FunilEtapa
+  titulo="Taxa de Conversão"
+  valor={`${item.taxa.toFixed(2)}%`}
+  cor="bg-orange-500"
+  largura="56%"
+  altura="78px"
+  clipPath="polygon(11% 0%, 89% 0%, 80% 100%, 20% 100%)"
+  compacto
+/>
       </div>
     </div>
   )
@@ -1644,38 +1675,58 @@ function CanalFunnelCard({
 function FunilEtapa({
   titulo,
   valor,
+  valorSecundario,
   cor,
   largura,
   altura,
   clipPath,
+  compacto = false,
 }: {
   titulo: string
   valor: string
+  valorSecundario?: string
   cor: string
   largura: string
   altura: string
   clipPath: string
+  compacto?: boolean
 }) {
   const tamanho = valor.length
-  const tamanhoTexto =
-    tamanho <= 6 ? 'text-2xl' : tamanho <= 10 ? 'text-xl' : 'text-lg'
+
+  const tamanhoTexto = compacto
+    ? tamanho <= 6
+      ? 'text-xl'
+      : 'text-lg'
+    : tamanho <= 6
+      ? 'text-2xl'
+      : tamanho <= 10
+        ? 'text-xl'
+        : 'text-lg'
 
   return (
     <div
-      className={`${cor} flex items-center justify-center px-3 text-center text-white shadow-sm`}
+      className={`${cor} flex items-center justify-center overflow-hidden px-3 text-center text-white shadow-sm`}
       style={{
         width: largura,
         height: altura,
         clipPath,
       }}
+      title={valorSecundario ? `${titulo}: ${valor} | ${valorSecundario}` : `${titulo}: ${valor}`}
     >
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-[0.10em] opacity-90">
+      <div className="min-w-0 max-w-full px-2">
+        <div className="text-[10px] font-bold uppercase leading-tight tracking-[0.08em] opacity-90">
           {titulo}
         </div>
-        <div className={`mt-2 font-black leading-none ${tamanhoTexto}`}>
+
+        <div className={`mt-1 truncate font-black leading-none ${tamanhoTexto}`}>
           {valor}
         </div>
+
+        {valorSecundario ? (
+          <div className="mt-1 truncate text-[10px] font-bold leading-tight opacity-95">
+            {valorSecundario}
+          </div>
+        ) : null}
       </div>
     </div>
   )
