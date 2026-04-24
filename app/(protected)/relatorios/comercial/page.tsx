@@ -279,7 +279,7 @@ const [rankingVendedoresDetalhado, setRankingVendedoresDetalhado] = useState<
 const [pedidosPorLocalizacao, setPedidosPorLocalizacao] = useState<
   PedidoLocalizacaoItem[]
 >([])
-
+const [localizacaoExpandido, setLocalizacaoExpandido] = useState(false)
 const [ordenacaoLocalizacao, setOrdenacaoLocalizacao] = useState<{
   campo: keyof PedidoLocalizacaoItem
   direcao: 'asc' | 'desc'
@@ -1016,6 +1016,8 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
   >
     <PedidosPorLocalizacaoCard
   items={pedidosPorLocalizacao}
+  expandido={localizacaoExpandido}
+  onToggleExpandido={() => setLocalizacaoExpandido((prev) => !prev)}
   ordenacao={ordenacaoLocalizacao}
   onOrdenar={(campo) => {
     setOrdenacaoLocalizacao((prev) => ({
@@ -1161,10 +1163,14 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
 
 function PedidosPorLocalizacaoCard({
   items,
+  expandido,
+  onToggleExpandido,
   ordenacao,
   onOrdenar,
 }: {
   items: PedidoLocalizacaoItem[]
+  expandido: boolean
+  onToggleExpandido: () => void
   ordenacao: {
     campo: keyof PedidoLocalizacaoItem
     direcao: 'asc' | 'desc'
@@ -1203,7 +1209,7 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
     )
   }
 
-    const itensVisiveis = items.slice(0, 5)
+    const itensVisiveis = expandido ? itemsOrdenados : itemsOrdenados.slice(0, 5)
 
   return (
     <div className="space-y-5">
@@ -1228,6 +1234,18 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
           
         ))}
               </div>
+
+      {itemsOrdenados.length > 5 ? (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={onToggleExpandido}
+            className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+          >
+            {expandido ? 'Recolher estados' : 'Expandir todos os estados'}
+          </button>
+        </div>
+      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200">
         <table className="min-w-[980px] w-full text-sm">
