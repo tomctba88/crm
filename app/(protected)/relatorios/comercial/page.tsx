@@ -280,6 +280,14 @@ const [pedidosPorLocalizacao, setPedidosPorLocalizacao] = useState<
   PedidoLocalizacaoItem[]
 >([])
 
+const [ordenacaoLocalizacao, setOrdenacaoLocalizacao] = useState<{
+  campo: keyof PedidoLocalizacaoItem
+  direcao: 'asc' | 'desc'
+}>({
+  campo: 'valorFechado',
+  direcao: 'desc',
+})
+
 const [analiseCanais, setAnaliseCanais] = useState<
   {
     canal: string
@@ -1007,7 +1015,17 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
     title="Pedidos por localização"
     subtitle="Curitiba separado do Paraná, com valores, vendas, ticket médio e participação no total"
   >
-    <PedidosPorLocalizacaoCard items={pedidosPorLocalizacao} />
+    <PedidosPorLocalizacaoCard
+  items={pedidosPorLocalizacao}
+  ordenacao={ordenacaoLocalizacao}
+  onOrdenar={(campo) => {
+    setOrdenacaoLocalizacao((prev) => ({
+      campo,
+      direcao:
+        prev.campo === campo && prev.direcao === 'desc' ? 'asc' : 'desc',
+    }))
+  }}
+/>
   </ChartCard>
 </section>
 
@@ -1143,9 +1161,40 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
 
 function PedidosPorLocalizacaoCard({
   items,
+  ordenacao,
+  onOrdenar,
 }: {
   items: PedidoLocalizacaoItem[]
+  ordenacao: {
+    campo: keyof PedidoLocalizacaoItem
+    direcao: 'asc' | 'desc'
+  }
+  onOrdenar: (campo: keyof PedidoLocalizacaoItem) => void
 }) {
+
+const itemsOrdenados = [...items].sort((a, b) => {
+  const valorA = a[ordenacao.campo]
+  const valorB = b[ordenacao.campo]
+
+  if (typeof valorA === 'string' && typeof valorB === 'string') {
+    return ordenacao.direcao === 'asc'
+      ? valorA.localeCompare(valorB)
+      : valorB.localeCompare(valorA)
+  }
+
+  const numeroA = Number(valorA) || 0
+  const numeroB = Number(valorB) || 0
+
+  return ordenacao.direcao === 'asc'
+    ? numeroA - numeroB
+    : numeroB - numeroA
+})
+
+function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
+  if (ordenacao.campo !== campo) return '↕'
+  return ordenacao.direcao === 'asc' ? '↑' : '↓'
+}
+
   if (items.length === 0) {
     return (
       <div className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
@@ -1180,18 +1229,71 @@ function PedidosPorLocalizacaoCard({
       <div className="overflow-x-auto rounded-2xl border border-slate-200">
         <table className="min-w-[980px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
-            <tr>
-              <th className="px-4 py-3 font-bold">Localização</th>
-              <th className="px-4 py-3 text-right font-bold">Valor Orçado</th>
-              <th className="px-4 py-3 text-right font-bold">Valor Fechado</th>
-              <th className="px-4 py-3 text-right font-bold">Qtd. Vendas</th>
-              <th className="px-4 py-3 text-right font-bold">Ticket Médio</th>
-              <th className="px-4 py-3 text-right font-bold">% sobre vendas</th>
-            </tr>
-          </thead>
+  <tr>
+    <th className="px-4 py-3 font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('localizacao')}
+        className="flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        Localização {iconeOrdenacao('localizacao')}
+      </button>
+    </th>
+
+    <th className="px-4 py-3 text-right font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('valorOrcado')}
+        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        Valor Orçado {iconeOrdenacao('valorOrcado')}
+      </button>
+    </th>
+
+    <th className="px-4 py-3 text-right font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('valorFechado')}
+        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        Valor Fechado {iconeOrdenacao('valorFechado')}
+      </button>
+    </th>
+
+    <th className="px-4 py-3 text-right font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('quantidadeVendas')}
+        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        Qtd. Vendas {iconeOrdenacao('quantidadeVendas')}
+      </button>
+    </th>
+
+    <th className="px-4 py-3 text-right font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('ticketMedio')}
+        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        Ticket Médio {iconeOrdenacao('ticketMedio')}
+      </button>
+    </th>
+
+    <th className="px-4 py-3 text-right font-bold">
+      <button
+        type="button"
+        onClick={() => onOrdenar('percentualVendas')}
+        className="ml-auto flex items-center gap-2 font-bold hover:text-blue-700"
+      >
+        % sobre vendas {iconeOrdenacao('percentualVendas')}
+      </button>
+    </th>
+  </tr>
+</thead>
 
           <tbody>
-            {items.map((item) => (
+            {itemsOrdenados.map((item) => (
               <tr key={item.localizacao} className="border-t border-slate-200">
                 <td className="px-4 py-3 font-bold text-slate-800">
                   {item.localizacao}
