@@ -1235,19 +1235,7 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
         ))}
               </div>
 
-      {itemsOrdenados.length > 5 ? (
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={onToggleExpandido}
-            className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-          >
-            {expandido ? 'Recolher estados' : 'Expandir todos os estados'}
-          </button>
-        </div>
-      ) : null}
-
-      <div className="overflow-x-auto rounded-2xl border border-slate-200">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
         <table className="min-w-[980px] w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600">
   <tr>
@@ -1345,9 +1333,21 @@ function iconeOrdenacao(campo: keyof PedidoLocalizacaoItem) {
         </table>
       </div>
 
-      <p className="text-xs text-slate-400">
-        Curitiba é calculada separadamente. O Paraná não inclui Curitiba neste quadro.
-      </p>
+{itemsOrdenados.length > 5 ? (
+  <div className="mt-6 flex justify-center border-t border-slate-200 pt-4">
+    <button
+      type="button"
+      onClick={onToggleExpandido}
+      className="rounded-xl border border-slate-300 px-5 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+    >
+      {expandido ? 'Recolher estados' : 'Expandir todos os estados'}
+    </button>
+  </div>
+) : null}
+
+<p className="text-xs text-slate-400">
+  Curitiba é calculada separadamente. O Paraná não inclui Curitiba neste quadro.
+</p>
     </div>
   )
 }
