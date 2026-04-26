@@ -596,7 +596,7 @@ function MiniIndicador({
         ? 'text-xl'
         : tamanho <= 16
           ? 'text-lg'
-          : tamanho <= 22
+          : tamanho <= 20
             ? 'text-base'
             : 'text-sm'
 
@@ -610,12 +610,12 @@ function MiniIndicador({
             : 'border-slate-200 bg-white'
       }`}
     >
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+      <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
         {titulo}
       </p>
 
       <p
-        className={`mt-2 break-words font-black leading-tight text-slate-900 ${tamanhoTexto}`}
+        className={`mt-2 whitespace-nowrap font-black leading-tight tracking-tight text-slate-900 ${tamanhoTexto}`}
         title={valor}
       >
         {valor}
