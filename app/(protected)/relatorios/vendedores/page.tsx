@@ -332,7 +332,7 @@ export default function RelatorioVendedoresPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
             <select
               value={vendedorFiltro}
               onChange={(e) => setVendedorFiltro(e.target.value)}
@@ -597,12 +597,14 @@ function MiniIndicador({
         : tamanho <= 16
           ? 'text-lg'
           : tamanho <= 20
-            ? 'text-base'
-            : 'text-sm'
+          ? 'text-base'
+          : tamanho <= 26
+          ? 'text-sm'
+          : 'text-xs'
 
   return (
     <div
-      className={`min-w-0 rounded-2xl border p-4 ${
+        className={`min-w-0 rounded-2xl border p-4 text-center ${
         destaque
           ? 'border-emerald-200 bg-emerald-50'
           : negativo
@@ -615,8 +617,8 @@ function MiniIndicador({
       </p>
 
       <p
-        className={`mt-2 whitespace-nowrap font-black leading-tight tracking-tight text-slate-900 ${tamanhoTexto}`}
-        title={valor}
+  className={`mt-2 w-full overflow-hidden text-center whitespace-nowrap font-black leading-tight tracking-tight text-slate-900 ${tamanhoTexto}`}
+  title={valor}
       >
         {valor}
       </p>
