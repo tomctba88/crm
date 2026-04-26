@@ -30,6 +30,8 @@ type VendedorItem = {
   faltaMeta: number
   atingimentoMeta: number
   participacao: number
+  percentualComissao: number
+  valorComissao: number
 }
 
 const MESES = [
@@ -73,6 +75,34 @@ function parseMoney(value: unknown) {
 
 function temValorOrcamento(value: unknown) {
   return parseMoney(value) > 0
+}
+
+function calcularComissaoVendedor(valorVendido: number) {
+  if (valorVendido <= 0) {
+    return {
+      percentualComissao: 0,
+      valorComissao: 0,
+    }
+  }
+
+  if (valorVendido <= 80000) {
+    return {
+      percentualComissao: 1,
+      valorComissao: valorVendido * 0.01,
+    }
+  }
+
+  if (valorVendido <= 150000) {
+    return {
+      percentualComissao: 2,
+      valorComissao: valorVendido * 0.02,
+    }
+  }
+
+  return {
+    percentualComissao: 3,
+    valorComissao: valorVendido * 0.03,
+  }
 }
 
 function isPedido(status: string | null | undefined) {
@@ -212,6 +242,8 @@ export default function RelatorioVendedoresPage() {
           faltaMeta: 0,
           atingimentoMeta: 0,
           participacao: 0,
+          percentualComissao: 0,
+          valorComissao: 0,
         }
 
         atual.leads += 1
@@ -235,15 +267,21 @@ export default function RelatorioVendedoresPage() {
       })
 
       const rankingFinal = Array.from(rankingMap.values())
-        .map((item) => ({
-          ...item,
-          ticketMedio: item.vendas > 0 ? item.valorVendido / item.vendas : 0,
-          conversao: item.orcamentos > 0 ? (item.vendas / item.orcamentos) * 100 : 0,
-          faltaMeta: Math.max(item.meta - item.valorVendido, 0),
-          atingimentoMeta: item.meta > 0 ? (item.valorVendido / item.meta) * 100 : 0,
-          participacao:
-            totalVendidoGeral > 0 ? (item.valorVendido / totalVendidoGeral) * 100 : 0,
-        }))
+  .map((item) => {
+    const comissao = calcularComissaoVendedor(item.valorVendido)
+
+    return {
+      ...item,
+      ticketMedio: item.vendas > 0 ? item.valorVendido / item.vendas : 0,
+      conversao: item.orcamentos > 0 ? (item.vendas / item.orcamentos) * 100 : 0,
+      faltaMeta: Math.max(item.meta - item.valorVendido, 0),
+      atingimentoMeta: item.meta > 0 ? (item.valorVendido / item.meta) * 100 : 0,
+      participacao:
+        totalVendidoGeral > 0 ? (item.valorVendido / totalVendidoGeral) * 100 : 0,
+      percentualComissao: comissao.percentualComissao,
+      valorComissao: comissao.valorComissao,
+    }
+  })
         .sort((a, b) => {
           if (ordenacao === 'valor') return b.valorVendido - a.valorVendido
           if (ordenacao === 'conversao') return b.conversao - a.conversao
@@ -332,7 +370,7 @@ export default function RelatorioVendedoresPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <ResumoCard
             titulo="Top vendedor"
             valor={topVendedor?.vendedor || '-'}
@@ -351,6 +389,20 @@ export default function RelatorioVendedoresPage() {
             apoio={maiorCancelamento ? `${maiorCancelamento.perdidos} perdido(s)` : 'Sem dados'}
             cor="bg-rose-50 border-rose-200"
           />
+          <ResumoCard
+            titulo="Maior comissão"
+            valor={
+            ranking.length > 0
+            ? formatCurrency([...ranking].sort((a, b) => b.valorComissao - a.valorComissao)[0].valorComissao)
+            : '-'
+  }
+  apoio={
+    ranking.length > 0
+      ? [...ranking].sort((a, b) => b.valorComissao - a.valorComissao)[0].vendedor
+      : 'Sem dados'
+  }
+  cor="bg-violet-50 border-violet-200"
+/>
         </div>
       </section>
 
@@ -421,52 +473,133 @@ export default function RelatorioVendedoresPage() {
       </section>
 
       <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-2xl font-black text-slate-900">
-          Tabela detalhada
-        </h2>
+  <div className="mb-5">
+    <h2 className="text-2xl font-black text-slate-900">
+      Desempenho detalhado por vendedor
+    </h2>
+    <p className="mt-1 text-sm text-slate-500">
+      Indicadores completos de meta, comissão, vendas, conversão, ticket médio e perdas.
+    </p>
+  </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-[1200px] w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
-              <tr>
-                <th className="px-4 py-3 font-bold">Vendedor</th>
-                <th className="px-4 py-3 text-right font-bold">Valor vendido</th>
-                <th className="px-4 py-3 text-right font-bold">Meta</th>
-                <th className="px-4 py-3 text-right font-bold">Falta meta</th>
-                <th className="px-4 py-3 text-right font-bold">% Meta</th>
-                <th className="px-4 py-3 text-right font-bold">Vendas</th>
-                <th className="px-4 py-3 text-right font-bold">Ticket médio</th>
-                <th className="px-4 py-3 text-right font-bold">Leads</th>
-                <th className="px-4 py-3 text-right font-bold">Orçamentos</th>
-                <th className="px-4 py-3 text-right font-bold">Conversão</th>
-                <th className="px-4 py-3 text-right font-bold">Perdidos</th>
-                <th className="px-4 py-3 text-right font-bold">Valor perdido</th>
-                <th className="px-4 py-3 text-right font-bold">% Faturamento</th>
-              </tr>
-            </thead>
+  <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+    {ranking.map((item) => (
+      <VendedorDetalheCard key={item.vendedor} item={item} />
+    ))}
+  </div>
+</section>
+    </div>
+  )
+}
 
-            <tbody>
-              {ranking.map((item) => (
-                <tr key={item.vendedor} className="border-t border-slate-200">
-                  <td className="px-4 py-3 font-black text-slate-900">{item.vendedor}</td>
-                  <td className="px-4 py-3 text-right font-bold">{formatCurrency(item.valorVendido)}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.meta)}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.faltaMeta)}</td>
-                  <td className="px-4 py-3 text-right font-bold">{item.atingimentoMeta.toFixed(2)}%</td>
-                  <td className="px-4 py-3 text-right">{item.vendas}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.ticketMedio)}</td>
-                  <td className="px-4 py-3 text-right">{item.leads}</td>
-                  <td className="px-4 py-3 text-right">{item.orcamentos}</td>
-                  <td className="px-4 py-3 text-right font-bold">{item.conversao.toFixed(2)}%</td>
-                  <td className="px-4 py-3 text-right">{item.perdidos}</td>
-                  <td className="px-4 py-3 text-right">{formatCurrency(item.valorPerdido)}</td>
-                  <td className="px-4 py-3 text-right font-bold">{item.participacao.toFixed(2)}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+function VendedorDetalheCard({ item }: { item: VendedorItem }) {
+  const metaLimitada = Math.min(item.atingimentoMeta, 100)
+
+  const statusMeta =
+    item.atingimentoMeta >= 100
+      ? 'Meta batida'
+      : item.atingimentoMeta >= 70
+        ? 'Próximo da meta'
+        : 'Abaixo da meta'
+
+  const corMeta =
+    item.atingimentoMeta >= 100
+      ? 'bg-emerald-600'
+      : item.atingimentoMeta >= 70
+        ? 'bg-amber-500'
+        : 'bg-rose-500'
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.12em] text-slate-500">
+            Vendedor
+          </p>
+          <h3 className="mt-1 text-2xl font-black text-slate-900">
+            {item.vendedor}
+          </h3>
         </div>
-      </section>
+
+        <div className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-right">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-violet-700">
+            Comissão
+          </p>
+          <p className="mt-1 text-xl font-black text-violet-900">
+            {formatCurrency(item.valorComissao)}
+          </p>
+          <p className="text-xs font-bold text-violet-700">
+            {item.percentualComissao.toFixed(0)}%
+          </p>
+        </div>
+      </div>
+
+      <div className="mb-5">
+        <div className="mb-2 flex items-center justify-between gap-4">
+          <span className="text-sm font-bold text-slate-700">
+            {statusMeta}
+          </span>
+          <span className="text-sm font-black text-slate-900">
+            {item.atingimentoMeta.toFixed(2)}%
+          </span>
+        </div>
+
+        <div className="h-4 rounded-full bg-slate-200">
+          <div
+            className={`h-4 rounded-full ${corMeta}`}
+            style={{ width: `${Math.max(metaLimitada, 2)}%` }}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <MiniIndicador titulo="Valor vendido" valor={formatCurrency(item.valorVendido)} destaque />
+        <MiniIndicador titulo="Meta" valor={formatCurrency(item.meta)} />
+        <MiniIndicador titulo="Falta meta" valor={formatCurrency(item.faltaMeta)} />
+
+        <MiniIndicador titulo="Vendas" valor={String(item.vendas)} />
+        <MiniIndicador titulo="Ticket médio" valor={formatCurrency(item.ticketMedio)} />
+        <MiniIndicador titulo="% faturamento" valor={`${item.participacao.toFixed(2)}%`} />
+
+        <MiniIndicador titulo="Leads" valor={String(item.leads)} />
+        <MiniIndicador titulo="Orçamentos" valor={String(item.orcamentos)} />
+        <MiniIndicador titulo="Conversão" valor={`${item.conversao.toFixed(2)}%`} />
+
+        <MiniIndicador titulo="Perdidos" valor={String(item.perdidos)} negativo />
+        <MiniIndicador titulo="Valor perdido" valor={formatCurrency(item.valorPerdido)} negativo />
+        <MiniIndicador titulo="Valor orçado" valor={formatCurrency(item.valorOrcado)} />
+      </div>
+    </div>
+  )
+}
+
+function MiniIndicador({
+  titulo,
+  valor,
+  destaque = false,
+  negativo = false,
+}: {
+  titulo: string
+  valor: string
+  destaque?: boolean
+  negativo?: boolean
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 ${
+        destaque
+          ? 'border-emerald-200 bg-emerald-50'
+          : negativo
+            ? 'border-rose-200 bg-rose-50'
+            : 'border-slate-200 bg-white'
+      }`}
+    >
+      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+        {titulo}
+      </p>
+      <p className="mt-2 truncate text-lg font-black text-slate-900" title={valor}>
+        {valor}
+      </p>
     </div>
   )
 }
