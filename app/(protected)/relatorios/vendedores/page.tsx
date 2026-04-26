@@ -21,6 +21,7 @@ type VendedorItem = {
   orcamentos: number
   vendas: number
   valorVendido: number
+  valorVendidoSemFrete: number
   valorOrcado: number
   ticketMedio: number
   conversao: number
@@ -233,6 +234,7 @@ export default function RelatorioVendedoresPage() {
           orcamentos: 0,
           vendas: 0,
           valorVendido: 0,
+          valorVendidoSemFrete: 0,
           valorOrcado: 0,
           ticketMedio: 0,
           conversao: 0,
@@ -256,6 +258,7 @@ export default function RelatorioVendedoresPage() {
         if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
           atual.vendas += 1
           atual.valorVendido += parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+          atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
         }
 
         if (isCancelado(lead.status)) {
@@ -274,8 +277,8 @@ export default function RelatorioVendedoresPage() {
       ...item,
       ticketMedio: item.vendas > 0 ? item.valorVendido / item.vendas : 0,
       conversao: item.orcamentos > 0 ? (item.vendas / item.orcamentos) * 100 : 0,
-      faltaMeta: Math.max(item.meta - item.valorVendido, 0),
-      atingimentoMeta: item.meta > 0 ? (item.valorVendido / item.meta) * 100 : 0,
+      faltaMeta: Math.max(item.meta - item.valorVendidoSemFrete, 0),
+      atingimentoMeta: item.meta > 0 ? (item.valorVendidoSemFrete / item.meta) * 100 : 0,
       participacao:
         totalVendidoGeral > 0 ? (item.valorVendido / totalVendidoGeral) * 100 : 0,
       percentualComissao: comissao.percentualComissao,
@@ -329,7 +332,7 @@ export default function RelatorioVendedoresPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
             <select
               value={vendedorFiltro}
               onChange={(e) => setVendedorFiltro(e.target.value)}
@@ -584,9 +587,22 @@ function MiniIndicador({
   destaque?: boolean
   negativo?: boolean
 }) {
+  const tamanho = valor.length
+
+  const tamanhoTexto =
+    tamanho <= 8
+      ? 'text-2xl'
+      : tamanho <= 12
+        ? 'text-xl'
+        : tamanho <= 16
+          ? 'text-lg'
+          : tamanho <= 22
+            ? 'text-base'
+            : 'text-sm'
+
   return (
     <div
-      className={`rounded-2xl border p-4 ${
+      className={`min-w-0 rounded-2xl border p-4 ${
         destaque
           ? 'border-emerald-200 bg-emerald-50'
           : negativo
@@ -597,7 +613,11 @@ function MiniIndicador({
       <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
         {titulo}
       </p>
-      <p className="mt-2 truncate text-lg font-black text-slate-900" title={valor}>
+
+      <p
+        className={`mt-2 break-words font-black leading-tight text-slate-900 ${tamanhoTexto}`}
+        title={valor}
+      >
         {valor}
       </p>
     </div>
