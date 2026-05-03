@@ -96,9 +96,11 @@ export async function proxy(request: NextRequest) {
 
   const origemPortal = request.nextUrl.searchParams.get('origem') === 'ergotex-one'
 
+const origem = request.headers.get('referer') || ''
+
 const acessoDiretoAoCrm =
   host.includes('crm-ergotex.vercel.app') &&
-  !origemPortal &&
+  !origem.includes('ergotex-one.vercel.app') && // ← só bloqueia acesso externo
   !pathname.startsWith('/api') &&
   !pathname.startsWith('/_next') &&
   pathname !== '/favicon.ico'
