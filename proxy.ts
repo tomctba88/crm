@@ -91,6 +91,19 @@ function canAccessRoute(pathname: string, nivelAcesso: string) {
 }
 
 export async function proxy(request: NextRequest) {
+  const host = request.headers.get('host') || ''
+  const pathname = request.nextUrl.pathname
+
+  const acessoDiretoAoCrm =
+    host.includes('crm-ergotex.vercel.app') &&
+    !pathname.startsWith('/api') &&
+    !pathname.startsWith('/_next') &&
+    pathname !== '/favicon.ico'
+
+  if (acessoDiretoAoCrm) {
+    return NextResponse.redirect('https://ergotex-one.vercel.app')
+  }
+
   let response = NextResponse.next({
     request,
   })
@@ -117,9 +130,7 @@ export async function proxy(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { pathname } = request.nextUrl
-
-  if (isProtectedRoute(pathname) && !user) {
+    if (isProtectedRoute(pathname) && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectedFrom', pathname)
