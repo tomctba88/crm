@@ -1,4 +1,5 @@
 import LogoutButton from './logout-button'
+import Link from 'next/link'
 
 export default function Header({ userEmail }: any) {
   return (
@@ -14,12 +15,12 @@ export default function Header({ userEmail }: any) {
       </div>
 
       <div className="flex items-center gap-4">
-  <a
-    href="https://ergotex-one.vercel.app"
-    className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-  >
-    ⬅ Portal
-  </a>
+  <Link
+  href="/dashboard"
+  className="flex items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+>
+  ⬅ Portal
+</Link>
 
   <span className="text-sm text-slate-700">
     {userEmail}
