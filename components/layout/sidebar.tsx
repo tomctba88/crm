@@ -3,6 +3,7 @@
   import { useEffect, useMemo, useState } from 'react'
   import { usePathname } from 'next/navigation'
   import { createClient } from '@/lib/supabase/browser-client'
+  import Image from 'next/image'
 
   type NivelAcesso = 'administrador' | 'operacional' | 'consulta'
 
@@ -66,7 +67,13 @@
     return (
       <aside className="w-64 shrink-0 bg-[#0A2A3A] text-white flex min-h-screen flex-col">
         <div className="p-6 border-b border-white/10 flex items-center gap-3">
-          <img src="/logo.png" className="w-10 h-10 object-contain" alt="Ergotex" />
+          <Image
+  src="/logo.png"
+  alt="Ergotex"
+  width={40}
+  height={40}
+  className="object-contain"
+/>
           <span className="font-bold text-lg">Ergotex</span>
         </div>
 
