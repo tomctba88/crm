@@ -489,66 +489,78 @@ async function salvarNovaSenha() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-  type="button"
-  onClick={() => {
-    if (nivelUsuarioLogado === 'administrador') {
-      abrirModalEdicao(usuario)
-    } else {
-      alert('Somente administradores podem editar usuários.')
-    }
-  }}
-  disabled={nivelUsuarioLogado !== 'administrador'}
-  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-    nivelUsuarioLogado === 'administrador'
-      ? 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
-  }`}
->
-  Editar
-</button>
+  <div className="flex flex-wrap gap-2">
+    <button
+      type="button"
+      onClick={() => {
+        if (nivelUsuarioLogado === 'administrador') {
+          abrirModalEdicao(usuario)
+        } else {
+          alert('Somente administradores podem editar usuários.')
+        }
+      }}
+      disabled={nivelUsuarioLogado !== 'administrador'}
+      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+        nivelUsuarioLogado === 'administrador'
+          ? 'border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+          : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+      }`}
+    >
+      Editar
+    </button>
 
-<button
-  type="button"
-  onClick={() => {
-    if (nivelUsuarioLogado === 'administrador') {
-      abrirModalSenha(usuario)
-    } else {
-      alert('Somente administradores podem alterar senha.')
-    }
-  }}
-  disabled={nivelUsuarioLogado !== 'administrador'}
-  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-    nivelUsuarioLogado === 'administrador'
-      ? 'border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
-      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
-  }`}
->
-  Trocar senha
-</button>
+    <button
+      type="button"
+      onClick={() => {
+        if (nivelUsuarioLogado === 'administrador') {
+          abrirModalSenha(usuario)
+        } else {
+          alert('Somente administradores podem alterar senha.')
+        }
+      }}
+      disabled={nivelUsuarioLogado !== 'administrador'}
+      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+        nivelUsuarioLogado === 'administrador'
+          ? 'border border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+          : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+      }`}
+    >
+      Trocar senha
+    </button>
 
-                        <button
-  type="button"
-  onClick={() => {
-    if (nivelUsuarioLogado === 'administrador') {
-      alternarStatus(usuario)
-    } else {
-      alert('Somente administradores podem alterar o status.')
-    }
-  }}
-  disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
-  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-    nivelUsuarioLogado === 'administrador'
-      ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
-  }`}
->
-  {usuario.ativo ? 'Inativar' : 'Ativar'}
-</button>
+    <button
+      type="button"
+      onClick={() => {
+        if (nivelUsuarioLogado === 'administrador') {
+          alternarStatus(usuario)
+        } else {
+          alert('Somente administradores podem alterar o status.')
+        }
+      }}
+      disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
+      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+        nivelUsuarioLogado === 'administrador'
+          ? 'border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+          : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+      }`}
+    >
+      {usuario.ativo ? 'Inativar' : 'Ativar'}
+    </button>
 
-                         </div>
-                    </td>
+    <button
+      type="button"
+      onClick={() => excluirUsuario(usuario)}
+      disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
+      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+        nivelUsuarioLogado === 'administrador'
+          ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
+          : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
+      }`}
+    >
+      Excluir
+    </button>
+  </div>
+</td>
                   </tr>
                 ))}
               </tbody>
