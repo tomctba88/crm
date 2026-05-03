@@ -101,6 +101,21 @@ function filtrarLeadsPorOrigens(leads: MarketingLead[], origens: string[]) {
   })
 }
 
+function calcularDashboardMarketingPersonalizado(
+  leads: MarketingLead[],
+  mesKey?: string
+) {
+  const leadsFiltrados = leads.filter((lead) => {
+    if (!mesKey) return true
+
+    const dataBase = lead.data_contato || ''
+
+    return String(dataBase).startsWith(mesKey)
+  })
+
+  return calcularDashboardMarketing(leadsFiltrados, 'google', undefined)
+}
+
 async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
   const limite = 1000
   let inicio = 0
@@ -183,7 +198,7 @@ const [graficoMensal, setGraficoMensal] = useState<
     }
     const mesKey = getMesKeyFromSelect(mes)
     const leadsFiltradosPorOrigem = filtrarLeadsPorOrigens(leads, origensSelecionadas)
-    const dashboard = calcularDashboardMarketing(leadsFiltradosPorOrigem, 'todos' as any, mesKey)
+    const dashboard = calcularDashboardMarketingPersonalizado(leadsFiltradosPorOrigem, mesKey)
 
 setDados({
   leads: dashboard.resumo.leads,
@@ -247,7 +262,8 @@ setGraficoMensal(
     { mes: 'NOV', key: '2026-11' },
     { mes: 'DEZ', key: '2026-12' },
   ].map((item) => {
-        const mensal = calcularDashboardMarketing(leadsFiltradosPorOrigem, 'todos' as any, item.key)
+        const mensal = calcularDashboardMarketingPersonalizado(leadsFiltradosPorOrigem, item.key)
+        
 
     return {
       mes: item.mes,
