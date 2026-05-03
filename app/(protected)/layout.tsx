@@ -3,7 +3,11 @@ import { createClient } from '@/lib/supabase/server-client'
 import Sidebar from '@/components/layout/sidebar'
 import Header from '@/components/layout/header'
 
-export default async function ProtectedLayout({ children }: any) {
+export default async function ProtectedLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const supabase = await createClient()
 
   const {
