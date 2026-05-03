@@ -366,6 +366,20 @@ async function salvarNovaSenha() {
               Gerencie os usuários, níveis de acesso e situação de cada perfil no sistema.
             </p>
           </div>
+<div className="flex items-center gap-2">
+  <button
+    type="button"
+    onClick={cadastrarNovoUsuario}
+    disabled={nivelUsuarioLogado !== 'administrador'}
+    className={`rounded-xl px-5 py-3 text-sm font-bold text-white transition ${
+      nivelUsuarioLogado === 'administrador'
+        ? 'bg-blue-600 hover:bg-blue-700'
+        : 'bg-slate-300 cursor-not-allowed'
+    }`}
+  >
+    Cadastrar novo usuário
+  </button>
+</div>
 
         </div>
       </section>
