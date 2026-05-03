@@ -181,15 +181,26 @@
                 ) : null}
 
                 {podeVerMarketing ? (
-                  <a
-                    href="/relatorios/marketing/google"
-                    className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                      pathname === '/relatorios/marketing/google' ? 'bg-white/10' : ''
-                    }`}
-                  >
-                    Marketing
-                  </a>
-                ) : null}
+  <>
+    <a
+      href="/relatorios/marketing/google"
+      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+        pathname === '/relatorios/marketing/google' ? 'bg-white/10' : ''
+      }`}
+    >
+      Marketing
+    </a>
+
+    <a
+      href="/relatorios/marketing/comparativo"
+      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+        pathname === '/relatorios/marketing/comparativo' ? 'bg-white/10' : ''
+      }`}
+    >
+      Comparativo
+    </a>
+  </>
+) : null}
               </div>
             </div>
           ) : null}
