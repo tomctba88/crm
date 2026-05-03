@@ -303,6 +303,7 @@ const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([
   'EMAIL',
   'SITE',
 ])
+const [menuOrigensAberto, setMenuOrigensAberto] = useState(false)
 const [dados, setDados] = useState<KpiMarketing | null>(null)
 const [graficoQtdProduto, setGraficoQtdProduto] = useState<
   {
@@ -442,7 +443,7 @@ setLoading(false)
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[280px_1fr]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_360px] xl:justify-end">
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">
                 Filtro de mês
@@ -468,58 +469,92 @@ setLoading(false)
               </select>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-bold text-slate-700">
-                Origens consideradas
-              </label>
+            <div className="relative">
+  <label className="mb-2 block text-sm font-bold text-slate-700">
+    Origens consideradas
+  </label>
 
-              <div className="rounded-xl border border-slate-300 bg-slate-50 p-3">
-                <div className="mb-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setOrigensSelecionadas(ORIGENS_MARKETING)}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                  >
-                    Marcar todas
-                  </button>
+  <button
+    type="button"
+    onClick={() => setMenuOrigensAberto((prev) => !prev)}
+    className="flex h-14 w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-4 text-left text-base font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+  >
+    <span className="truncate">
+      {origensSelecionadas.length === 0
+        ? 'Nenhuma origem selecionada'
+        : origensSelecionadas.length === ORIGENS_MARKETING.length
+          ? 'Todas as origens'
+          : `${origensSelecionadas.length} origens selecionadas`}
+    </span>
 
-                  <button
-                    type="button"
-                    onClick={() => setOrigensSelecionadas([])}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                  >
-                    Limpar
-                  </button>
-                </div>
+    <span className="text-sm text-slate-400">
+      {menuOrigensAberto ? '▲' : '▼'}
+    </span>
+  </button>
 
-                <div className="grid max-h-[180px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
-                  {ORIGENS_MARKETING.map((origem) => (
-                    <label
-                      key={origem}
-                      className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={origensSelecionadas.includes(origem)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setOrigensSelecionadas((prev) => [...prev, origem])
-                          } else {
-                            setOrigensSelecionadas((prev) =>
-                              prev.filter((item) => item !== origem)
-                            )
-                          }
-                        }}
-                      />
-                      {origem}
-                    </label>
-                  ))}
-                </div>
-              </div>
+  {menuOrigensAberto ? (
+    <div className="absolute right-0 z-50 mt-2 w-[360px] rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setOrigensSelecionadas(ORIGENS_MARKETING)}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Marcar todas
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setOrigensSelecionadas([])}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+        >
+          Limpar
+        </button>
+      </div>
+
+      <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
+        {ORIGENS_MARKETING.map((origem) => {
+          const checked = origensSelecionadas.includes(origem)
+
+          return (
+            <button
+              key={origem}
+              type="button"
+              onClick={() => {
+                if (checked) {
+                  setOrigensSelecionadas((prev) =>
+                    prev.filter((item) => item !== origem)
+                  )
+                } else {
+                  setOrigensSelecionadas((prev) => [...prev, origem])
+                }
+              }}
+              className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-bold transition ${
+                checked
+                  ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <span>{origem}</span>
+              <span
+                className={`flex h-5 w-5 items-center justify-center rounded-md border text-xs ${
+                  checked
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-slate-300 bg-white text-transparent'
+                }`}
+              >
+                ✓
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  ) : null}
+</div>
             </div>
           </div>
-        </div>
-
+        
         {loading || !dados ? (
           <div className="rounded-2xl bg-slate-50 p-10 text-center text-slate-500">
             Carregando dashboard de marketing Google...
