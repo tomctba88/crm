@@ -397,7 +397,7 @@ async function salvarNovaSenha() {
             Operacional
           </p>
           <p className="mt-2 text-sm text-green-700">
-            Dashboard, Leads, Pipeline, Pós-vendas, Tarefas e Relatórios / Comercial.
+            Dashboard, Leads, Pipeline, Pós-vendas, Tarefas e acesso aos Relatórios de Vendedores.
           </p>
         </div>
 
