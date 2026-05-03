@@ -80,9 +80,9 @@
         <nav className="flex-1 p-4 space-y-2 text-sm">
           {podeVerDashboard ? (
             <a
-              href="/dashboard"
+              href="/crm"
               className={`block px-4 py-2 rounded-lg hover:bg-white/10 ${
-                pathname === '/dashboard' ? 'bg-white/10' : ''
+                pathname === '/crm' ? 'bg-white/10' : ''
               }`}
             >
               Dashboard
