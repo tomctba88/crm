@@ -30,9 +30,7 @@ function isAuthRoute(pathname: string) {
 }
 
 function canAccessRoute(pathname: string, nivelAcesso: string) {
-  if (nivelAcesso === 'administrador') {
-    return true
-  }
+  if (nivelAcesso === 'administrador') return true
 
   if (nivelAcesso === 'operacional') {
     const allowedRoutes = [
@@ -59,9 +57,7 @@ function canAccessRoute(pathname: string, nivelAcesso: string) {
       (route) => pathname === route || pathname.startsWith(`${route}/`)
     )
 
-    if (isBlocked) {
-      return false
-    }
+    if (isBlocked) return false
 
     return allowedRoutes.some(
       (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -80,9 +76,7 @@ function canAccessRoute(pathname: string, nivelAcesso: string) {
       (route) => pathname === route || pathname.startsWith(`${route}/`)
     )
 
-    if (isBlocked) {
-      return false
-    }
+    if (isBlocked) return false
 
     return true
   }
@@ -94,20 +88,48 @@ export async function proxy(request: NextRequest) {
   const host = request.headers.get('host') || ''
   const pathname = request.nextUrl.pathname
 
-  const origemPortal = request.nextUrl.searchParams.get('origem') === 'ergotex-one'
+  const origemPortal =
+    request.nextUrl.searchParams.get('origem') === 'ergotex-one'
 
-const origem = request.headers.get('referer') || ''
+  const acessoLiberado =
+    request.cookies.get('crm_acesso_liberado')?.value === 'true'
 
-const acessoDiretoAoCrm =
-  host.includes('crm-ergotex.vercel.app') &&
-  !origem.includes('ergotex-one.vercel.app') && // ← só bloqueia acesso externo
-  !pathname.startsWith('/api') &&
-  !pathname.startsWith('/_next') &&
-  pathname !== '/favicon.ico'
+  const isArquivoPublico =
+    pathname.endsWith('.png') ||
+    pathname.endsWith('.jpg') ||
+    pathname.endsWith('.jpeg') ||
+    pathname.endsWith('.svg') ||
+    pathname.endsWith('.webp') ||
+    pathname.endsWith('.gif') ||
+    pathname.endsWith('.ico')
 
-if (acessoDiretoAoCrm) {
-  return NextResponse.redirect('https://ergotex-one.vercel.app')
-}
+  if (origemPortal) {
+    const url = request.nextUrl.clone()
+    url.searchParams.delete('origem')
+
+    const resposta = NextResponse.redirect(url)
+
+    resposta.cookies.set('crm_acesso_liberado', 'true', {
+      path: '/',
+      maxAge: 60 * 60 * 8,
+      sameSite: 'lax',
+      secure: true,
+    })
+
+    return resposta
+  }
+
+  const acessoDiretoAoCrm =
+    host.includes('crm-ergotex.vercel.app') &&
+    !acessoLiberado &&
+    !isArquivoPublico &&
+    !pathname.startsWith('/api') &&
+    !pathname.startsWith('/_next') &&
+    pathname !== '/favicon.ico'
+
+  if (acessoDiretoAoCrm) {
+    return NextResponse.redirect('https://ergotex-one.vercel.app')
+  }
 
   let response = NextResponse.next({
     request,
@@ -135,7 +157,7 @@ if (acessoDiretoAoCrm) {
     data: { user },
   } = await supabase.auth.getUser()
 
-    if (isProtectedRoute(pathname) && !user) {
+  if (isProtectedRoute(pathname) && !user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('redirectedFrom', pathname)
