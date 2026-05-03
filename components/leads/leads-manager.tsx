@@ -20,6 +20,7 @@ type Lead = {
   valor_frete: number | null
   status: string | null
   data_retorno: string | null
+  data_fechamento: string | null
   observacoes: string | null
 }
 
@@ -36,6 +37,7 @@ type FormDataType = {
   valor_frete: string
   status: string
   data_retorno: string
+  data_fechamento: string
   observacoes: string
 }
 
@@ -59,6 +61,7 @@ const initialForm: FormDataType = {
   valor_frete: '',
   status: '',
   data_retorno: '',
+  data_fechamento: '',
   observacoes: '',
 }
 
@@ -327,10 +330,29 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
     campo: K,
     valor: FormDataType[K]
   ) {
-    setForm((prev) => ({
-      ...prev,
-      [campo]: valor,
-    }))
+    setForm((prev) => {
+      const novoForm = {
+        ...prev,
+        [campo]: valor,
+      }
+
+      if (
+        campo === 'status' &&
+        normalizeText(String(valor)) === 'fechado' &&
+        !prev.data_fechamento
+      ) {
+        novoForm.data_fechamento = new Date().toISOString().slice(0, 10)
+      }
+
+      if (
+        campo === 'status' &&
+        normalizeText(String(valor)) !== 'fechado'
+      ) {
+        novoForm.data_fechamento = ''
+      }
+
+      return novoForm
+    })
   }
 
   function limparFormulario() {
@@ -379,6 +401,7 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
       valor_frete: parseCurrencyToNumber(form.valor_frete),
       status: form.status || null,
       data_retorno: form.data_retorno || null,
+      data_fechamento: form.data_fechamento || null,
       observacoes: form.observacoes.trim() || null,
     }
 
@@ -446,6 +469,7 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
           : '',
       status: lead.status || '',
       data_retorno: lead.data_retorno || '',
+      data_fechamento: lead.data_fechamento || '',
       observacoes: lead.observacoes || '',
     })
 
@@ -848,6 +872,20 @@ useEffect(() => {
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
+
+          {normalizeText(form.status) === 'fechado' ? (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Data de fechamento
+              </label>
+              <input
+                type="date"
+                value={form.data_fechamento}
+                onChange={(e) => atualizarCampo('data_fechamento', e.target.value)}
+                className="h-12 w-full rounded-xl border border-green-300 bg-green-50 px-4 outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100"
+              />
+            </div>
+          ) : null}
 
           <div className="md:col-span-2 xl:col-span-4">
             <label className="mb-2 block text-sm font-bold text-slate-700">
