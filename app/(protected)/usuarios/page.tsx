@@ -533,19 +533,7 @@ async function salvarNovaSenha() {
   {usuario.ativo ? 'Inativar' : 'Ativar'}
 </button>
 
-                        <button
-  type="button"
-  onClick={() => excluirUsuario(usuario)}
-  disabled={salvandoId === usuario.id || nivelUsuarioLogado !== 'administrador'}
-  className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-    nivelUsuarioLogado === 'administrador'
-      ? 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-      : 'cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400'
-  }`}
->
-  Excluir
-</button>
-                      </div>
+                         </div>
                     </td>
                   </tr>
                 ))}
