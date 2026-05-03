@@ -94,15 +94,18 @@ export async function proxy(request: NextRequest) {
   const host = request.headers.get('host') || ''
   const pathname = request.nextUrl.pathname
 
-  const acessoDiretoAoCrm =
-    host.includes('crm-ergotex.vercel.app') &&
-    !pathname.startsWith('/api') &&
-    !pathname.startsWith('/_next') &&
-    pathname !== '/favicon.ico'
+  const origemPortal = request.nextUrl.searchParams.get('origem') === 'ergotex-one'
 
-  if (acessoDiretoAoCrm) {
-    return NextResponse.redirect('https://ergotex-one.vercel.app')
-  }
+const acessoDiretoAoCrm =
+  host.includes('crm-ergotex.vercel.app') &&
+  !origemPortal &&
+  !pathname.startsWith('/api') &&
+  !pathname.startsWith('/_next') &&
+  pathname !== '/favicon.ico'
+
+if (acessoDiretoAoCrm) {
+  return NextResponse.redirect('https://ergotex-one.vercel.app')
+}
 
   let response = NextResponse.next({
     request,
