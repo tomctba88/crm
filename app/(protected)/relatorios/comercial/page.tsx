@@ -11,6 +11,7 @@ type Lead = {
   vendedor: string | null
   tipo_contato?: string | null
   data_contato: string | null
+  data_fechamento?: string | null
   data_retorno?: string | null
   created_at?: string | null
   produto_interesse: string | null
@@ -553,13 +554,37 @@ const analiseCanalFinal = canaisConfig.map((config) => {
 
   const leadsCanal = base.length
 
-  const fechadosBase = base.filter(
-    (lead) =>
-      temValorOrcamento(lead.valor_orcamento) &&
-      isPedido(lead.status)
-  )
+  const fechadosBase = base.filter((lead) => {
+  if (!lead.data_fechamento) return false
 
-  const fechadosCanal = fechadosBase.length
+  const dataFechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+
+  return (
+    temValorOrcamento(lead.valor_orcamento) &&
+    isPedido(lead.status) &&
+    dataFechamento.getFullYear() === anoFiltro &&
+(mesFiltro === 0 || dataFechamento.getMonth() + 1 === mesFiltro)
+  )
+})
+
+const fechadosCanal = fechadosBase.length
+
+const fechadosPostergados = fechadosBase.filter((lead) => {
+  if (!lead.data_contato || !lead.data_fechamento) return false
+
+  const contato = new Date(`${lead.data_contato}T00:00:00`)
+  const fechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+
+  return (
+    contato.getMonth() !== fechamento.getMonth() ||
+    contato.getFullYear() !== fechamento.getFullYear()
+  )
+})
+
+const valorPostergado = fechadosPostergados.reduce(
+  (acc, lead) => acc + parseMoney(lead.valor_orcamento),
+  0
+)
 
   const valorLeads = base.reduce(
     (acc, lead) =>
