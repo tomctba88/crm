@@ -113,7 +113,156 @@ function calcularDashboardMarketingPersonalizado(
     return String(dataBase).startsWith(mesKey)
   })
 
-  return calcularDashboardMarketing(leadsFiltrados, 'google', undefined)
+  const isFechado = (status: string | null | undefined) =>
+    normalizeText(status) === 'FECHADO'
+
+  const isAberto = (status: string | null | undefined) => {
+    const statusNormalizado = normalizeText(status)
+    return (
+      statusNormalizado.includes('AGUARDANDO') ||
+      statusNormalizado.includes('NEGOCIANDO') ||
+      statusNormalizado.includes('ORCAR') ||
+      statusNormalizado.includes('ORÇAR')
+    )
+  }
+
+  const valorOrcamentoLead = (lead: MarketingLead) =>
+    Number(lead.valor_orcamento || 0) + Number(lead.valor_frete || 0)
+
+  const leadsComOrcamento = leadsFiltrados.filter(
+    (lead) => Number(lead.valor_orcamento || 0) > 0
+  )
+
+  const pedidos = leadsComOrcamento.filter((lead) => isFechado(lead.status))
+  const emAberto = leadsComOrcamento.filter((lead) => isAberto(lead.status))
+
+  const valorOrcamento = leadsComOrcamento.reduce(
+    (acc, lead) => acc + valorOrcamentoLead(lead),
+    0
+  )
+
+  const valorPedidos = pedidos.reduce(
+    (acc, lead) => acc + valorOrcamentoLead(lead),
+    0
+  )
+
+  const valorEmAberto = emAberto.reduce(
+    (acc, lead) => acc + valorOrcamentoLead(lead),
+    0
+  )
+
+  const produtoMap = new Map<
+    string,
+    {
+      produto: string
+      leads: number
+      orcamentos: number
+      pedidos: number
+      txQualificacao: number
+      txConversao: number
+      valorOrcamento: number
+      valorPedidos: number
+      valorEmAberto: number
+      orcamentosEmAberto: number
+    }
+  >()
+
+  leadsFiltrados.forEach((lead) => {
+    const produto = lead.produto_interesse || 'Não classificados'
+
+    const atual =
+      produtoMap.get(produto) || {
+        produto,
+        leads: 0,
+        orcamentos: 0,
+        pedidos: 0,
+        txQualificacao: 0,
+        txConversao: 0,
+        valorOrcamento: 0,
+        valorPedidos: 0,
+        valorEmAberto: 0,
+        orcamentosEmAberto: 0,
+      }
+
+    atual.leads += 1
+
+    if (Number(lead.valor_orcamento || 0) > 0) {
+      atual.orcamentos += 1
+      atual.valorOrcamento += valorOrcamentoLead(lead)
+    }
+
+    if (Number(lead.valor_orcamento || 0) > 0 && isFechado(lead.status)) {
+      atual.pedidos += 1
+      atual.valorPedidos += valorOrcamentoLead(lead)
+    }
+
+    if (Number(lead.valor_orcamento || 0) > 0 && isAberto(lead.status)) {
+      atual.orcamentosEmAberto += 1
+      atual.valorEmAberto += valorOrcamentoLead(lead)
+    }
+
+    produtoMap.set(produto, atual)
+  })
+
+  const produtos = Array.from(produtoMap.values()).map((item) => ({
+    ...item,
+    txQualificacao: item.leads > 0 ? (item.orcamentos / item.leads) * 100 : 0,
+    txConversao: item.orcamentos > 0 ? (item.pedidos / item.orcamentos) * 100 : 0,
+  }))
+
+  const naoClassificados =
+    produtos.find((item) => normalizeText(item.produto).includes('NAO CLASSIFICADOS')) || {
+      produto: 'Não classificados',
+      leads: 0,
+      orcamentos: 0,
+      pedidos: 0,
+      txQualificacao: 0,
+      txConversao: 0,
+      valorOrcamento: 0,
+      valorPedidos: 0,
+      valorEmAberto: 0,
+      orcamentosEmAberto: 0,
+    }
+
+  const conversaoProduto = produtos.filter(
+    (item) => !normalizeText(item.produto).includes('NAO CLASSIFICADOS')
+  )
+
+  return {
+    resumo: {
+      leads: leadsFiltrados.length,
+      orcamentos: leadsComOrcamento.length,
+      pedidos: pedidos.length,
+      valorPedidos,
+      txQualificacao:
+        leadsFiltrados.length > 0
+          ? (leadsComOrcamento.length / leadsFiltrados.length) * 100
+          : 0,
+      txConversao:
+        leadsComOrcamento.length > 0
+          ? (pedidos.length / leadsComOrcamento.length) * 100
+          : 0,
+      orcamentosEmAberto: emAberto.length,
+      ticketPedidos: pedidos.length > 0 ? valorPedidos / pedidos.length : 0,
+      valorOrcamento,
+      ticketOrcamento:
+        leadsComOrcamento.length > 0 ? valorOrcamento / leadsComOrcamento.length : 0,
+      txConversaoValor:
+        valorOrcamento > 0 ? (valorPedidos / valorOrcamento) * 100 : 0,
+      valorEmAberto,
+    },
+    conversaoProduto,
+    conversaoProdutoNaoClassificados: naoClassificados,
+    conversaoProdutoResultado: {
+      leads: leadsFiltrados.length,
+      orcamentos: leadsComOrcamento.length,
+      pedidos: pedidos.length,
+      valorOrcamento,
+      valorPedidos,
+      valorEmAberto,
+      orcamentosEmAberto: emAberto.length,
+    },
+  }
 }
 
 async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
