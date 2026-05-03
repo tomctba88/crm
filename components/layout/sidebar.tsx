@@ -181,43 +181,14 @@
                 ) : null}
 
                 {podeVerMarketing ? (
-                  <>
-                    <a
-                      href="/relatorios/marketing"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/marketing' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Marketing
-                    </a>
-
-                    <a
-                      href="/relatorios/marketing/google"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/marketing/google' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Marketing Google
-                    </a>
-
-                    <a
-                      href="/relatorios/marketing/organico-retorno"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/marketing/organico-retorno' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Orgânico / Retorno
-                    </a>
-
-                    <a
-                      href="/relatorios/marketing/comparativo"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/marketing/comparativo' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Comparativo
-                    </a>
-                  </>
+                  <a
+                    href="/relatorios/marketing/google"
+                    className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+                      pathname === '/relatorios/marketing/google' ? 'bg-white/10' : ''
+                    }`}
+                  >
+                    Marketing
+                  </a>
                 ) : null}
               </div>
             </div>

@@ -67,6 +67,40 @@ function getMesKeyFromSelect(value: string) {
   return `2026-${value}`
 }
 
+const ORIGENS_MARKETING = [
+  'GOOGLE',
+  'EMAIL',
+  'SITE',
+  'RECOMPRA',
+  'RETORNO',
+  'MEGAFLEX',
+  'LOJISTA',
+  'REVENDA',
+  'INDICACAO',
+  'PARTICULAR',
+  'TELEFONE',
+  'ORGANICO',
+  'INSTAGRAM',
+  'LOJA',
+]
+
+function normalizeText(value: string | null | undefined) {
+  return (value || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function filtrarLeadsPorOrigens(leads: MarketingLead[], origens: string[]) {
+  if (origens.length === 0) return []
+
+  return leads.filter((lead) => {
+    const origemLead = normalizeText(lead.tipo_contato)
+    return origens.some((origem) => origemLead.includes(origem))
+  })
+}
+
 async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
   const limite = 1000
   let inicio = 0
@@ -100,6 +134,11 @@ export default function MarketingGooglePage() {
 
   const [loading, setLoading] = useState(true)
 const [mes, setMes] = useState('Todos')
+const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([
+  'GOOGLE',
+  'EMAIL',
+  'SITE',
+])
 const [dados, setDados] = useState<KpiMarketing | null>(null)
 const [graficoQtdProduto, setGraficoQtdProduto] = useState<
   {
@@ -128,7 +167,7 @@ const [graficoMensal, setGraficoMensal] = useState<
 
   useEffect(() => {
     buscarDados()
-  }, [mes])
+  }, [mes, origensSelecionadas])
 
   async function buscarDados() {
     setLoading(true)
@@ -143,7 +182,8 @@ const [graficoMensal, setGraficoMensal] = useState<
       return
     }
     const mesKey = getMesKeyFromSelect(mes)
-const dashboard = calcularDashboardMarketing(leads, 'google', mesKey)
+    const leadsFiltradosPorOrigem = filtrarLeadsPorOrigens(leads, origensSelecionadas)
+    const dashboard = calcularDashboardMarketing(leadsFiltradosPorOrigem, 'todos' as any, mesKey)
 
 setDados({
   leads: dashboard.resumo.leads,
@@ -207,7 +247,7 @@ setGraficoMensal(
     { mes: 'NOV', key: '2026-11' },
     { mes: 'DEZ', key: '2026-12' },
   ].map((item) => {
-    const mensal = calcularDashboardMarketing(leads, 'google', item.key)
+        const mensal = calcularDashboardMarketing(leadsFiltradosPorOrigem, 'todos' as any, item.key)
 
     return {
       mes: item.mes,
@@ -230,14 +270,14 @@ setLoading(false)
               Relatórios de marketing
             </p>
             <h1 className="text-3xl font-black text-slate-900">
-              Dashboard de Marketing Google
+              Dashboard de Marketing
             </h1>
             <p className="mt-1 text-sm text-slate-500">
-              Indicadores filtrados pelas origens Google, Email e Site.
+              Indicadores filtrados pelas origens selecionadas.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[280px_1fr]">
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">
                 Filtro de mês
@@ -265,13 +305,52 @@ setLoading(false)
 
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">
-                Origem considerada
+                Origens consideradas
               </label>
-              <input
-                value="Google / Email / Site"
-                readOnly
-                className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 text-slate-600 outline-none"
-              />
+
+              <div className="rounded-xl border border-slate-300 bg-slate-50 p-3">
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOrigensSelecionadas(ORIGENS_MARKETING)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Marcar todas
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOrigensSelecionadas([])}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                <div className="grid max-h-[180px] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                  {ORIGENS_MARKETING.map((origem) => (
+                    <label
+                      key={origem}
+                      className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={origensSelecionadas.includes(origem)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setOrigensSelecionadas((prev) => [...prev, origem])
+                          } else {
+                            setOrigensSelecionadas((prev) =>
+                              prev.filter((item) => item !== origem)
+                            )
+                          }
+                        }}
+                      />
+                      {origem}
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -309,7 +388,7 @@ setLoading(false)
                   Conversão por Produto
                 </h3>
                 <p className="mt-1 text-sm text-slate-500">
-                  Relatório consolidado por grupo de produto, filtrado por Google, Email e Site.
+                  Relatório consolidado por grupo de produto, conforme as origens selecionadas.
                 </p>
               </div>
 
@@ -378,7 +457,7 @@ setLoading(false)
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
   <ChartCard
     title="Leads, Orçamentos e Pedidos"
-    subtitle="Comparativo por produto nas origens Google, Email e Site."
+    subtitle="Comparativo por produto conforme as origens selecionadas."
   >
     <ProdutoQuantidadeChart items={graficoQtdProduto} />
   </ChartCard>
@@ -393,7 +472,7 @@ setLoading(false)
 
 <ChartCard
   title="Leads, Orçamentos e Pedidos por mês"
-  subtitle="Evolução mensal do marketing Google."
+  subtitle="Evolução mensal das origens selecionadas."
 >
   <MarketingMesChart items={graficoMensal} />
 </ChartCard>
