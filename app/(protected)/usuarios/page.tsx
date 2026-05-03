@@ -367,20 +367,12 @@ async function salvarNovaSenha() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={cadastrarNovoUsuario}
-            disabled={nivelUsuarioLogado !== 'administrador'}
-            className={`rounded-xl px-5 py-3 text-sm font-bold text-white transition ${
-              nivelUsuarioLogado === 'administrador'
-                ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-slate-300 cursor-not-allowed'
-            }`}
-          >
-            Cadastrar novo usuário
-          </button>
         </div>
       </section>
+
+      <div className="rounded-xl bg-blue-50 p-3 text-sm font-semibold text-blue-700">
+        Usuários são gerenciados pelo Ergotex One. Aqui você define apenas permissões do CRM.
+      </div>
 
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="rounded-[24px] border border-blue-200 bg-blue-50 p-5 shadow-sm">
