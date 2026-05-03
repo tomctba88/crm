@@ -5,6 +5,13 @@ import { createClient } from '@/lib/supabase/browser-client'
 
 type NivelAcesso = 'administrador' | 'operacional' | 'consulta'
 
+type ModuloPortal = {
+  id: string
+  nome: string
+  slug: string
+  ativo: boolean
+}
+
 type UsuarioSistema = {
   id: string
   nome: string | null
@@ -45,6 +52,32 @@ const [confirmarNovaSenhaEdit, setConfirmarNovaSenhaEdit] = useState('')
   const [novoCargo, setNovoCargo] = useState('')
   const [novoNivel, setNovoNivel] = useState<NivelAcesso>('operacional')
   const [criandoUsuario, setCriandoUsuario] = useState(false)
+  const [modulos, setModulos] = useState<ModuloPortal[]>([])
+  const [novosModulos, setNovosModulos] = useState<string[]>([])
+
+  async function buscarModulos() {
+  const { data, error } = await supabase
+    .from('modulos')
+    .select('id, nome, slug, ativo')
+    .eq('ativo', true)
+    .order('nome', { ascending: true })
+
+  if (error) {
+    console.error('Erro ao buscar módulos:', error)
+    setModulos([])
+    return
+  }
+
+  setModulos((data || []) as ModuloPortal[])
+}
+
+function toggleNovoModulo(slug: string) {
+  setNovosModulos((prev) =>
+    prev.includes(slug)
+      ? prev.filter((item) => item !== slug)
+      : [...prev, slug]
+  )
+}
 
   async function buscarUsuarios() {
     setLoading(true)
@@ -68,6 +101,7 @@ const [confirmarNovaSenhaEdit, setConfirmarNovaSenhaEdit] = useState('')
   useEffect(() => {
   async function carregar() {
     await buscarUsuarios()
+    await buscarModulos()
 
     const {
       data: { user },
@@ -261,6 +295,7 @@ function cadastrarNovoUsuario() {
   setNovoTelefone('')
   setNovoCargo('')
   setNovoNivel('operacional')
+  setNovosModulos([])
   setModalNovoUsuarioAberto(true)
 }
 
@@ -285,6 +320,7 @@ function cadastrarNovoUsuario() {
           telefone: novoTelefone,
           cargo: novoCargo,
           nivel_acesso: novoNivel,
+          modulos: novosModulos,
         }),
       })
 
@@ -759,6 +795,44 @@ async function salvarNovaSenha() {
             <option value="operacional">Operacional</option>
             <option value="consulta">Consulta</option>
           </select>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="mb-2 block text-sm font-bold text-slate-700">
+            Módulos liberados
+          </label>
+
+          {novoNivel === 'administrador' ? (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+              Administradores têm acesso automático a todos os módulos.
+            </div>
+          ) : modulos.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+              Nenhum módulo ativo encontrado.
+            </div>
+          ) : (
+            <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+              {modulos.map((modulo) => {
+                const checked = novosModulos.includes(modulo.slug)
+
+                return (
+                  <button
+                    key={modulo.id}
+                    type="button"
+                    onClick={() => toggleNovoModulo(modulo.slug)}
+                    className={`flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                      checked
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{modulo.nome}</span>
+                    <span>{checked ? '✓' : '+'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
 

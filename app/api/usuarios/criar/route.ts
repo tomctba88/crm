@@ -119,9 +119,49 @@ export async function POST(req: Request) {
       )
     }
 
+    // 3. PERMISSÕES DE MÓDULOS (ERGOTEX ONE)
+    const modulosSelecionados = Array.isArray(body.modulos) ? body.modulos : []
+
+    if (modulosSelecionados.length > 0 && roleGeral !== 'admin') {
+  const { data: modulosEncontrados, error: modulosError } =
+    await supabaseAdmin
+      .from('modulos')
+      .select('id, slug')
+      .in('slug', modulosSelecionados)
+
+  if (modulosError) {
+    return NextResponse.json(
+      { error: modulosError.message || 'Erro ao buscar módulos.' },
+      { status: 400 }
+    )
+  }
+
+  const registros = (modulosEncontrados || []).map((modulo) => ({
+    usuario_id: novoUsuarioId,
+    modulo_id: modulo.id,
+    pode_acessar: true,
+    nivel_acesso: 'padrao',
+  }))
+
+  if (registros.length > 0) {
+    const { error: permissoesError } = await supabaseAdmin
+      .from('usuarios_modulos')
+      .upsert(registros, {
+        onConflict: 'usuario_id,modulo_id',
+      })
+
+    if (permissoesError) {
+      return NextResponse.json(
+        { error: permissoesError.message || 'Erro ao salvar permissões.' },
+        { status: 400 }
+      )
+    }
+  }
+}
+
     return NextResponse.json({
       success: true,
-      message: 'Usuário criado com sucesso.',
+      message: 'Usuário criado com sucesso e permissões sincronizadas.',
     })
   } catch (err) {
     console.error('ERRO AO CRIAR USUÁRIO:', err)
