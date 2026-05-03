@@ -53,14 +53,15 @@
     const podeVerPipeline = true
     const podeVerPosVendas = true
     const podeVerTarefas = true
-    const podeVerRelatorioComercial = true
-
+    const podeVerRelatorioComercial = isAdministrador || isConsulta
+    const podeVerRelatorioVendedores = isAdministrador || isOperacional || isConsulta
     const podeVerImportacao = isAdministrador
     const podeVerCadastros = isAdministrador
     const podeVerUsuarios = isAdministrador
     const podeVerConfiguracoes = isAdministrador
-
     const podeVerMarketing = isAdministrador || isConsulta
+    const podeVerRelatorios =
+          podeVerRelatorioComercial || podeVerRelatorioVendedores || podeVerMarketing
 
     return (
       <aside className="w-64 shrink-0 bg-[#0A2A3A] text-white flex min-h-screen flex-col">
@@ -147,7 +148,7 @@
             </a>
           ) : null}
 
-          {podeVerRelatorioComercial || podeVerMarketing ? (
+          {podeVerRelatorios ? (
             <div className="space-y-1">
               <div
                 className={`px-4 py-2 rounded-lg font-medium ${
@@ -159,25 +160,25 @@
 
               <div className="ml-3 space-y-1 border-l border-white/10 pl-3">
                 {podeVerRelatorioComercial ? (
-                  <>
-                    <a
-                      href="/relatorios/comercial"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/comercial' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Comercial
-                    </a>
+                  <a
+                    href="/relatorios/comercial"
+                    className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+                      pathname === '/relatorios/comercial' ? 'bg-white/10' : ''
+                    }`}
+                  >
+                    Comercial
+                  </a>
+                ) : null}
 
-                    <a
-                      href="/relatorios/vendedores"
-                      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
-                        pathname === '/relatorios/vendedores' ? 'bg-white/10' : ''
-                      }`}
-                    >
-                      Vendedores
-                    </a>
-                  </>
+                {podeVerRelatorioVendedores ? (
+                  <a
+                    href="/relatorios/vendedores"
+                    className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+                      pathname === '/relatorios/vendedores' ? 'bg-white/10' : ''
+                    }`}
+                  >
+                    Vendedores
+                  </a>
                 ) : null}
 
                 {podeVerMarketing ? (
