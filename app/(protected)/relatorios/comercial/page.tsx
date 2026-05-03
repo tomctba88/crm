@@ -40,6 +40,10 @@ type DashboardComercial = {
   taxaAguardando: number
   metaMensal: number
   atingimentoMeta: number
+  vendasNovas: number
+  valorVendasNovas: number
+  vendasPostergadas: number
+  valorVendasPostergadas: number
 }
 
 type GraficoItem = {
@@ -429,6 +433,46 @@ async function buscarDados() {
 
     const comissao = calcularComissao(meta)
 
+    const vendasNovas = pedidos.filter((lead) => {
+  if (!lead.data_contato || !lead.data_fechamento) return false
+
+  const contato = new Date(`${lead.data_contato}T00:00:00`)
+  const fechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+
+  return (
+    contato.getMonth() === fechamento.getMonth() &&
+    contato.getFullYear() === fechamento.getFullYear()
+  )
+})
+
+const vendasPostergadas = pedidos.filter((lead) => {
+  if (!lead.data_contato || !lead.data_fechamento) return false
+
+  const contato = new Date(`${lead.data_contato}T00:00:00`)
+  const fechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+
+  return (
+    contato.getMonth() !== fechamento.getMonth() ||
+    contato.getFullYear() !== fechamento.getFullYear()
+  )
+})
+
+const valorVendasNovas = vendasNovas.reduce(
+  (acc, lead) =>
+    acc +
+    parseMoney(lead.valor_orcamento) +
+    parseMoney(lead.valor_frete),
+  0
+)
+
+const valorVendasPostergadas = vendasPostergadas.reduce(
+  (acc, lead) =>
+    acc +
+    parseMoney(lead.valor_orcamento) +
+    parseMoney(lead.valor_frete),
+  0
+)
+
 const metaBase =
   vendedorFiltro === 'TODOS'
     ? META_MENSAL_EMPRESA
@@ -473,6 +517,10 @@ const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
       taxaAguardando,
       metaMensal,
       atingimentoMeta,
+      vendasNovas: vendasNovas.length,
+      valorVendasNovas,
+      vendasPostergadas: vendasPostergadas.length,
+      valorVendasPostergadas,
     })
 
     const vendasPorMes: GraficoItem[] = MESES.map((_, index) => {
@@ -822,6 +870,32 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
   <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-green-50" />
   <Card titulo="Ticket Médio" valor={formatCurrency(dados.ticketMedio)} cor="bg-teal-50" />
   <Card titulo="Tx. Conversão" valor={`${dados.conversao.toFixed(2)}%`} cor="bg-lime-50" />
+</div>
+
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card
+    titulo="Vendas Novas"
+    valor={String(dados.vendasNovas)}
+    cor="bg-emerald-50"
+  />
+
+  <Card
+    titulo="Valor Vendas Novas"
+    valor={formatCurrency(dados.valorVendasNovas)}
+    cor="bg-green-50"
+  />
+
+  <Card
+    titulo="Vendas Postergadas"
+    valor={String(dados.vendasPostergadas)}
+    cor="bg-yellow-50"
+  />
+
+  <Card
+    titulo="Valor Postergado"
+    valor={formatCurrency(dados.valorVendasPostergadas)}
+    cor="bg-amber-50"
+  />
 </div>
 
 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
