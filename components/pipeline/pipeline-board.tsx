@@ -135,6 +135,9 @@ export default function PipelineBoard() {
   const [ordenacao, setOrdenacao] = useState('data_desc')
   const [valorMinimo, setValorMinimo] = useState('')
   const [valorMaximo, setValorMaximo] = useState('')
+  const [mesFiltro, setMesFiltro] = useState('Todos')
+  const [anoFiltro, setAnoFiltro] = useState(String(new Date().getFullYear()))
+  const [mostrarEncerrados, setMostrarEncerrados] = useState(false)
   const [movendo, setMovendo] = useState(false)
   const [nivelUsuarioLogado, setNivelUsuarioLogado] = useState<NivelAcesso>('consulta')
 
@@ -226,6 +229,26 @@ export default function PipelineBoard() {
     carregarTudo()
   }, [supabase])
 
+  function normalizarStatus(status?: string | null) {
+  return String(status || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function statusEncerrado(status?: string | null) {
+  const statusNormalizado = normalizarStatus(status)
+
+  return (
+    statusNormalizado === 'FECHADO' ||
+    statusNormalizado === 'PEDIDO' ||
+    statusNormalizado === 'CANCELADO' ||
+    statusNormalizado === 'DESQUALIFICADO' ||
+    statusNormalizado === 'FORNECEDOR'
+  )
+}
+
   const vendedores = Array.from(
   new Set(leads.map((lead) => lead.vendedor).filter(Boolean))
 ) as string[]
@@ -233,6 +256,14 @@ export default function PipelineBoard() {
 const leadsFiltrados = leads.filter((lead) => {
   const termo = busca.toLowerCase()
   const valor = Number(lead.valor_orcamento || 0)
+  const dataBase = lead.data_contato || lead.created_at || ''
+  const data = dataBase ? new Date(dataBase) : null
+
+  const leadEncerrado = statusEncerrado(lead.status)
+
+  if (!mostrarEncerrados && leadEncerrado) {
+    return false
+  }
 
   const bateBusca =
     !termo ||
@@ -250,8 +281,35 @@ const leadsFiltrados = leads.filter((lead) => {
   const bateValorMaximo =
     !valorMaximo ? true : valor <= Number(valorMaximo)
 
-  return bateBusca && bateVendedor && bateValorMinimo && bateValorMaximo
+  const bateMes =
+    mesFiltro === 'Todos' ||
+    (data && data.getMonth() + 1 === Number(mesFiltro))
+
+  const bateAno =
+    anoFiltro === 'Todos' ||
+    (data && data.getFullYear() === Number(anoFiltro))
+
+  return (
+    bateBusca &&
+    bateVendedor &&
+    bateValorMinimo &&
+    bateValorMaximo &&
+    bateMes &&
+    bateAno
+  )
 })
+
+const anosDisponiveis = Array.from(
+  new Set(
+    leads
+      .map((lead) => {
+        const dataBase = lead.data_contato || lead.created_at
+        if (!dataBase) return null
+        return new Date(dataBase).getFullYear()
+      })
+      .filter(Boolean)
+  )
+).sort((a, b) => Number(b) - Number(a))
 
 const ordemPersonalizadaStatus: Record<string, number> = {
   ORÇAR: 1,
@@ -464,7 +522,62 @@ setMovendo(false)
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </div>
+<div>
+  <label className="mb-2 block text-sm font-bold text-slate-700">
+    Mês
+  </label>
+  <select
+    value={mesFiltro}
+    onChange={(e) => setMesFiltro(e.target.value)}
+    className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+  >
+    <option value="Todos">Todos os meses</option>
+    <option value="1">Janeiro</option>
+    <option value="2">Fevereiro</option>
+    <option value="3">Março</option>
+    <option value="4">Abril</option>
+    <option value="5">Maio</option>
+    <option value="6">Junho</option>
+    <option value="7">Julho</option>
+    <option value="8">Agosto</option>
+    <option value="9">Setembro</option>
+    <option value="10">Outubro</option>
+    <option value="11">Novembro</option>
+    <option value="12">Dezembro</option>
+  </select>
+</div>
 
+<div>
+  <label className="mb-2 block text-sm font-bold text-slate-700">
+    Ano
+  </label>
+  <select
+    value={anoFiltro}
+    onChange={(e) => setAnoFiltro(e.target.value)}
+    className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+  >
+    <option value="Todos">Todos os anos</option>
+    {anosDisponiveis.map((ano) => (
+      <option key={ano} value={String(ano)}>
+        {ano}
+      </option>
+    ))}
+  </select>
+</div>
+
+<div className="flex items-end">
+  <button
+    type="button"
+    onClick={() => setMostrarEncerrados((prev) => !prev)}
+    className={`h-12 w-full rounded-xl border px-4 text-sm font-bold transition ${
+      mostrarEncerrados
+        ? 'border-blue-300 bg-blue-50 text-blue-700'
+        : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+    }`}
+  >
+    {mostrarEncerrados ? 'Ocultar encerrados' : 'Mostrar encerrados'}
+  </button>
+</div>
           <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">
               Filtrar vendedor
@@ -539,12 +652,15 @@ setMovendo(false)
             <button
               type="button"
               onClick={() => {
-                setBusca('')
-                setVendedorFiltro('Todos')
-                setOrdenacao('data_desc')
-                setValorMinimo('')
-                setValorMaximo('')
-              }}
+  setBusca('')
+  setVendedorFiltro('Todos')
+  setOrdenacao('recente')
+  setValorMinimo('')
+  setValorMaximo('')
+  setMesFiltro('Todos')
+  setAnoFiltro(String(new Date().getFullYear()))
+  setMostrarEncerrados(false)
+}}
               className="h-12 rounded-xl border border-slate-300 px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
             >
               Limpar
