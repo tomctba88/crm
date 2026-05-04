@@ -234,17 +234,19 @@ export default function TarefasManager() {
   ) as string[]
 
     function statusEncerrado(status: string | null) {
-    const statusNormalizado = (status || '')
-      .trim()
-      .toUpperCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
+  const statusNormalizado = (status || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
 
-    return (
-      statusNormalizado === 'CANCELADO' ||
-      statusNormalizado === 'DESQUALIFICADO'
-    )
-  }
+  return (
+    statusNormalizado === 'CANCELADO' ||
+    statusNormalizado === 'DESQUALIFICADO' ||
+    statusNormalizado === 'FECHADO' ||
+    statusNormalizado === 'PEDIDO'
+  )
+}
 
   const leadsFiltrados = leads
     .filter((lead) => {
