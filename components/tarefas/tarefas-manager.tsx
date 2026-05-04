@@ -284,19 +284,55 @@ export default function TarefasManager() {
       return (a.data_retorno || '').localeCompare(b.data_retorno || '')
     })
 
-  const atrasados = leads.filter(
+  const leadsBaseResumo = leads.filter((lead) => {
+    const termo = busca.toLowerCase()
+    const dataRetorno = lead.data_retorno ? lead.data_retorno.slice(0, 10) : ''
+
+    const bateBusca =
+      !termo ||
+      lead.nome_cliente?.toLowerCase().includes(termo) ||
+      lead.nome_empresa?.toLowerCase().includes(termo) ||
+      lead.telefone?.toLowerCase().includes(termo) ||
+      lead.produto_interesse?.toLowerCase().includes(termo)
+
+    const bateVendedor =
+      filtroVendedor === 'Todos' || lead.vendedor === filtroVendedor
+
+    const bateStatus =
+      filtroStatus === 'Todos' || lead.status === filtroStatus
+
+    const bateUf =
+      filtroUf === 'Todos' || lead.uf === filtroUf
+
+    const bateDataInicio =
+      !filtroDataInicio || dataRetorno >= filtroDataInicio
+
+    const bateDataFim =
+      !filtroDataFim || dataRetorno <= filtroDataFim
+
+    return (
+      bateBusca &&
+      bateVendedor &&
+      bateStatus &&
+      bateUf &&
+      bateDataInicio &&
+      bateDataFim
+    )
+  })
+
+  const atrasados = leadsBaseResumo.filter(
     (lead) => getUrgencia(lead.data_retorno).label === 'Atrasado'
   ).length
 
-  const hoje = leads.filter(
+  const hoje = leadsBaseResumo.filter(
     (lead) => getUrgencia(lead.data_retorno).label === 'Hoje'
   ).length
 
-  const amanha = leads.filter(
+  const amanha = leadsBaseResumo.filter(
     (lead) => getUrgencia(lead.data_retorno).label === 'Amanhã'
   ).length
 
-  const proximos = leads.filter(
+  const proximos = leadsBaseResumo.filter(
     (lead) => getUrgencia(lead.data_retorno).label === 'Próximo'
   ).length
 

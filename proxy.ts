@@ -119,18 +119,6 @@ export async function proxy(request: NextRequest) {
     return resposta
   }
 
-  const acessoDiretoAoCrm =
-    host.includes('crm-ergotex.vercel.app') &&
-    !acessoLiberado &&
-    !isArquivoPublico &&
-    !pathname.startsWith('/api') &&
-    !pathname.startsWith('/_next') &&
-    pathname !== '/favicon.ico'
-
-  if (acessoDiretoAoCrm) {
-    return NextResponse.redirect('https://ergotex-one.vercel.app')
-  }
-
   let response = NextResponse.next({
     request,
   })
