@@ -244,7 +244,8 @@ export default function TarefasManager() {
     statusNormalizado === 'CANCELADO' ||
     statusNormalizado === 'DESQUALIFICADO' ||
     statusNormalizado === 'FECHADO' ||
-    statusNormalizado === 'PEDIDO'
+    statusNormalizado === 'PEDIDO' ||
+    statusNormalizado === 'FORNECEDOR'
   )
 }
 
