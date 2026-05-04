@@ -233,8 +233,25 @@ export default function TarefasManager() {
     new Set(leads.map((lead) => lead.uf).filter(Boolean))
   ) as string[]
 
+    function statusEncerrado(status: string | null) {
+    const statusNormalizado = (status || '')
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+
+    return (
+      statusNormalizado === 'CANCELADO' ||
+      statusNormalizado === 'DESQUALIFICADO'
+    )
+  }
+
   const leadsFiltrados = leads
     .filter((lead) => {
+      if (statusEncerrado(lead.status)) {
+        return false
+      }
+
       const termo = busca.toLowerCase()
       const dataRetorno = lead.data_retorno ? lead.data_retorno.slice(0, 10) : ''
 
@@ -285,6 +302,10 @@ export default function TarefasManager() {
     })
 
   const leadsBaseResumo = leads.filter((lead) => {
+    if (statusEncerrado(lead.status)) {
+      return false
+    }
+
     const termo = busca.toLowerCase()
     const dataRetorno = lead.data_retorno ? lead.data_retorno.slice(0, 10) : ''
 
