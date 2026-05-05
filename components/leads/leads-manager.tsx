@@ -21,6 +21,8 @@ type Lead = {
   status: string | null
   data_retorno: string | null
   data_fechamento: string | null
+  data_cancelamento: string | null
+  data_finalizacao: string | null
   observacoes: string | null
 }
 
@@ -38,6 +40,8 @@ type FormDataType = {
   status: string
   data_retorno: string
   data_fechamento: string
+  data_cancelamento: string
+  data_finalizacao: string
   observacoes: string
 }
 
@@ -62,6 +66,8 @@ const initialForm: FormDataType = {
   status: '',
   data_retorno: '',
   data_fechamento: '',
+  data_cancelamento: '',
+  data_finalizacao: '',
   observacoes: '',
 }
 
@@ -337,9 +343,14 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
         [campo]: valor,
       }
 
+      const statusNormalizado =
+        campo === 'status'
+          ? normalizeText(String(valor))
+          : normalizeText(prev.status)
+
       if (
         campo === 'status' &&
-        normalizeText(String(valor)) === 'fechado' &&
+        statusNormalizado === 'fechado' &&
         !prev.data_fechamento
       ) {
         novoForm.data_fechamento = new Date().toISOString().slice(0, 10)
@@ -347,9 +358,35 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
 
       if (
         campo === 'status' &&
-        normalizeText(String(valor)) !== 'fechado'
+        statusNormalizado === 'cancelado' &&
+        !prev.data_cancelamento
       ) {
+        novoForm.data_cancelamento = new Date().toISOString().slice(0, 10)
+      }
+
+      if (
+        campo === 'status' &&
+        (statusNormalizado === 'cancelado' ||
+          statusNormalizado === 'desqualificado') &&
+        !prev.data_finalizacao
+      ) {
+        novoForm.data_finalizacao = new Date().toISOString().slice(0, 10)
+      }
+
+      if (campo === 'status' && statusNormalizado !== 'fechado') {
         novoForm.data_fechamento = ''
+      }
+
+      if (campo === 'status' && statusNormalizado !== 'cancelado') {
+        novoForm.data_cancelamento = ''
+      }
+
+      if (
+        campo === 'status' &&
+        statusNormalizado !== 'cancelado' &&
+        statusNormalizado !== 'desqualificado'
+      ) {
+        novoForm.data_finalizacao = ''
       }
 
       return novoForm
@@ -403,6 +440,8 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
       status: form.status || null,
       data_retorno: form.data_retorno || null,
       data_fechamento: form.data_fechamento || null,
+      data_cancelamento: form.data_cancelamento || null,
+      data_finalizacao: form.data_finalizacao || null,
       observacoes: form.observacoes.trim() || null,
     }
 
@@ -471,6 +510,8 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
       status: lead.status || '',
       data_retorno: lead.data_retorno || '',
       data_fechamento: lead.data_fechamento || '',
+      data_cancelamento: lead.data_cancelamento || '',
+      data_finalizacao: lead.data_finalizacao || '',
       observacoes: lead.observacoes || '',
     })
 
@@ -884,6 +925,34 @@ useEffect(() => {
                 value={form.data_fechamento}
                 onChange={(e) => atualizarCampo('data_fechamento', e.target.value)}
                 className="h-12 w-full rounded-xl border border-green-300 bg-green-50 px-4 outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100"
+              />
+            </div>
+          ) : null}
+
+          {normalizeText(form.status) === 'cancelado' ? (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Data de cancelamento
+              </label>
+              <input
+                type="date"
+                value={form.data_cancelamento}
+                onChange={(e) => atualizarCampo('data_cancelamento', e.target.value)}
+                className="h-12 w-full rounded-xl border border-red-300 bg-red-50 px-4 outline-none focus:border-red-500 focus:ring-4 focus:ring-red-100"
+              />
+            </div>
+          ) : null}
+
+          {['cancelado', 'desqualificado'].includes(normalizeText(form.status)) ? (
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Data de finalização
+              </label>
+              <input
+                type="date"
+                value={form.data_finalizacao}
+                onChange={(e) => atualizarCampo('data_finalizacao', e.target.value)}
+                className="h-12 w-full rounded-xl border border-red-300 bg-red-50 px-4 outline-none focus:border-red-500 focus:ring-4 focus:ring-red-100"
               />
             </div>
           ) : null}
