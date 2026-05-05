@@ -416,32 +416,24 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: leadAtualizado, error: updateError } = await supabase
-    .from('leads')
-    .update({
-      status: statusBancoNovo,
-      data_ultima_movimentacao: agoraIso,
-      ...dadosExtrasStatus,
-    })
-    .eq('id', leadId)
-    .select('*')
-    .single()
+  const { error: updateError } = await supabase
+  .from('leads')
+  .update({
+    status: statusBancoNovo,
+    data_ultima_movimentacao: agoraIso,
+    ...dadosExtrasStatus,
+  })
+  .eq('id', leadId)
 
-  if (updateError || !leadAtualizado) {
-    console.error('Erro ao mover lead no pipeline:', updateError)
-    alert(updateError?.message || 'Erro ao atualizar status do lead.')
-    setLeads(leadsAnteriores)
-    setMovendo(false)
-    return
-  }
+  if (updateError) {
+  console.error('Erro ao mover lead no pipeline:', updateError)
+  alert(updateError.message || 'Erro ao atualizar status do lead.')
+  setLeads(leadsAnteriores)
+  setMovendo(false)
+  return
+}
 
-  setLeads((prev) =>
-    prev.map((lead) =>
-      lead.id === leadId ? (leadAtualizado as Lead) : lead
-    )
-  )
-
-  const { error: historicoError } = await supabase
+    const { error: historicoError } = await supabase
     .from('lead_movimentacoes')
     .insert({
       lead_id: leadId,
