@@ -173,6 +173,13 @@ function normalizeText(value: string | null | undefined) {
     .trim()
 }
 
+function toUpper(value: any) {
+  if (typeof value === 'string') {
+    return value.toUpperCase().trim()
+  }
+  return value
+}
+
 function parseFlexibleMoney(value: string | null | undefined) {
   if (!value) return null
 
@@ -425,25 +432,25 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
       return
     }
 
-    const payload = {
-      user_id: user.id,
-      data_contato: form.data_contato || null,
-      tipo_contato: form.tipo_contato || null,
-      vendedor: form.vendedor || null,
-      nome_cliente: form.nome_cliente.trim(),
-      nome_empresa: form.nome_empresa.trim() || null,
-      telefone: form.telefone.trim() || null,
-      uf: form.uf || null,
-      produto_interesse: form.produto_interesse || null,
-      valor_orcamento: parseCurrencyToNumber(form.valor_orcamento),
-      valor_frete: parseCurrencyToNumber(form.valor_frete),
-      status: form.status || null,
-      data_retorno: form.data_retorno || null,
-      data_fechamento: form.data_fechamento || null,
-      data_cancelamento: form.data_cancelamento || null,
-      data_finalizacao: form.data_finalizacao || null,
-      observacoes: form.observacoes.trim() || null,
-    }
+const payload = {
+  user_id: user.id,
+  data_contato: form.data_contato || null,
+  tipo_contato: toUpper(form.tipo_contato) || null,
+  vendedor: toUpper(form.vendedor) || null,
+  nome_cliente: toUpper(form.nome_cliente),
+  nome_empresa: toUpper(form.nome_empresa) || null,
+  telefone: toUpper(form.telefone) || null,
+  uf: toUpper(form.uf) || null,
+  produto_interesse: toUpper(form.produto_interesse) || null,
+  valor_orcamento: parseCurrencyToNumber(form.valor_orcamento),
+  valor_frete: parseCurrencyToNumber(form.valor_frete),
+  status: toUpper(form.status) || null,
+  data_retorno: form.data_retorno || null,
+  data_fechamento: form.data_fechamento || null,
+  data_cancelamento: form.data_cancelamento || null,
+  data_finalizacao: form.data_finalizacao || null,
+  observacoes: toUpper(form.observacoes) || null,
+}
 
     if (editandoId) {
       const { error } = await supabase
