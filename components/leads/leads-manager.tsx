@@ -66,6 +66,7 @@ const initialForm: FormDataType = {
 }
 
 const ufOptions = [
+  'CTBA',
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
   'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
@@ -779,19 +780,19 @@ useEffect(() => {
             />
           </div>
 
-          <div>
-            <label className="mb-2 block text-sm font-bold text-slate-700">
-              UF
-            </label>
-            <select
-              value={form.uf}
-              onChange={(e) => atualizarCampo('uf', e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            >
-              <option value="">Selecione</option>
-              {ufOptions.map((uf) => (
-                <option key={uf} value={uf}>
-                  {uf}
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                UF
+              </label>
+              <select
+                value={form.uf}
+                onChange={(e) => atualizarCampo('uf', e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              >
+                <option value="">Selecione</option>
+                {ufOptions.map((uf) => (
+                  <option key={uf} value={uf}>
+                    {uf}
                 </option>
               ))}
             </select>
