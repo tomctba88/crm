@@ -452,34 +452,26 @@ const payload = {
   observacoes: toUpper(form.observacoes) || null,
 }
 
-    if (editandoId) {
-      const { error } = await supabase
-        .from('leads')
-        .update(payload)
-        .eq('id', editandoId)
+    const response = await fetch('/api/leads/salvar', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        leadId: editandoId,
+        payload,
+      }),
+    })
 
-      if (error) {
-        console.error('Erro ao atualizar lead:', error)
-        alert('Erro ao atualizar lead.')
-        setLoading(false)
-        return
-      }
+    const result = await response.json()
 
-      alert('Lead atualizado com sucesso!')
-    } else {
-      const { error } = await supabase
-        .from('leads')
-        .insert(payload)
-
-      if (error) {
-        console.error('Erro ao cadastrar lead:', error)
-        alert('Erro ao cadastrar lead.')
-        setLoading(false)
-        return
-      }
-
-      alert('Lead cadastrado com sucesso!')
+    if (!response.ok) {
+      alert(result.error || 'Erro ao salvar lead.')
+      setLoading(false)
+      return
     }
+
+    alert(result.message || 'Lead salvo com sucesso!')
 
     limparFormulario()
     await buscarLeads()
