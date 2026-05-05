@@ -357,14 +357,32 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
 
     const leadsAnteriores = leads
     const agoraIso = new Date().toISOString()
+    const hoje = agoraIso.slice(0, 10)
+    const novoStatusNormalizado = normalizarStatus(novoStatus)
+
+    const dadosExtrasStatus: Record<string, any> = {}
+
+    if (novoStatusNormalizado === 'FECHADO' || novoStatusNormalizado === 'PEDIDO') {
+      dadosExtrasStatus.data_fechamento = hoje
+    }
+
+    if (novoStatusNormalizado === 'CANCELADO') {
+      dadosExtrasStatus.data_cancelamento = hoje
+      dadosExtrasStatus.data_finalizacao = hoje
+    }
+
+    if (novoStatusNormalizado === 'DESQUALIFICADO') {
+      dadosExtrasStatus.data_finalizacao = hoje
+    }
 
     setLeads((prev) =>
       prev.map((lead) =>
         lead.id === leadId
           ? {
               ...lead,
-              status: novoStatus,
+              status: novoStatusNormalizado,
               data_ultima_movimentacao: agoraIso,
+              ...dadosExtrasStatus,
             }
           : lead
       )
@@ -377,8 +395,9 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
     const { error: updateError } = await supabase
       .from('leads')
       .update({
-        status: novoStatus,
+        status: novoStatusNormalizado,
         data_ultima_movimentacao: agoraIso,
+        ...dadosExtrasStatus,
       })
       .eq('id', leadId)
 
@@ -396,7 +415,7 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
     lead_id: leadId,
     user_id: user?.id || null,
     status_anterior: leadAtual.status,
-    novo_status: novoStatus,
+    novo_status: novoStatusNormalizado,
     movido_em: agoraIso,
   })
 
@@ -405,7 +424,7 @@ if (historicoError) {
   alert('Status atualizado, mas houve erro ao gravar o histórico.')
 }
 
-if (novoStatus === 'FECHADO') {
+if (novoStatusNormalizado === 'FECHADO' || novoStatusNormalizado === 'PEDIDO') {
   const { data: existentePosVenda, error: erroBuscaPosVenda } = await supabase
     .from('pos_vendas')
     .select('id')
