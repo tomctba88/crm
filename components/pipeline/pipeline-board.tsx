@@ -373,114 +373,49 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
   const leadAtual = leads.find((lead) => lead.id === leadId)
   if (!leadAtual) return
 
-  const statusBancoNovo = statusParaBanco(novoStatus)
-  const statusAtual = statusParaBanco(leadAtual.status || '')
-
-  if (statusAtual === statusBancoNovo) return
-
   setMovendo(true)
 
   const leadsAnteriores = leads
-  const agoraIso = new Date().toISOString()
-  const hoje = agoraIso.slice(0, 10)
 
-  const dadosExtrasStatus: Record<string, any> = {}
-
-  if (statusBancoNovo === 'FECHADO' || statusBancoNovo === 'PEDIDO') {
-    dadosExtrasStatus.data_fechamento = hoje
-  }
-
-  if (statusBancoNovo === 'CANCELADO') {
-    dadosExtrasStatus.data_cancelamento = hoje
-    dadosExtrasStatus.data_finalizacao = hoje
-  }
-
-  if (statusBancoNovo === 'DESQUALIFICADO') {
-    dadosExtrasStatus.data_finalizacao = hoje
-  }
-
-  setLeads((prev) =>
-    prev.map((lead) =>
-      lead.id === leadId
-        ? {
-            ...lead,
-            status: statusBancoNovo,
-            data_ultima_movimentacao: agoraIso,
-            ...dadosExtrasStatus,
-          }
-        : lead
-    )
-  )
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  const { error: updateError } = await supabase
-  .from('leads')
-  .update({
-    status: statusBancoNovo,
-    data_ultima_movimentacao: agoraIso,
-    ...dadosExtrasStatus,
-  })
-  .eq('id', leadId)
-
-  if (updateError) {
-  console.error('Erro ao mover lead no pipeline:', updateError)
-  alert(updateError.message || 'Erro ao atualizar status do lead.')
-  setLeads(leadsAnteriores)
-  setMovendo(false)
-  return
-}
-
-    const { error: historicoError } = await supabase
-    .from('lead_movimentacoes')
-    .insert({
-      lead_id: leadId,
-      user_id: user?.id || null,
-      status_anterior: leadAtual.status,
-      novo_status: statusBancoNovo,
-      movido_em: agoraIso,
+  try {
+    const response = await fetch('/api/pipeline/mover-lead', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        leadId,
+        novoStatus,
+      }),
     })
 
-  if (historicoError) {
-    console.error('Erro ao gravar histórico da movimentação:', historicoError)
-    alert('Status atualizado, mas houve erro ao gravar o histórico.')
-  }
+    const result = await response.json()
 
-  if (statusBancoNovo === 'FECHADO' || statusBancoNovo === 'PEDIDO') {
-    const { data: existentePosVenda, error: erroBuscaPosVenda } = await supabase
-      .from('pos_vendas')
-      .select('id')
-      .eq('lead_id', leadId)
-      .maybeSingle()
-
-    if (erroBuscaPosVenda) {
-      console.error('Erro ao verificar pós-vendas existente:', erroBuscaPosVenda)
-    } else if (!existentePosVenda) {
-      const { error: erroCriacaoPosVenda } = await supabase
-        .from('pos_vendas')
-        .insert({
-          lead_id: leadId,
-          user_id: user?.id || null,
-          status_pos_venda: 'EM PRODUÇÃO',
-          responsavel: leadAtual.vendedor || null,
-          data_inicio: hoje,
-          created_at: agoraIso,
-          updated_at: agoraIso,
-        })
-
-      if (erroCriacaoPosVenda) {
-        console.error('Erro ao criar registro no pós-vendas:', erroCriacaoPosVenda)
-        alert('Lead fechado, mas houve erro ao criar o registro no pós-vendas.')
-      }
+    if (!response.ok) {
+      console.error('Erro API pipeline:', result)
+      alert(result.error || 'Erro ao mover lead.')
+      setLeads(leadsAnteriores)
+      setMovendo(false)
+      return
     }
+
+    const leadAtualizado = result.lead
+
+    setLeads((prev) =>
+      prev.map((lead) =>
+        lead.id === leadId ? leadAtualizado : lead
+      )
+    )
+  } catch (error) {
+    console.error('Erro ao mover lead:', error)
+    alert('Erro inesperado ao mover lead.')
+    setLeads(leadsAnteriores)
   }
 
   setMovendo(false)
 }
 
-function handleDragStart(leadId: number) {
+  function handleDragStart(leadId: number) {
   if (nivelUsuarioLogado === 'consulta') return
   setDraggingLeadId(leadId)
 }
