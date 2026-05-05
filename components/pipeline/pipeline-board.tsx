@@ -249,6 +249,16 @@ function statusEncerrado(status?: string | null) {
   )
 }
 
+function statusBanco(statusVisual: string) {
+  const status = normalizarStatus(statusVisual)
+
+  if (status === 'PERDIDO') return 'CANCELADO'
+  if (status === 'ORCADO') return 'AGUARDANDO'
+  if (status === 'ATENDENDO') return 'ORÇAR'
+
+  return status
+}
+
   const vendedores = Array.from(
   new Set(leads.map((lead) => lead.vendedor).filter(Boolean))
 ) as string[]
@@ -358,7 +368,7 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
     const leadsAnteriores = leads
     const agoraIso = new Date().toISOString()
     const hoje = agoraIso.slice(0, 10)
-    const novoStatusNormalizado = normalizarStatus(novoStatus)
+    const novoStatusNormalizado = statusBanco(novoStatus)
 
     const dadosExtrasStatus: Record<string, any> = {}
 
