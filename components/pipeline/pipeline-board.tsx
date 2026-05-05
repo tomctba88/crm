@@ -495,7 +495,12 @@ function abrirEdicaoLead(leadId: number) {
 }
 
   function leadsDaColuna(statusNome: string) {
-    const lista = leadsFiltrados.filter((lead) => lead.status === statusNome)
+    const lista = leadsFiltrados.filter((lead) => {
+      const statusLead = statusParaBanco(lead.status || '')
+      const statusColuna = statusParaBanco(statusNome)
+
+      return statusLead === statusColuna
+    })
 
     if (ordenacao === 'valor_desc') {
       return [...lista].sort(
