@@ -902,11 +902,19 @@ useEffect(() => {
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             >
               <option value="">Selecione</option>
-              {statusLead.map((item) => (
-                <option key={item.id} value={item.nome}>
-                  {item.nome}
-                </option>
-              ))}
+
+{form.status &&
+!statusLead.some(
+  (item) => normalizeText(item.nome) === normalizeText(form.status)
+) ? (
+  <option value={form.status}>{form.status}</option>
+) : null}
+
+{statusLead.map((item) => (
+  <option key={item.id} value={item.nome}>
+    {item.nome}
+  </option>
+))}
             </select>
           </div>
 
