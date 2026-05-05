@@ -259,6 +259,16 @@ function statusBanco(statusVisual: string) {
   return status
 }
 
+function statusParaBanco(statusVisual: string) {
+  const statusNormalizado = normalizarStatus(statusVisual)
+
+  if (statusNormalizado === 'PERDIDO') return 'CANCELADO'
+  if (statusNormalizado === 'ORCADO') return 'AGUARDANDO'
+  if (statusNormalizado === 'ATENDENDO') return 'ORÇAR'
+
+  return String(statusVisual || '').trim().toUpperCase()
+}
+
   const vendedores = Array.from(
   new Set(leads.map((lead) => lead.vendedor).filter(Boolean))
 ) as string[]
@@ -360,135 +370,137 @@ const statusesOrdenados = [...statuses].sort((a, b) => {
   }
 
   async function moverLead(leadId: number, novoStatus: string) {
-    const leadAtual = leads.find((lead) => lead.id === leadId)
-    if (!leadAtual || leadAtual.status === novoStatus) return
+  const leadAtual = leads.find((lead) => lead.id === leadId)
+  if (!leadAtual) return
 
-    setMovendo(true)
+  const statusBancoNovo = statusParaBanco(novoStatus)
+  const statusAtual = statusParaBanco(leadAtual.status || '')
 
-    const leadsAnteriores = leads
-    const agoraIso = new Date().toISOString()
-    const hoje = agoraIso.slice(0, 10)
-    const novoStatusNormalizado = statusBanco(novoStatus)
+  if (statusAtual === statusBancoNovo) return
 
-    const dadosExtrasStatus: Record<string, any> = {}
+  setMovendo(true)
 
-    if (novoStatusNormalizado === 'FECHADO' || novoStatusNormalizado === 'PEDIDO') {
-      dadosExtrasStatus.data_fechamento = hoje
-    }
+  const leadsAnteriores = leads
+  const agoraIso = new Date().toISOString()
+  const hoje = agoraIso.slice(0, 10)
 
-    if (novoStatusNormalizado === 'CANCELADO') {
-      dadosExtrasStatus.data_cancelamento = hoje
-      dadosExtrasStatus.data_finalizacao = hoje
-    }
+  const dadosExtrasStatus: Record<string, any> = {}
 
-    if (novoStatusNormalizado === 'DESQUALIFICADO') {
-      dadosExtrasStatus.data_finalizacao = hoje
-    }
+  if (statusBancoNovo === 'FECHADO' || statusBancoNovo === 'PEDIDO') {
+    dadosExtrasStatus.data_fechamento = hoje
+  }
 
-    setLeads((prev) =>
-      prev.map((lead) =>
-        lead.id === leadId
-          ? {
-              ...lead,
-              status: novoStatusNormalizado,
-              data_ultima_movimentacao: agoraIso,
-              ...dadosExtrasStatus,
-            }
-          : lead
-      )
+  if (statusBancoNovo === 'CANCELADO') {
+    dadosExtrasStatus.data_cancelamento = hoje
+    dadosExtrasStatus.data_finalizacao = hoje
+  }
+
+  if (statusBancoNovo === 'DESQUALIFICADO') {
+    dadosExtrasStatus.data_finalizacao = hoje
+  }
+
+  setLeads((prev) =>
+    prev.map((lead) =>
+      lead.id === leadId
+        ? {
+            ...lead,
+            status: statusBancoNovo,
+            data_ultima_movimentacao: agoraIso,
+            ...dadosExtrasStatus,
+          }
+        : lead
     )
+  )
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
 
-    const { error: updateError } = await supabase
-      .from('leads')
-      .update({
-        status: novoStatusNormalizado,
-        data_ultima_movimentacao: agoraIso,
-        ...dadosExtrasStatus,
-      })
-      .eq('id', leadId)
+  const { data: leadAtualizado, error: updateError } = await supabase
+    .from('leads')
+    .update({
+      status: statusBancoNovo,
+      data_ultima_movimentacao: agoraIso,
+      ...dadosExtrasStatus,
+    })
+    .eq('id', leadId)
+    .select('*')
+    .single()
 
-    if (updateError) {
-      console.error('Erro ao mover lead no pipeline:', updateError)
-      alert('Erro ao atualizar status do lead.')
-      setLeads(leadsAnteriores)
-      setMovendo(false)
-      return
-    }
+  if (updateError || !leadAtualizado) {
+    console.error('Erro ao mover lead no pipeline:', updateError)
+    alert(updateError?.message || 'Erro ao atualizar status do lead.')
+    setLeads(leadsAnteriores)
+    setMovendo(false)
+    return
+  }
 
-    const { error: historicoError } = await supabase
-  .from('lead_movimentacoes')
-  .insert({
-    lead_id: leadId,
-    user_id: user?.id || null,
-    status_anterior: leadAtual.status,
-    novo_status: novoStatusNormalizado,
-    movido_em: agoraIso,
-  })
+  setLeads((prev) =>
+    prev.map((lead) =>
+      lead.id === leadId ? (leadAtualizado as Lead) : lead
+    )
+  )
 
-if (historicoError) {
-  console.error('Erro ao gravar histórico da movimentação:', historicoError)
-  alert('Status atualizado, mas houve erro ao gravar o histórico.')
-}
+  const { error: historicoError } = await supabase
+    .from('lead_movimentacoes')
+    .insert({
+      lead_id: leadId,
+      user_id: user?.id || null,
+      status_anterior: leadAtual.status,
+      novo_status: statusBancoNovo,
+      movido_em: agoraIso,
+    })
 
-if (novoStatusNormalizado === 'FECHADO' || novoStatusNormalizado === 'PEDIDO') {
-  const { data: existentePosVenda, error: erroBuscaPosVenda } = await supabase
-    .from('pos_vendas')
-    .select('id')
-    .eq('lead_id', leadId)
-    .maybeSingle()
+  if (historicoError) {
+    console.error('Erro ao gravar histórico da movimentação:', historicoError)
+    alert('Status atualizado, mas houve erro ao gravar o histórico.')
+  }
 
-  if (erroBuscaPosVenda) {
-    console.error('Erro ao verificar pós-vendas existente:', erroBuscaPosVenda)
-  } else if (!existentePosVenda) {
-    const { error: erroCriacaoPosVenda } = await supabase
+  if (statusBancoNovo === 'FECHADO' || statusBancoNovo === 'PEDIDO') {
+    const { data: existentePosVenda, error: erroBuscaPosVenda } = await supabase
       .from('pos_vendas')
-      .insert({
-        lead_id: leadId,
-        user_id: user?.id || null,
-        status_pos_venda: 'EM PRODUÇÃO',
-        responsavel: leadAtual.vendedor || null,
-        data_inicio: agoraIso.slice(0, 10),
-        created_at: agoraIso,
-        updated_at: agoraIso,
-      })
+      .select('id')
+      .eq('lead_id', leadId)
+      .maybeSingle()
 
-    if (erroCriacaoPosVenda) {
-      console.error('Erro ao criar registro no pós-vendas:', erroCriacaoPosVenda)
-      alert('Lead fechado, mas houve erro ao enviar para o pós-vendas.')
+    if (erroBuscaPosVenda) {
+      console.error('Erro ao verificar pós-vendas existente:', erroBuscaPosVenda)
+    } else if (!existentePosVenda) {
+      const { error: erroCriacaoPosVenda } = await supabase
+        .from('pos_vendas')
+        .insert({
+          lead_id: leadId,
+          user_id: user?.id || null,
+          status_pos_venda: 'EM PRODUÇÃO',
+          responsavel: leadAtual.vendedor || null,
+          data_inicio: hoje,
+          created_at: agoraIso,
+          updated_at: agoraIso,
+        })
+
+      if (erroCriacaoPosVenda) {
+        console.error('Erro ao criar registro no pós-vendas:', erroCriacaoPosVenda)
+        alert('Lead fechado, mas houve erro ao criar o registro no pós-vendas.')
+      }
     }
   }
+
+  setMovendo(false)
 }
 
-if (leadDetalhe?.id === leadId) {
-  const leadAtualizado = {
-    ...leadAtual,
-    status: novoStatus,
-    data_ultima_movimentacao: agoraIso,
-  }
-  setLeadDetalhe(leadAtualizado)
-  await abrirHistoricoLead(leadAtualizado)
+function handleDragStart(leadId: number) {
+  if (nivelUsuarioLogado === 'consulta') return
+  setDraggingLeadId(leadId)
 }
 
-setMovendo(false)
-  }
+function handleDragEnd() {
+  setDraggingLeadId(null)
+  setDropStatus(null)
+}
 
-  function handleDragStart(leadId: number) {
-    if (nivelUsuarioLogado === 'consulta') return
-    setDraggingLeadId(leadId)
-  }
-
-  function handleDragEnd() {
-    setDraggingLeadId(null)
-    setDropStatus(null)
-  }
-
-  function abrirEdicaoLead(leadId: number) {
-    window.location.href = `/leads?lead=${leadId}`
-  }
+function abrirEdicaoLead(leadId: number) {
+  window.location.href = `/leads?lead=${leadId}`
+}
 
   function leadsDaColuna(statusNome: string) {
     const lista = leadsFiltrados.filter((lead) => lead.status === statusNome)
