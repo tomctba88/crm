@@ -139,6 +139,35 @@ function chunkArray<T>(array: T[], size: number) {
   return chunks
 }
 
+/**
+ * Normaliza um status para maiúsculas e remove acentos
+ */
+function normalizarStatus(status?: string | null): string {
+  return String(status || '')
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+/**
+ * Verifica se um status é de venda fechada (FECHADO ou PEDIDO)
+ */
+function isVendaFechada(status?: string | null): boolean {
+  if (!status) return false
+  const normalizado = normalizarStatus(status)
+  return normalizado === 'FECHADO' || normalizado === 'PEDIDO'
+}
+
+/**
+ * Verifica se um status é de cancelamento (CANCELADO, LICITAÇÃO, FORNECEDOR, DESQUALIFICADO)
+ */
+function isCancelamento(status?: string | null): boolean {
+  if (!status) return false
+  const normalizado = normalizarStatus(status)
+  return ['CANCELADO', 'LICITACAO', 'LICITA', 'FORNECEDOR', 'DESQUALIFICADO'].includes(normalizado)
+}
+
 export default function ImportacaoLeadsManager() {
   const supabase = useMemo(() => createClient(), [])
 
@@ -254,22 +283,36 @@ export default function ImportacaoLeadsManager() {
       return
     }
 
-    const payload = linhas.map((linha) => ({
-      user_id: user.id,
-      data_contato: linha.data_contato,
-      tipo_contato: linha.tipo_contato,
-      vendedor: linha.vendedor,
-      nome_cliente: linha.nome_cliente,
-      nome_empresa: linha.nome_empresa,
-      telefone: linha.telefone,
-      uf: linha.uf,
-      produto_interesse: linha.produto_interesse,
-      valor_orcamento: linha.valor_orcamento,
-      valor_frete: linha.valor_frete,
-      status: linha.status,
-      data_retorno: linha.data_retorno,
-      observacoes: linha.observacoes,
-    }))
+    const payload = linhas.map((linha) => {
+      // Mapear data_retorno para data_fechamento ou data_cancelamento baseado no status
+      let data_fechamento: string | null = null
+      let data_cancelamento: string | null = null
+
+      if (isVendaFechada(linha.status)) {
+        data_fechamento = linha.data_retorno
+      } else if (isCancelamento(linha.status)) {
+        data_cancelamento = linha.data_retorno
+      }
+
+      return {
+        user_id: user.id,
+        data_contato: linha.data_contato,
+        tipo_contato: linha.tipo_contato,
+        vendedor: linha.vendedor,
+        nome_cliente: linha.nome_cliente,
+        nome_empresa: linha.nome_empresa,
+        telefone: linha.telefone,
+        uf: linha.uf,
+        produto_interesse: linha.produto_interesse,
+        valor_orcamento: linha.valor_orcamento,
+        valor_frete: linha.valor_frete,
+        status: linha.status,
+        data_retorno: linha.data_retorno,
+        data_fechamento,
+        data_cancelamento,
+        observacoes: linha.observacoes,
+      }
+    })
 
     const lotes = chunkArray(payload, 200)
     let totalImportado = 0
