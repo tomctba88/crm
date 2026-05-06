@@ -17,6 +17,8 @@ type LinhaImportada = {
   valor_frete: number | null
   status: string | null
   data_retorno: string | null
+  data_fechamento: string | null
+  data_finalizacao: string | null
   observacoes: string | null
 }
 
@@ -246,6 +248,8 @@ export default function ImportacaoLeadsManager() {
             data_retorno: parseDateBR(
               getValue(row, 'data')
             ),
+            data_fechamento: null,
+            data_finalizacao: null,
             observacoes: normalizarTexto(
               getValue(row, 'obs', 'obs:', 'observacoes', 'observações')
             ) || null,
@@ -284,14 +288,22 @@ export default function ImportacaoLeadsManager() {
     }
 
     const payload = linhas.map((linha) => {
-      // Mapear data_retorno para data_fechamento ou data_cancelamento baseado no status
+      const dataPlanilha = linha.data_retorno
+
+      let data_retorno: string | null = dataPlanilha
       let data_fechamento: string | null = null
       let data_cancelamento: string | null = null
+      let data_finalizacao: string | null = null
 
       if (isVendaFechada(linha.status)) {
-        data_fechamento = linha.data_retorno
-      } else if (isCancelamento(linha.status)) {
-        data_cancelamento = linha.data_retorno
+        data_retorno = null
+        data_fechamento = dataPlanilha
+      }
+
+      if (isCancelamento(linha.status)) {
+        data_retorno = null
+        data_cancelamento = normalizarStatus(linha.status) === 'CANCELADO' ? dataPlanilha : null
+        data_finalizacao = dataPlanilha
       }
 
       return {
@@ -307,9 +319,10 @@ export default function ImportacaoLeadsManager() {
         valor_orcamento: linha.valor_orcamento,
         valor_frete: linha.valor_frete,
         status: linha.status,
-        data_retorno: linha.data_retorno,
+        data_retorno,
         data_fechamento,
         data_cancelamento,
+        data_finalizacao,
         observacoes: linha.observacoes,
       }
     })
@@ -410,7 +423,7 @@ export default function ImportacaoLeadsManager() {
               <p>Valor Orçamento → valor_orcamento</p>
               <p>Valor do Frete → valor_frete</p>
               <p>Status → status</p>
-              <p>DATA → data_retorno</p>
+              <p>DATA → data_retorno, data_fechamento ou data_finalizacao conforme status</p>
               <p>OBS → observacoes</p>
             </div>
           </div>
