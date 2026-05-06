@@ -12,6 +12,8 @@ type Lead = {
   tipo_contato?: string | null
   data_contato: string | null
   data_fechamento?: string | null
+  data_cancelamento?: string | null
+  data_finalizacao?: string | null
   data_retorno?: string | null
   created_at?: string | null
   produto_interesse: string | null
@@ -208,6 +210,33 @@ function getLeadMonthKey(lead: Lead) {
   )
 }
 
+function getVendaMonthKey(lead: Lead) {
+  return (
+    getMonthKey(lead.data_fechamento) ||
+    getMonthKey(lead.data_contato) ||
+    getMonthKey(lead.created_at)
+  )
+}
+
+function getFinalizacaoMonthKey(lead: Lead) {
+  return (
+    getMonthKey(lead.data_finalizacao) ||
+    getMonthKey(lead.data_cancelamento) ||
+    getMonthKey(lead.data_contato) ||
+    getMonthKey(lead.created_at)
+  )
+}
+
+function bateMesAno(monthKey: string, anoFiltro: number, mesFiltro: number) {
+  if (!monthKey) return false
+
+  if (mesFiltro === 0) {
+    return monthKey.startsWith(`${anoFiltro}-`)
+  }
+
+  return monthKey === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
+}
+
 const UF_LABELS: Record<string, string> = {
   AC: 'Acre (AC)',
   AL: 'Alagoas (AL)',
@@ -353,43 +382,59 @@ async function buscarDados() {
 
     setVendedores(vendedoresUnicos)
 
-    const leadsFiltrados = leadsData.filter((lead) => {
+        const leadsFiltrados = leadsData.filter((lead) => {
       const vendedorAtual = (lead.vendedor || '').trim()
       const mesLead = getLeadMonthKey(lead)
 
       const bateVendedor =
         vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
 
-      const bateMes =
-        mesFiltro === 0
-          ? mesLead
-            ? mesLead.startsWith(`${anoFiltro}-`)
-            : true
-          : mesLead
-            ? mesLead === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
-            : true
+      const bateMes = bateMesAno(mesLead, anoFiltro, mesFiltro)
 
       return bateVendedor && bateMes
     })
 
-    const leads = leadsFiltrados.length
+    const pedidosPeriodo = leadsData.filter((lead) => {
+      const vendedorAtual = (lead.vendedor || '').trim()
+      const mesVenda = getVendaMonthKey(lead)
 
-    const orcamentos = leadsFiltrados.filter(
-      (lead) => temValorOrcamento(lead.valor_orcamento)
-    )
+      const bateVendedor =
+        vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
 
-    const pedidos = leadsFiltrados.filter(
-      (lead) =>
+      return (
+        bateVendedor &&
+        bateMesAno(mesVenda, anoFiltro, mesFiltro) &&
         temValorOrcamento(lead.valor_orcamento) &&
         isPedido(lead.status)
+      )
+    })
+
+    const canceladosPeriodo = leadsData.filter((lead) => {
+      const vendedorAtual = (lead.vendedor || '').trim()
+      const mesFinalizacao = getFinalizacaoMonthKey(lead)
+
+      const bateVendedor =
+        vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+
+      return (
+        bateVendedor &&
+        bateMesAno(mesFinalizacao, anoFiltro, mesFiltro) &&
+        isCancelado(lead.status)
+      )
+    })
+
+    const leads = leadsFiltrados.length
+
+    const orcamentos = leadsFiltrados.filter((lead) =>
+      temValorOrcamento(lead.valor_orcamento)
     )
 
-    const canceladosQuantidade = leadsFiltrados.filter((lead) =>
-      isCancelado(lead.status)
-    )
+    const pedidos = pedidosPeriodo
 
-    const canceladosValor = leadsFiltrados.filter(
-      (lead) => isCancelado(lead.status) && temValorOrcamento(lead.valor_orcamento)
+    const canceladosQuantidade = canceladosPeriodo
+
+    const canceladosValor = canceladosPeriodo.filter((lead) =>
+      temValorOrcamento(lead.valor_orcamento)
     )
 
     const aguardandoQuantidade = leadsFiltrados.filter((lead) =>
@@ -434,44 +479,34 @@ async function buscarDados() {
     const comissao = calcularComissao(meta)
 
     const vendasNovas = pedidos.filter((lead) => {
-  if (!lead.data_contato || !lead.data_fechamento) return false
+      const origem = getLeadMonthKey(lead)
+      const fechamento = getVendaMonthKey(lead)
 
-  const contato = new Date(`${lead.data_contato}T00:00:00`)
-  const fechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+      return origem && fechamento && origem === fechamento
+    })
 
-  return (
-    contato.getMonth() === fechamento.getMonth() &&
-    contato.getFullYear() === fechamento.getFullYear()
-  )
-})
+    const vendasPostergadas = pedidos.filter((lead) => {
+      const origem = getLeadMonthKey(lead)
+      const fechamento = getVendaMonthKey(lead)
 
-const vendasPostergadas = pedidos.filter((lead) => {
-  if (!lead.data_contato || !lead.data_fechamento) return false
+      return origem && fechamento && origem !== fechamento
+    })
 
-  const contato = new Date(`${lead.data_contato}T00:00:00`)
-  const fechamento = new Date(`${lead.data_fechamento}T00:00:00`)
+    const valorVendasNovas = vendasNovas.reduce(
+      (acc, lead) =>
+        acc +
+        parseMoney(lead.valor_orcamento) +
+        parseMoney(lead.valor_frete),
+      0
+    )
 
-  return (
-    contato.getMonth() !== fechamento.getMonth() ||
-    contato.getFullYear() !== fechamento.getFullYear()
-  )
-})
-
-const valorVendasNovas = vendasNovas.reduce(
-  (acc, lead) =>
-    acc +
-    parseMoney(lead.valor_orcamento) +
-    parseMoney(lead.valor_frete),
-  0
-)
-
-const valorVendasPostergadas = vendasPostergadas.reduce(
-  (acc, lead) =>
-    acc +
-    parseMoney(lead.valor_orcamento) +
-    parseMoney(lead.valor_frete),
-  0
-)
+    const valorVendasPostergadas = vendasPostergadas.reduce(
+      (acc, lead) =>
+        acc +
+        parseMoney(lead.valor_orcamento) +
+        parseMoney(lead.valor_frete),
+      0
+    )
 
 const metaBase =
   vendedorFiltro === 'TODOS'
