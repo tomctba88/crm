@@ -549,30 +549,53 @@ setTimeout(() => {
     await buscarLeads()
   }
 
-  async function excluirSelecionados() {
-    if (selecionados.length === 0) {
-      alert('Nenhum lead selecionado.')
+async function excluirSelecionados() {
+  if (selecionados.length === 0) {
+    alert('Selecione ao menos um lead.')
+    return
+  }
+
+  const confirmar = confirm(
+    `Deseja realmente excluir ${selecionados.length} lead(s)?`
+  )
+
+  if (!confirmar) return
+
+  setLoading(true)
+
+  try {
+    const response = await fetch('/api/leads/excluir-lote', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ids: selecionados,
+      }),
+    })
+
+    const result = await response.json()
+
+    if (!response.ok) {
+      alert(result.error || 'Erro ao excluir leads.')
+      setLoading(false)
       return
     }
 
-    const confirmar = confirm(`Excluir ${selecionados.length} lead(s) selecionado(s)?`)
-    if (!confirmar) return
-
-    const { error } = await supabase
-      .from('leads')
-      .delete()
-      .in('id', selecionados)
-
-    if (error) {
-      console.error('Erro ao excluir leads selecionados:', error)
-      alert('Erro ao excluir leads selecionados.')
-      return
-    }
+    setLeads((prev) =>
+      prev.filter((lead) => !selecionados.includes(lead.id))
+    )
 
     setSelecionados([])
-    await buscarLeads()
+
     alert('Leads excluídos com sucesso!')
+  } catch (error) {
+    console.error(error)
+    alert('Erro inesperado ao excluir leads.')
   }
+
+  setLoading(false)
+}
 
   useEffect(() => {
     if (!leadIdFromUrl) return
