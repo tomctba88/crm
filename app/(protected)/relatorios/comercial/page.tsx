@@ -161,12 +161,12 @@ function isPedido(status: string | null | undefined) {
   return normalizeText(status) === 'FECHADO'
 }
 
-function isCancelado(status?: string | null) {
-  const s = normalizeText(status || '')
+function isCancelado(status: string | null | undefined) {
+  const s = normalizeText(status)
 
   return (
-    s === 'cancelado' ||
-    s === 'perdido'
+    s.includes('CANCELADO') ||
+    s.includes('PERDIDO')
   )
 }
 
@@ -960,12 +960,7 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card
-    titulo="Desqualif./Fornecedor"
-    valor={String(dados.desqualificados)}
-    cor="bg-purple-50"
-  />
-
+  
   <Card
     titulo="Valor Desqualificado"
     valor={formatCurrency(dados.valorDesqualificado)}
@@ -1007,31 +1002,6 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
   <Card titulo="Tx. Perdido" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-red-100" />
 </div>
 
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card
-    titulo="Desqualif./Fornecedor"
-    valor={String(dados.desqualificados)}
-    cor="bg-purple-50"
-  />
-
-  <Card
-    titulo="Valor Desqualificado"
-    valor={formatCurrency(dados.valorDesqualificado)}
-    cor="bg-purple-50"
-  />
-
-  <Card
-    titulo="Ticket Desqualif."
-    valor={formatCurrency(dados.ticketDesqualificado)}
-    cor="bg-purple-50"
-  />
-
-  <Card
-    titulo="Tx. Desqualif."
-    valor={`${dados.taxaDesqualificado.toFixed(2)}%`}
-    cor="bg-purple-100"
-  />
-</div>
 
 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
   <Card titulo="Oportunidades" valor={String(dados.aguardando)} cor="bg-amber-50" />
