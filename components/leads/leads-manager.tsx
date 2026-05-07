@@ -295,14 +295,6 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
     if (!tiposContatoRes.error) setTiposContato(tiposContatoRes.data || [])
     if (!statusLeadRes.error) setStatusLead(statusLeadRes.data || [])
     if (!produtosRes.error) setProdutosInteresse(produtosRes.data || [])
-
-    setForm((prev) => ({
-      ...prev,
-      tipo_contato: prev.tipo_contato || tiposContatoRes.data?.[0]?.nome || '',
-      vendedor: prev.vendedor || vendedoresRes.data?.[0]?.nome || '',
-      produto_interesse: prev.produto_interesse || produtosRes.data?.[0]?.nome || '',
-      status: prev.status || statusLeadRes.data?.[0]?.nome || '',
-    }))
   }
 
   async function buscarLeads() {
@@ -403,13 +395,7 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
   }
 
   function limparFormulario() {
-    setForm({
-      ...getInitialForm(),
-      tipo_contato: tiposContato[0]?.nome || '',
-      vendedor: vendedores[0]?.nome || '',
-      produto_interesse: produtosInteresse[0]?.nome || '',
-      status: statusLead[0]?.nome || '',
-    })
+    setForm(getInitialForm())
     setEditandoId(null)
     setLeadEmFoco(null)
   }
