@@ -244,9 +244,7 @@ function getVendaMonthKey(lead: Lead) {
 function getFinalizacaoMonthKey(lead: Lead) {
   return (
     getMonthKey(lead.data_finalizacao) ||
-    getMonthKey(lead.data_cancelamento) ||
-    getMonthKey(lead.data_contato) ||
-    getMonthKey(lead.created_at)
+    getMonthKey(lead.data_cancelamento)
   )
 }
 
@@ -455,6 +453,7 @@ const desqualificadosPeriodo = leadsData.filter((lead) => {
 
   return (
     bateVendedor &&
+    !!mesFinalizacao &&
     bateMesAno(mesFinalizacao, anoFiltro, mesFiltro) &&
     isDesqualificadoOuFornecedor(lead.status)
   )
