@@ -52,23 +52,25 @@ type CadastroOption = {
   cor?: string | null
 }
 
-const initialForm: FormDataType = {
-  data_contato: '',
-  tipo_contato: '',
-  vendedor: '',
-  nome_cliente: '',
-  nome_empresa: '',
-  telefone: '',
-  uf: '',
-  produto_interesse: '',
-  valor_orcamento: '',
-  valor_frete: '',
-  status: '',
-  data_retorno: '',
-  data_fechamento: '',
-  data_cancelamento: '',
-  data_finalizacao: '',
-  observacoes: '',
+function getInitialForm(): FormDataType {
+  return {
+    data_contato: new Date().toISOString().slice(0, 10),
+    tipo_contato: '',
+    vendedor: '',
+    nome_cliente: '',
+    nome_empresa: '',
+    telefone: '',
+    uf: '',
+    produto_interesse: '',
+    valor_orcamento: '',
+    valor_frete: '',
+    status: '',
+    data_retorno: '',
+    data_fechamento: '',
+    data_cancelamento: '',
+    data_finalizacao: '',
+    observacoes: '',
+  }
 }
 
 const ufOptions = [
@@ -243,7 +245,7 @@ export default function LeadsManager() {
   const searchParams = useSearchParams()
 
   const [leads, setLeads] = useState<Lead[]>([])
-  const [form, setForm] = useState<FormDataType>(initialForm)
+  const [form, setForm] = useState<FormDataType>(getInitialForm)
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [mensagemTopo, setMensagemTopo] = useState<string | null>(null)
   const nomeClienteRef = useRef<HTMLInputElement | null>(null)
@@ -402,7 +404,7 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
 
   function limparFormulario() {
     setForm({
-      ...initialForm,
+      ...getInitialForm(),
       tipo_contato: tiposContato[0]?.nome || '',
       vendedor: vendedores[0]?.nome || '',
       produto_interesse: produtosInteresse[0]?.nome || '',

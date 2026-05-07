@@ -234,7 +234,7 @@ export default function TarefasManager() {
   ) as string[]
 
     function statusEncerrado(status: string | null) {
-  const statusNormalizado = (status || '')
+    const statusNormalizado = (status || '')
     .trim()
     .toUpperCase()
     .normalize('NFD')
