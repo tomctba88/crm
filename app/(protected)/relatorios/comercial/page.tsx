@@ -46,6 +46,10 @@ type DashboardComercial = {
   valorVendasNovas: number
   vendasPostergadas: number
   valorVendasPostergadas: number
+  desqualificados: number
+  valorDesqualificado: number
+  ticketDesqualificado: number
+  taxaDesqualificado: number
 }
 
 type GraficoItem = {
@@ -157,17 +161,41 @@ function isPedido(status: string | null | undefined) {
   return normalizeText(status) === 'FECHADO'
 }
 
-function isCancelado(status: string | null | undefined) {
-  const statusNormalizado = normalizeText(status)
-  return statusNormalizado === 'CANCELADO' || statusNormalizado === 'CANCELADA'
+function isCancelado(status?: string | null) {
+  const s = normalizeText(status || '')
+
+  return (
+    s === 'cancelado' ||
+    s === 'perdido'
+  )
 }
 
 function isAguardando(status: string | null | undefined) {
-  return normalizeText(status).includes('AGUARDANDO')
+  const s = normalizeText(status)
+
+  return (
+    s.includes('AGUARDANDO') ||
+    s.includes('ORCAR') ||
+    s.includes('ORÇAR') ||
+    s.includes('ATENDENDO') ||
+    s.includes('NEGOCIANDO') ||
+s.includes('POSTERGADO')
+  )
 }
 
 function isNegociando(status: string | null | undefined) {
   return normalizeText(status).includes('NEGOCIANDO')
+}
+
+function isDesqualificadoOuFornecedor(status?: string | null) {
+  const s = normalizeText(status || '')
+
+  return (
+    s === 'DESQUALIFICADO' ||
+    s === 'LICITACAO' ||
+    s === 'LICITAÇÃO' ||
+    s === 'FORNECEDOR'
+  )
 }
 
 function getMonthKey(dateString: string | null | undefined) {
@@ -423,6 +451,20 @@ async function buscarDados() {
       )
     })
 
+const desqualificadosPeriodo = leadsData.filter((lead) => {
+  const vendedorAtual = (lead.vendedor || '').trim()
+  const mesFinalizacao = getFinalizacaoMonthKey(lead)
+
+  const bateVendedor =
+    vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+
+  return (
+    bateVendedor &&
+    bateMesAno(mesFinalizacao, anoFiltro, mesFiltro) &&
+    isDesqualificadoOuFornecedor(lead.status)
+  )
+})
+
     const leads = leadsFiltrados.length
 
     const orcamentos = leadsFiltrados.filter((lead) =>
@@ -465,6 +507,19 @@ async function buscarDados() {
       (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
+
+    const valorDesqualificado = desqualificadosPeriodo.reduce(
+  (acc, lead) => acc + parseMoney(lead.valor_orcamento),
+  0
+)
+
+const ticketDesqualificado =
+  desqualificadosPeriodo.length > 0
+    ? valorDesqualificado / desqualificadosPeriodo.length
+    : 0
+
+const taxaDesqualificado =
+  leads > 0 ? (desqualificadosPeriodo.length / leads) * 100 : 0
 
     const valorAguardando = aguardandoValor.reduce(
       (acc, lead) => acc + parseMoney(lead.valor_orcamento),
@@ -556,6 +611,10 @@ const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
       valorVendasNovas,
       vendasPostergadas: vendasPostergadas.length,
       valorVendasPostergadas,
+desqualificados: desqualificadosPeriodo.length,
+valorDesqualificado,
+ticketDesqualificado,
+taxaDesqualificado,
     })
 
     const vendasPorMes: GraficoItem[] = MESES.map((_, index) => {
@@ -901,35 +960,28 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card titulo="Qtd. Vendas" valor={String(dados.pedidos)} cor="bg-emerald-50" />
-  <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-green-50" />
-  <Card titulo="Ticket Médio" valor={formatCurrency(dados.ticketMedio)} cor="bg-teal-50" />
-  <Card titulo="Tx. Conversão" valor={`${dados.conversao.toFixed(2)}%`} cor="bg-lime-50" />
-</div>
-
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
   <Card
-    titulo="Vendas Novas"
-    valor={String(dados.vendasNovas)}
-    cor="bg-emerald-50"
+    titulo="Desqualif./Fornecedor"
+    valor={String(dados.desqualificados)}
+    cor="bg-purple-50"
   />
 
   <Card
-    titulo="Valor Vendas Novas"
-    valor={formatCurrency(dados.valorVendasNovas)}
-    cor="bg-green-50"
+    titulo="Valor Desqualificado"
+    valor={formatCurrency(dados.valorDesqualificado)}
+    cor="bg-purple-50"
   />
 
   <Card
-    titulo="Vendas Postergadas"
-    valor={String(dados.vendasPostergadas)}
-    cor="bg-yellow-50"
+    titulo="Ticket Desqualif."
+    valor={formatCurrency(dados.ticketDesqualificado)}
+    cor="bg-purple-50"
   />
 
   <Card
-    titulo="Valor Postergado"
-    valor={formatCurrency(dados.valorVendasPostergadas)}
-    cor="bg-amber-50"
+    titulo="Tx. Desqualif."
+    valor={`${dados.taxaDesqualificado.toFixed(2)}%`}
+    cor="bg-purple-100"
   />
 </div>
 
@@ -953,6 +1005,32 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
   <Card titulo="Valor Perdido" valor={formatCurrency(dados.valorCancelado)} cor="bg-red-50" />
   <Card titulo="Ticket Perdido" valor={formatCurrency(dados.ticketCancelado)} cor="bg-pink-50" />
   <Card titulo="Tx. Perdido" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-red-100" />
+</div>
+
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card
+    titulo="Desqualif./Fornecedor"
+    valor={String(dados.desqualificados)}
+    cor="bg-purple-50"
+  />
+
+  <Card
+    titulo="Valor Desqualificado"
+    valor={formatCurrency(dados.valorDesqualificado)}
+    cor="bg-purple-50"
+  />
+
+  <Card
+    titulo="Ticket Desqualif."
+    valor={formatCurrency(dados.ticketDesqualificado)}
+    cor="bg-purple-50"
+  />
+
+  <Card
+    titulo="Tx. Desqualif."
+    valor={`${dados.taxaDesqualificado.toFixed(2)}%`}
+    cor="bg-purple-100"
+  />
 </div>
 
 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
