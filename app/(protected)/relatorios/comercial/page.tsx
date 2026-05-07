@@ -528,11 +528,17 @@ const taxaDesqualificado =
     const comissao = calcularComissao(meta)
 
     const vendasNovas = pedidos.filter((lead) => {
-      const origem = getLeadMonthKey(lead)
-      const fechamento = getVendaMonthKey(lead)
+  const origem = getLeadMonthKey(lead)
+  const fechamento = getVendaMonthKey(lead)
+  const tipoContato = normalizeText(lead.tipo_contato)
 
-      return origem && fechamento && origem === fechamento
-    })
+  return (
+    origem &&
+    fechamento &&
+    origem === fechamento &&
+    !tipoContato.includes('RECOMPRA')
+  )
+})
 
     const vendasPostergadas = pedidos.filter((lead) => {
       const origem = getLeadMonthKey(lead)
