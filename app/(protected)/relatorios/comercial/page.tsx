@@ -959,120 +959,67 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card
-    titulo="Qtd. Vendas"
-    valor={String(dados.pedidos)}
-    cor="bg-emerald-50"
-  />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Qtd. Vendas" valor={String(dados.pedidos)} cor="bg-emerald-50" />
+          <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-emerald-50" />
+          <Card
+            titulo="Ticket Médio"
+            valor={formatCurrency(dados.pedidos > 0 ? dados.totalPedidos / dados.pedidos : 0)}
+            cor="bg-cyan-50"
+          />
+          <Card
+            titulo="Tx. Conversão"
+            valor={`${(dados.leads > 0 ? (dados.pedidos / dados.leads) * 100 : 0).toFixed(2)}%`}
+            cor="bg-lime-50"
+          />
+        </div>
 
-  <Card
-    titulo="Total de Vendas"
-    valor={formatCurrency(dados.totalPedidos)}
-    cor="bg-emerald-50"
-  />
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Vendas Novas" valor={String(dados.vendasNovas)} cor="bg-emerald-50" />
+          <Card titulo="Valor Vendas Novas" valor={formatCurrency(dados.valorVendasNovas)} cor="bg-emerald-50" />
+          <Card titulo="Vendas Postergadas" valor={String(dados.vendasPostergadas)} cor="bg-amber-50" />
+          <Card titulo="Valor Postergado" valor={formatCurrency(dados.valorVendasPostergadas)} cor="bg-amber-50" />
+        </div>
 
-  <Card
-    titulo="Ticket Médio"
-    valor={formatCurrency(
-      dados.pedidos > 0
-        ? dados.totalPedidos / dados.pedidos
-        : 0
-    )}
-    cor="bg-cyan-50"
-  />
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Desqualif./Fornecedor" valor={String(dados.desqualificados)} cor="bg-purple-50" />
+          <Card titulo="Valor Desqualificado" valor={formatCurrency(dados.valorDesqualificado)} cor="bg-purple-50" />
+          <Card titulo="Ticket Desqualif." valor={formatCurrency(dados.ticketDesqualificado)} cor="bg-purple-50" />
+          <Card titulo="Tx. Desqualif." valor={`${dados.taxaDesqualificado.toFixed(2)}%`} cor="bg-purple-100" />
+        </div>
 
-  <Card
-    titulo="Tx. Conversão"
-    valor={`${(
-      dados.leads > 0
-        ? (dados.pedidos / dados.leads) * 100
-        : 0
-    ).toFixed(2)}%`}
-    cor="bg-lime-50"
-  />
-</div>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Qtd. Orçamentos" valor={String(dados.orcamentos)} cor="bg-sky-50" />
+          <Card titulo="Valor Orçado + Frete" valor={formatCurrency(dados.totalOrcamentos)} cor="bg-blue-50" />
+          <Card
+            titulo="Ticket Orçados"
+            valor={formatCurrency(dados.orcamentos > 0 ? dados.totalOrcamentos / dados.orcamentos : 0)}
+            cor="bg-cyan-50"
+          />
+          <Card
+            titulo="Tx. Orçamento"
+            valor={`${(dados.leads > 0 ? (dados.orcamentos / dados.leads) * 100 : 0).toFixed(2)}%`}
+            cor="bg-indigo-50"
+          />
+        </div>
 
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card
-    titulo="Vendas Novas"
-    valor={String(dados.vendasNovas)}
-    cor="bg-emerald-50"
-  />
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Qtd. Perdidos" valor={String(dados.cancelados)} cor="bg-rose-50" />
+          <Card titulo="Valor Perdido" valor={formatCurrency(dados.valorCancelado)} cor="bg-red-50" />
+          <Card titulo="Ticket Perdido" valor={formatCurrency(dados.ticketCancelado)} cor="bg-pink-50" />
+          <Card titulo="Tx. Perdido" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-red-100" />
+        </div>
 
-  <Card
-    titulo="Valor Vendas Novas"
-    valor={formatCurrency(dados.valorVendasNovas)}
-    cor="bg-emerald-50"
-  />
-
-  <Card
-    titulo="Vendas Postergadas"
-    valor={String(dados.vendasPostergadas)}
-    cor="bg-amber-50"
-  />
-
-  <Card
-    titulo="Valor Postergado"
-    valor={formatCurrency(dados.valorVendasPostergadas)}
-    cor="bg-amber-50"
-  />
-</div>
-
-  <Card
-    titulo="Valor Desqualificado"
-    valor={formatCurrency(dados.valorDesqualificado)}
-    cor="bg-purple-50"
-  />
-
-  <Card
-    titulo="Ticket Desqualif."
-    valor={formatCurrency(dados.ticketDesqualificado)}
-    cor="bg-purple-50"
-  />
-
-  <Card
-    titulo="Tx. Desqualif."
-    valor={`${dados.taxaDesqualificado.toFixed(2)}%`}
-    cor="bg-purple-100"
-  />
-</div>
-
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card titulo="Qtd. Orçamentos" valor={String(dados.orcamentos)} cor="bg-sky-50" />
-  <Card titulo="Valor Orçado + Frete" valor={formatCurrency(dados.totalOrcamentos)} cor="bg-blue-50" />
-  <Card
-    titulo="Ticket Orçados"
-    valor={formatCurrency(dados.orcamentos > 0 ? dados.totalOrcamentos / dados.orcamentos : 0)}
-    cor="bg-cyan-50"
-  />
-  <Card
-    titulo="Tx. Orçamento"
-    valor={`${(dados.leads > 0 ? (dados.orcamentos / dados.leads) * 100 : 0).toFixed(2)}%`}
-    cor="bg-indigo-50"
-  />
-</div>
-
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card titulo="Qtd. Perdidos" valor={String(dados.cancelados)} cor="bg-rose-50" />
-  <Card titulo="Valor Perdido" valor={formatCurrency(dados.valorCancelado)} cor="bg-red-50" />
-  <Card titulo="Ticket Perdido" valor={formatCurrency(dados.ticketCancelado)} cor="bg-pink-50" />
-  <Card titulo="Tx. Perdido" valor={`${dados.taxaCancelamento.toFixed(2)}%`} cor="bg-red-100" />
-</div>
-
-
-<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-  <Card titulo="Oportunidades" valor={String(dados.aguardando)} cor="bg-amber-50" />
-  <Card titulo="Valor Oportunidades" valor={formatCurrency(dados.valorAguardando)} cor="bg-yellow-50" />
-  <Card
-    titulo="Ticket Oportunidades"
-    valor={formatCurrency(dados.aguardando > 0 ? dados.valorAguardando / dados.aguardando : 0)}
-    cor="bg-orange-50"
-  />
-  <Card titulo="Tx. Oportunidades" valor={`${dados.taxaAguardando.toFixed(2)}%`} cor="bg-amber-100" />
-</div>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Oportunidades" valor={String(dados.aguardando)} cor="bg-amber-50" />
+          <Card titulo="Valor Oportunidades" valor={formatCurrency(dados.valorAguardando)} cor="bg-yellow-50" />
+          <Card
+            titulo="Ticket Oportunidades"
+            valor={formatCurrency(dados.aguardando > 0 ? dados.valorAguardando / dados.aguardando : 0)}
+            cor="bg-orange-50"
+          />
+          <Card titulo="Tx. Oportunidades" valor={`${dados.taxaAguardando.toFixed(2)}%`} cor="bg-amber-100" />
+        </div>
       </section>
 
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1.2fr_1fr_1fr]">
