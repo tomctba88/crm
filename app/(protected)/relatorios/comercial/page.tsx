@@ -191,10 +191,8 @@ function isDesqualificadoOuFornecedor(status?: string | null) {
   const s = normalizeText(status || '')
 
   return (
-    s === 'DESQUALIFICADO' ||
-    s === 'LICITACAO' ||
-    s === 'LICITAÇÃO' ||
-    s === 'FORNECEDOR'
+    s.includes('DESQUALIFICADO') ||
+    s.includes('FORNECEDOR')
   )
 }
 
