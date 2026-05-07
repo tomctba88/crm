@@ -179,7 +179,7 @@ function isAguardando(status: string | null | undefined) {
     s.includes('ORÇAR') ||
     s.includes('ATENDENDO') ||
     s.includes('NEGOCIANDO') ||
-s.includes('POSTERGADO')
+    s.includes('POSTERGADO')
   )
 }
 
@@ -961,6 +961,66 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
   
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card
+    titulo="Qtd. Vendas"
+    valor={String(dados.pedidos)}
+    cor="bg-emerald-50"
+  />
+
+  <Card
+    titulo="Total de Vendas"
+    valor={formatCurrency(dados.totalPedidos)}
+    cor="bg-emerald-50"
+  />
+
+  <Card
+    titulo="Ticket Médio"
+    valor={formatCurrency(
+      dados.pedidos > 0
+        ? dados.totalPedidos / dados.pedidos
+        : 0
+    )}
+    cor="bg-cyan-50"
+  />
+
+  <Card
+    titulo="Tx. Conversão"
+    valor={`${(
+      dados.leads > 0
+        ? (dados.pedidos / dados.leads) * 100
+        : 0
+    ).toFixed(2)}%`}
+    cor="bg-lime-50"
+  />
+</div>
+
+<div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <Card
+    titulo="Vendas Novas"
+    valor={String(dados.vendasNovas)}
+    cor="bg-emerald-50"
+  />
+
+  <Card
+    titulo="Valor Vendas Novas"
+    valor={formatCurrency(dados.valorVendasNovas)}
+    cor="bg-emerald-50"
+  />
+
+  <Card
+    titulo="Vendas Postergadas"
+    valor={String(dados.vendasPostergadas)}
+    cor="bg-amber-50"
+  />
+
+  <Card
+    titulo="Valor Postergado"
+    valor={formatCurrency(dados.valorVendasPostergadas)}
+    cor="bg-amber-50"
+  />
+</div>
+
   <Card
     titulo="Valor Desqualificado"
     valor={formatCurrency(dados.valorDesqualificado)}
