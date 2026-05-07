@@ -190,10 +190,7 @@ function isNegociando(status: string | null | undefined) {
 function isDesqualificadoOuFornecedor(status?: string | null) {
   const s = normalizeText(status || '')
 
-  return (
-    s.includes('DESQUALIFICADO') ||
-    s.includes('FORNECEDOR')
-  )
+  return s === 'DESQUALIFICADO' || s === 'FORNECEDOR'
 }
 
 function getMonthKey(dateString: string | null | undefined) {
