@@ -583,11 +583,11 @@ const taxaDesqualificado =
       0
     )
     const ticketSemRevenda = pedidosSemRevenda.length > 0 ? valorSemRevenda / pedidosSemRevenda.length : 0
-    const orcamentosSemRevenda = leadsFiltrados.filter(
-      (lead) => !TIPOS_REVENDA.has(normalizeText(lead.tipo_contato)) && temValorOrcamento(lead.valor_orcamento)
+    const leadsSemRevenda = leadsFiltrados.filter(
+      (lead) => !TIPOS_REVENDA.has(normalizeText(lead.tipo_contato))
     )
-    const txConversaoSemRevenda = orcamentosSemRevenda.length > 0
-      ? (pedidosSemRevenda.length / orcamentosSemRevenda.length) * 100
+    const txConversaoSemRevenda = leadsSemRevenda.length > 0
+      ? (pedidosSemRevenda.length / leadsSemRevenda.length) * 100
       : 0
 
 const metaBase =
