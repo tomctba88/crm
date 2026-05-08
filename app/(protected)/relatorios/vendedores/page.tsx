@@ -219,7 +219,7 @@ export default function RelatorioVendedoresPage() {
       const totalVendidoGeral = leadsFiltrados
         .filter((lead) => temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status))
         .reduce(
-          (acc, lead) => acc + parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete),
+          (acc, lead) => acc + parseMoney(lead.valor_orcamento),
           0
         )
 
@@ -252,12 +252,12 @@ export default function RelatorioVendedoresPage() {
 
         if (temValorOrcamento(lead.valor_orcamento)) {
           atual.orcamentos += 1
-          atual.valorOrcado += parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+          atual.valorOrcado += parseMoney(lead.valor_orcamento)
         }
 
         if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
           atual.vendas += 1
-          atual.valorVendido += parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+          atual.valorVendido += parseMoney(lead.valor_orcamento)
           atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
         }
 
@@ -277,8 +277,8 @@ export default function RelatorioVendedoresPage() {
       ...item,
       ticketMedio: item.vendas > 0 ? item.valorVendido / item.vendas : 0,
       conversao: item.orcamentos > 0 ? (item.vendas / item.orcamentos) * 100 : 0,
-      faltaMeta: Math.max(item.meta - item.valorVendidoSemFrete, 0),
-      atingimentoMeta: item.meta > 0 ? (item.valorVendidoSemFrete / item.meta) * 100 : 0,
+      faltaMeta: Math.max(item.meta - item.valorVendido, 0),
+      atingimentoMeta: item.meta > 0 ? (item.valorVendido / item.meta) * 100 : 0,
       participacao:
         totalVendidoGeral > 0 ? (item.valorVendido / totalVendidoGeral) * 100 : 0,
       percentualComissao: comissao.percentualComissao,
