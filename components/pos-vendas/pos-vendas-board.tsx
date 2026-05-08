@@ -229,6 +229,7 @@ export default function PosVendasBoard() {
   const [transportadoraEdit, setTransportadoraEdit] = useState('')
   const [rastreioEdit, setRastreioEdit] = useState('')
   const [previsaoEdit, setPrevisaoEdit] = useState('')
+  const [observacoesEdit, setObservacoesEdit] = useState('')
   const [dropStatus, setDropStatus] = useState<string | null>(null)
   const [movendo, setMovendo] = useState(false)
 
@@ -243,19 +244,25 @@ export default function PosVendasBoard() {
   async function buscarTodosPosVendasBase() {
     const limite = 1000
     let inicio = 0
+    const idsVistos = new Set<number>()
     let todos: PosVenda[] = []
 
     while (true) {
       const { data, error } = await supabase
         .from('pos_vendas')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(inicio, inicio + limite - 1)
 
       if (error) throw error
 
       const lote = (data || []) as PosVenda[]
-      todos = [...todos, ...lote]
+      const novos = lote.filter((item) => {
+        if (idsVistos.has(item.id)) return false
+        idsVistos.add(item.id)
+        return true
+      })
+      todos = [...todos, ...novos]
 
       if (lote.length < limite) break
       inicio += limite
@@ -284,6 +291,7 @@ export default function PosVendasBoard() {
     setTransportadoraEdit(pedido.transportadora || '')
     setRastreioEdit(pedido.codigo_rastreio || '')
     setPrevisaoEdit(pedido.data_prevista_entrega || '')
+    setObservacoesEdit(pedido.observacoes || '')
     setModalAberto(true)
   }
 
@@ -319,6 +327,7 @@ export default function PosVendasBoard() {
       transportadora: transportadoraEdit.trim() || null,
       codigo_rastreio: rastreioEdit.trim() || null,
       data_prevista_entrega: previsaoEdit || null,
+      observacoes: observacoesEdit.trim() || null,
       updated_at: agoraIso,
     }
 
@@ -349,6 +358,7 @@ export default function PosVendasBoard() {
     setTransportadoraEdit('')
     setRastreioEdit('')
     setPrevisaoEdit('')
+    setObservacoesEdit('')
   }
 
   async function buscarDados() {
@@ -435,21 +445,20 @@ export default function PosVendasBoard() {
     if (periodoFiltro === 'Todos') return true
     if (!dataBase) return false
 
+    const dataStr = toDateOnlyString(new Date(dataBase))
     const hoje = new Date()
-    hoje.setHours(23, 59, 59, 999)
+    hoje.setHours(0, 0, 0, 0)
+    const hojeStr = toDateOnlyString(hoje)
 
-    const dataItem = new Date(dataBase)
-    dataItem.setHours(0, 0, 0, 0)
+    if (periodoFiltro === 'Hoje') return dataStr === hojeStr
 
-    const diffMs = hoje.getTime() - dataItem.getTime()
-    const diffDias = diffMs / (1000 * 60 * 60 * 24)
+    const limite = new Date(hoje)
+    if (periodoFiltro === '7_dias') limite.setDate(limite.getDate() - 7)
+    else if (periodoFiltro === '30_dias') limite.setDate(limite.getDate() - 30)
+    else if (periodoFiltro === '90_dias') limite.setDate(limite.getDate() - 90)
+    else return true
 
-    if (periodoFiltro === 'Hoje') return diffDias <= 1
-    if (periodoFiltro === '7_dias') return diffDias <= 7
-    if (periodoFiltro === '30_dias') return diffDias <= 30
-    if (periodoFiltro === '90_dias') return diffDias <= 90
-
-    return true
+    return dataStr >= toDateOnlyString(limite)
   }
 
   const pedidosFiltrados = pedidos.filter((item) => {
@@ -784,6 +793,8 @@ export default function PosVendasBoard() {
               <option value="data_asc">Mais antigo</option>
               <option value="valor_desc">Maior valor</option>
               <option value="valor_asc">Menor valor</option>
+              <option value="prazo_asc">Prazo mais próximo</option>
+              <option value="prazo_desc">Prazo mais distante</option>
             </select>
           </div>
 
@@ -1219,6 +1230,18 @@ export default function PosVendasBoard() {
                   className="h-11 w-full rounded-lg border border-slate-300 px-3 outline-none focus:border-blue-500"
                 />
               </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-bold text-slate-700">
+                  Observações
+                </label>
+                <textarea
+                  value={observacoesEdit}
+                  onChange={(e) => setObservacoesEdit(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-blue-500"
+                />
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
@@ -1227,6 +1250,7 @@ export default function PosVendasBoard() {
                 onClick={() => {
                   setModalAberto(false)
                   setPedidoEditando(null)
+                  setObservacoesEdit('')
                 }}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
               >
@@ -1310,7 +1334,11 @@ export default function PosVendasBoard() {
                         {mov.status_anterior || 'Início'} → {mov.novo_status}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {formatDateBR(mov.movido_em)} às {mov.movido_em.slice(11, 16)}
+                        {formatDateBR(mov.movido_em)} às{' '}
+                        {new Date(mov.movido_em).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
                       </p>
                     </div>
                   ))}
