@@ -11,6 +11,7 @@ type Lead = {
   vendedor: string | null
   tipo_contato?: string | null
   data_contato: string | null
+  data_fechamento?: string | null
   data_retorno?: string | null
   created_at?: string | null
 }
@@ -136,8 +137,8 @@ function getMonthKey(dateString: string | null | undefined) {
 
 function getLeadMonthKey(lead: Lead) {
   return (
+    getMonthKey(lead.data_fechamento) ||
     getMonthKey(lead.data_contato) ||
-    getMonthKey(lead.data_retorno) ||
     getMonthKey(lead.created_at)
   )
 }
@@ -167,6 +168,7 @@ export default function RelatorioVendedoresPage() {
       const { data, error } = await supabase
         .from('leads')
         .select('*')
+        .order('id', { ascending: true })
         .range(inicio, inicio + limite - 1)
 
       if (error) throw error
@@ -178,7 +180,13 @@ export default function RelatorioVendedoresPage() {
       inicio += limite
     }
 
-    return todos
+    // Deduplica por ID caso a paginação retorne registros repetidos
+    const vistos = new Set<number>()
+    return todos.filter((lead) => {
+      if (vistos.has(lead.id)) return false
+      vistos.add(lead.id)
+      return true
+    })
   }
 
   async function buscarDados() {
@@ -208,10 +216,10 @@ export default function RelatorioVendedoresPage() {
           mesFiltro === 0
             ? mesLead
               ? mesLead.startsWith(`${anoFiltro}-`)
-              : true
+              : false
             : mesLead
               ? mesLead === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
-              : true
+              : false
 
         return bateVendedor && bateMes
       })
