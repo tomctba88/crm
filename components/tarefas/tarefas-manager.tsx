@@ -134,6 +134,7 @@ export default function TarefasManager() {
           .from('leads')
           .select('*')
           .not('data_retorno', 'is', null)
+          .not('status', 'in', '("CANCELADO","DESQUALIFICADO","FECHADO","PEDIDO","FORNECEDOR")')
           .order('data_retorno', { ascending: true })
           .range(inicio, inicio + tamanhoLote - 1)
 
