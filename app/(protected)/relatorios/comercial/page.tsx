@@ -158,7 +158,8 @@ function temValorOrcamento(value: unknown) {
 }
 
 function isPedido(status: string | null | undefined) {
-  return normalizeText(status) === 'FECHADO'
+  const s = normalizeText(status)
+  return s === 'FECHADO' || s === 'PEDIDO'
 }
 
 function isCancelado(status: string | null | undefined) {
@@ -361,6 +362,7 @@ const [analiseCanais, setAnaliseCanais] = useState<
     const { data, error } = await supabase
       .from('leads')
       .select('*')
+      .order('id', { ascending: true })
       .range(inicio, inicio + limite - 1)
 
     if (error) {
@@ -377,7 +379,12 @@ const [analiseCanais, setAnaliseCanais] = useState<
     inicio += limite
   }
 
-  return todos
+  const vistos = new Set<number>()
+  return todos.filter((lead) => {
+    if (vistos.has(lead.id)) return false
+    vistos.add(lead.id)
+    return true
+  })
 }
 
 async function buscarDados() {
