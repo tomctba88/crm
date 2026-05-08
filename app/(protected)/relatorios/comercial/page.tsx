@@ -602,8 +602,8 @@ const metaMensal = metaBase * multiplicadorMes
 const atingimentoMeta = metaMensal > 0 ? (meta / metaMensal) * 100 : 0
 
     const taxaCancelamento =
-      orcamentos.length > 0
-        ? (canceladosQuantidade.length / orcamentos.length) * 100
+      leads > 0
+        ? (canceladosQuantidade.length / leads) * 100
         : 0
 
     const taxaAguardando =
