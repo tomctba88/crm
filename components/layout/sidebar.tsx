@@ -207,6 +207,15 @@
     >
       Comparativo
     </a>
+
+    <a
+      href="/relatorios/marketing/resumo"
+      className={`block rounded-lg px-3 py-2 text-sm hover:bg-white/10 ${
+        pathname === '/relatorios/marketing/resumo' ? 'bg-white/10' : ''
+      }`}
+    >
+      Resumo MKT
+    </a>
   </>
 ) : null}
               </div>
