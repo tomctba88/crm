@@ -50,6 +50,10 @@ type DashboardComercial = {
   valorDesqualificado: number
   ticketDesqualificado: number
   taxaDesqualificado: number
+  pedidosSemRevenda: number
+  valorSemRevenda: number
+  ticketSemRevenda: number
+  txConversaoSemRevenda: number
 }
 
 type GraficoItem = {
@@ -570,6 +574,22 @@ const taxaDesqualificado =
       0
     )
 
+    const TIPOS_REVENDA = new Set(['REVENDA', 'LOJISTA', 'LOJISTA/REVENDA'])
+    const pedidosSemRevenda = pedidos.filter(
+      (lead) => !TIPOS_REVENDA.has(normalizeText(lead.tipo_contato))
+    )
+    const valorSemRevenda = pedidosSemRevenda.reduce(
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete),
+      0
+    )
+    const ticketSemRevenda = pedidosSemRevenda.length > 0 ? valorSemRevenda / pedidosSemRevenda.length : 0
+    const orcamentosSemRevenda = leadsFiltrados.filter(
+      (lead) => !TIPOS_REVENDA.has(normalizeText(lead.tipo_contato)) && temValorOrcamento(lead.valor_orcamento)
+    )
+    const txConversaoSemRevenda = orcamentosSemRevenda.length > 0
+      ? (pedidosSemRevenda.length / orcamentosSemRevenda.length) * 100
+      : 0
+
 const metaBase =
   vendedorFiltro === 'TODOS'
     ? META_MENSAL_EMPRESA
@@ -622,6 +642,10 @@ desqualificados: desqualificadosPeriodo.length,
 valorDesqualificado,
 ticketDesqualificado,
 taxaDesqualificado,
+      pedidosSemRevenda: pedidosSemRevenda.length,
+      valorSemRevenda,
+      ticketSemRevenda,
+      txConversaoSemRevenda,
     })
 
     const vendasPorMes: GraficoItem[] = MESES.map((_, index) => {
@@ -979,6 +1003,13 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
             valor={`${(dados.leads > 0 ? (dados.pedidos / dados.leads) * 100 : 0).toFixed(2)}%`}
             cor="bg-lime-50"
           />
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Card titulo="Qtde. Vendas s/ Revenda" valor={String(dados.pedidosSemRevenda)} cor="bg-teal-50" />
+          <Card titulo="Valor Vendas s/ Revenda" valor={formatCurrency(dados.valorSemRevenda)} cor="bg-teal-50" />
+          <Card titulo="Ticket Médio s/ Revenda" valor={formatCurrency(dados.ticketSemRevenda)} cor="bg-teal-50" />
+          <Card titulo="Tx. Conversão s/ Revenda" valor={`${dados.txConversaoSemRevenda.toFixed(2)}%`} cor="bg-teal-100" />
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
