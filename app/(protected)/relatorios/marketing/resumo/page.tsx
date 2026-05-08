@@ -293,7 +293,7 @@ export default function MarketingResumoPage() {
   const [loading, setLoading] = useState(true)
   const [dados, setDados] = useState<DadosMarketing | null>(null)
   const [anoFiltro, setAnoFiltro] = useState(hoje.getFullYear())
-  const [mesFiltro, setMesFiltro] = useState(hoje.getMonth() + 1)
+  const [mesFiltro, setMesFiltro] = useState(0)
 
   const anosDisponiveis = useMemo(() => {
     const a = hoje.getFullYear()
@@ -330,10 +330,11 @@ export default function MarketingResumoPage() {
         return true
       })
 
-      const mesKey = `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
       const filtrados = todos.filter((lead) => {
         const mk = getLeadMonthKey(lead)
-        return mk === mesKey
+        if (!mk) return false
+        if (mesFiltro === 0) return mk.startsWith(`${anoFiltro}-`)
+        return mk === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
       })
 
       setDados(calcular(filtrados))
@@ -371,6 +372,7 @@ export default function MarketingResumoPage() {
           <div className="flex gap-3">
             <select value={mesFiltro} onChange={(e) => setMesFiltro(Number(e.target.value))}
               className="h-12 rounded-2xl border border-slate-200 px-4 text-sm font-medium text-slate-700 outline-none">
+              <option value={0}>Todos os meses</option>
               {MESES.map((mes, i) => (
                 <option key={mes} value={i + 1}>{mes}</option>
               ))}
