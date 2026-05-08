@@ -76,6 +76,7 @@ async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
     const { data, error } = await supabase
       .from('leads')
       .select('*')
+      .order('id', { ascending: true })
       .range(inicio, inicio + limite - 1)
 
     if (error) throw error
@@ -87,7 +88,12 @@ async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
     inicio += limite
   }
 
-  return todos
+  const vistos = new Set<number>()
+  return todos.filter((lead) => {
+    if (!lead.id || vistos.has(lead.id)) return false
+    vistos.add(lead.id)
+    return true
+  })
 }
 
 export default function ComparativoMarketingPage() {

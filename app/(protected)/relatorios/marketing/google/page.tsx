@@ -62,14 +62,15 @@ function formatCurrency(value: number) {
   })
 }
 
-function getMesKeyFromSelect(value: string) {
+function getMesKeyFromSelect(ano: number, value: string) {
   if (value === 'Todos') return undefined
-  return `2026-${value}`
+  return `${ano}-${value}`
 }
 
 const ORIGENS_MARKETING = [
   'GOOGLE',
   'EMAIL',
+  'E-MAIL',
   'SITE',
   'RECOMPRA',
   'RETORNO',
@@ -113,8 +114,10 @@ function calcularDashboardMarketingPersonalizado(
     return String(dataBase).startsWith(mesKey)
   })
 
-  const isFechado = (status: string | null | undefined) =>
-    normalizeText(status) === 'FECHADO'
+  const isFechado = (status: string | null | undefined) => {
+    const s = normalizeText(status)
+    return s === 'FECHADO' || s === 'PEDIDO'
+  }
 
   const isAberto = (status: string | null | undefined) => {
     const statusNormalizado = normalizeText(status)
@@ -127,7 +130,7 @@ function calcularDashboardMarketingPersonalizado(
   }
 
   const valorOrcamentoLead = (lead: MarketingLead) =>
-    Number(lead.valor_orcamento || 0) + Number(lead.valor_frete || 0)
+    Number(lead.valor_orcamento || 0)
 
   const leadsComOrcamento = leadsFiltrados.filter(
     (lead) => Number(lead.valor_orcamento || 0) > 0
@@ -274,6 +277,7 @@ async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
     const { data, error } = await supabase
       .from('leads')
       .select('*')
+      .order('id', { ascending: true })
       .range(inicio, inicio + limite - 1)
 
     if (error) {
@@ -290,14 +294,21 @@ async function buscarTodosOsLeads(supabase: ReturnType<typeof createClient>) {
     inicio += limite
   }
 
-  return todos
+  const vistos = new Set<number>()
+  return todos.filter((lead) => {
+    if (!lead.id || vistos.has(lead.id)) return false
+    vistos.add(lead.id)
+    return true
+  })
 }
 
 export default function MarketingGooglePage() {
   const supabase = useMemo(() => createClient(), [])
 
+  const hoje = new Date()
   const [loading, setLoading] = useState(true)
 const [mes, setMes] = useState('Todos')
+const [ano, setAno] = useState(hoje.getFullYear())
 const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([
   'GOOGLE',
   'EMAIL',
@@ -332,7 +343,7 @@ const [graficoMensal, setGraficoMensal] = useState<
 
   useEffect(() => {
     buscarDados()
-  }, [mes, origensSelecionadas])
+  }, [mes, ano, origensSelecionadas])
 
   async function buscarDados() {
     setLoading(true)
@@ -346,7 +357,7 @@ const [graficoMensal, setGraficoMensal] = useState<
       setLoading(false)
       return
     }
-    const mesKey = getMesKeyFromSelect(mes)
+    const mesKey = getMesKeyFromSelect(ano, mes)
     const leadsFiltradosPorOrigem = filtrarLeadsPorOrigens(leads, origensSelecionadas)
     const dashboard = calcularDashboardMarketingPersonalizado(leadsFiltradosPorOrigem, mesKey)
 
@@ -399,22 +410,20 @@ setGraficoValorProduto(
 
 setGraficoMensal(
   [
-    { mes: 'JAN', key: '2026-01' },
-    { mes: 'FEV', key: '2026-02' },
-    { mes: 'MAR', key: '2026-03' },
-    { mes: 'ABR', key: '2026-04' },
-    { mes: 'MAI', key: '2026-05' },
-    { mes: 'JUN', key: '2026-06' },
-    { mes: 'JUL', key: '2026-07' },
-    { mes: 'AGO', key: '2026-08' },
-    { mes: 'SET', key: '2026-09' },
-    { mes: 'OUT', key: '2026-10' },
-    { mes: 'NOV', key: '2026-11' },
-    { mes: 'DEZ', key: '2026-12' },
+    { mes: 'JAN', num: '01' },
+    { mes: 'FEV', num: '02' },
+    { mes: 'MAR', num: '03' },
+    { mes: 'ABR', num: '04' },
+    { mes: 'MAI', num: '05' },
+    { mes: 'JUN', num: '06' },
+    { mes: 'JUL', num: '07' },
+    { mes: 'AGO', num: '08' },
+    { mes: 'SET', num: '09' },
+    { mes: 'OUT', num: '10' },
+    { mes: 'NOV', num: '11' },
+    { mes: 'DEZ', num: '12' },
   ].map((item) => {
-        const mensal = calcularDashboardMarketingPersonalizado(leadsFiltradosPorOrigem, item.key)
-        
-
+    const mensal = calcularDashboardMarketingPersonalizado(leadsFiltradosPorOrigem, `${ano}-${item.num}`)
     return {
       mes: item.mes,
       leads: mensal.resumo.leads,
@@ -443,7 +452,22 @@ setLoading(false)
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[280px_360px] xl:justify-end">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[160px_160px_360px] xl:justify-end">
+            <div>
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Ano
+              </label>
+              <select
+                value={ano}
+                onChange={(e) => setAno(Number(e.target.value))}
+                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              >
+                {[hoje.getFullYear() - 1, hoje.getFullYear(), hoje.getFullYear() + 1].map((a) => (
+                  <option key={a} value={a}>{a}</option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">
                 Filtro de mês

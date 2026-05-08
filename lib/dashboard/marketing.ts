@@ -242,7 +242,8 @@ function temValorOrcamento(value: unknown) {
 }
 
 function isPedido(status: string | null | undefined) {
-  return normalizeText(status) === 'FECHADO'
+  const s = normalizeText(status)
+  return s === 'FECHADO' || s === 'PEDIDO'
 }
 
 function isEmAberto(status: string | null | undefined) {
@@ -294,12 +295,12 @@ function calcularMetricasProduto(
   )
 
   const valorPedidos = pedidos.reduce(
-    (acc, lead) => acc + toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete),
+    (acc, lead) => acc + toNumber(lead.valor_orcamento),
     0
   )
 
   const valorEmAberto = abertos.reduce(
-    (acc, lead) => acc + toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete),
+    (acc, lead) => acc + toNumber(lead.valor_orcamento),
     0
   )
 
@@ -329,7 +330,7 @@ export function calcularDashboardMarketing(
     const temContato = temContatoPreenchido(lead.tipo_contato)
     const bateOrigem = isOrigemValida(lead.tipo_contato, scope)
     const mesLead = getMonthKey(lead.data_contato)
-    const bateMes = mes ? (mesLead ? mesLead === mes : true) : true
+    const bateMes = mes ? (mesLead ? mesLead === mes : false) : true
 
     if (scope === 'geral') {
       return temContato && bateMes
@@ -378,7 +379,7 @@ export function calcularDashboardMarketing(
         (temContatoPreenchido(lead.tipo_contato) &&
         temValorOrcamento(lead.valor_orcamento) &&
         isPedido(lead.status)
-          ? toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete)
+          ? toNumber(lead.valor_orcamento)
           : 0),
       0
     ),
@@ -389,7 +390,7 @@ export function calcularDashboardMarketing(
       (acc, lead) =>
         acc +
         (contaComoOrcamentoEmAberto(lead)
-          ? toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete)
+          ? toNumber(lead.valor_orcamento)
           : 0),
       0
     ),
@@ -461,14 +462,12 @@ export function calcularDashboardMarketing(
   )
 
   const naoClassificadosValorPedidos = naoClassificadosPedidos.reduce(
-    (acc, lead) =>
-      acc + toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete),
+    (acc, lead) => acc + toNumber(lead.valor_orcamento),
     0
   )
 
   const naoClassificadosValorEmAberto = naoClassificadosAbertos.reduce(
-    (acc, lead) =>
-      acc + toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete),
+    (acc, lead) => acc + toNumber(lead.valor_orcamento),
     0
   )
 
@@ -562,13 +561,11 @@ export function calcularDashboardMarketing(
       isPedido(lead.status)
     ) {
       atual.pedidos += 1
-      atual.valorPedidos +=
-        toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete)
+      atual.valorPedidos += toNumber(lead.valor_orcamento)
     }
 
     if (contaComoOrcamentoEmAberto(lead)) {
-      atual.valorEmAberto +=
-        toNumber(lead.valor_orcamento) + toNumber(lead.valor_frete)
+      atual.valorEmAberto += toNumber(lead.valor_orcamento)
     }
   }
 

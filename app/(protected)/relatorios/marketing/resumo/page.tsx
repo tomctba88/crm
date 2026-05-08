@@ -323,6 +323,13 @@ export default function MarketingResumoPage() {
         inicio += limite
       }
 
+      const vistos = new Set<number>()
+      todos = todos.filter((lead) => {
+        if (vistos.has(lead.id)) return false
+        vistos.add(lead.id)
+        return true
+      })
+
       const mesKey = `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
       const filtrados = todos.filter((lead) => {
         const mk = getLeadMonthKey(lead)
