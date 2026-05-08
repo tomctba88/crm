@@ -154,7 +154,7 @@ export default function PipelineBoard() {
       const { data, error } = await supabase
         .from('leads')
         .select('*')
-        .order('created_at', { ascending: false })
+        .order('id', { ascending: true })
         .range(inicio, inicio + limite - 1)
 
       if (error) {
@@ -171,7 +171,12 @@ export default function PipelineBoard() {
       inicio += limite
     }
 
-    return todos
+    const vistos = new Set<number>()
+    return todos.filter((lead) => {
+      if (vistos.has(lead.id)) return false
+      vistos.add(lead.id)
+      return true
+    })
   }
 
   async function buscarPipeline() {
@@ -249,16 +254,6 @@ function statusEncerrado(status?: string | null) {
   )
 }
 
-function statusBanco(statusVisual: string) {
-  const status = normalizarStatus(statusVisual)
-
-  if (status === 'PERDIDO') return 'CANCELADO'
-  if (status === 'ORCADO') return 'AGUARDANDO'
-  if (status === 'ATENDENDO') return 'ORÇAR'
-
-  return status
-}
-
 function statusParaBanco(statusVisual: string) {
   const statusNormalizado = normalizarStatus(statusVisual)
 
@@ -276,8 +271,12 @@ function statusParaBanco(statusVisual: string) {
 const leadsFiltrados = leads.filter((lead) => {
   const termo = busca.toLowerCase()
   const valor = Number(lead.valor_orcamento || 0)
+
   const dataBase = lead.data_contato || lead.created_at || ''
-  const data = dataBase ? new Date(dataBase) : null
+  const mesAnoLead = dataBase
+    ? String(dataBase).slice(0, 7)
+    : ''
+  const [anoLead, mesLead] = mesAnoLead ? mesAnoLead.split('-') : ['', '']
 
   const leadEncerrado = statusEncerrado(lead.status)
 
@@ -303,11 +302,11 @@ const leadsFiltrados = leads.filter((lead) => {
 
   const bateMes =
     mesFiltro === 'Todos' ||
-    (data && data.getMonth() + 1 === Number(mesFiltro))
+    (mesLead && Number(mesLead) === Number(mesFiltro))
 
   const bateAno =
     anoFiltro === 'Todos' ||
-    (data && data.getFullYear() === Number(anoFiltro))
+    (anoLead && anoLead === anoFiltro)
 
   return (
     bateBusca &&
@@ -476,9 +475,21 @@ function abrirEdicaoLead(leadId: number) {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
-            Total no pipeline:{' '}
-            <span className="font-bold text-slate-900">{leadsFiltrados.length}</span>
+          <div className="flex gap-3">
+            <div className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+              Leads:{' '}
+              <span className="font-bold text-slate-900">{leadsFiltrados.filter((l) => !statusEncerrado(l.status)).length}</span>
+            </div>
+            <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Em aberto:{' '}
+              <span className="font-bold">
+                {formatCurrency(
+                  leadsFiltrados
+                    .filter((l) => !statusEncerrado(l.status))
+                    .reduce((acc, l) => acc + Number(l.valor_orcamento || 0), 0)
+                )}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -627,7 +638,7 @@ function abrirEdicaoLead(leadId: number) {
               onClick={() => {
   setBusca('')
   setVendedorFiltro('Todos')
-  setOrdenacao('recente')
+  setOrdenacao('data_desc')
   setValorMinimo('')
   setValorMaximo('')
   setMesFiltro('Todos')
@@ -728,7 +739,7 @@ function abrirEdicaoLead(leadId: number) {
                           } ${draggingLeadId === lead.id ? 'opacity-60' : ''}`}
                         >
                           <div className="mb-3 flex items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -736,7 +747,7 @@ function abrirEdicaoLead(leadId: number) {
                                     abrirEdicaoLead(lead.id)
                                   }
                                 }}
-                                className={`text-left text-base font-black ${
+                                className={`text-left text-base font-black leading-tight ${
                                   nivelUsuarioLogado !== 'consulta'
                                     ? 'text-slate-900 hover:text-blue-700'
                                     : 'cursor-not-allowed text-slate-400'
@@ -744,17 +755,29 @@ function abrirEdicaoLead(leadId: number) {
                               >
                                 {lead.nome_cliente}
                               </button>
-                              <p className="mt-1 text-sm text-slate-500">
+                              <p className="mt-0.5 truncate text-sm text-slate-500">
                                 {lead.nome_empresa || 'Sem empresa informada'}
                               </p>
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {lead.tipo_contato ? (
+                                  <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold uppercase text-blue-600">
+                                    {lead.tipo_contato}
+                                  </span>
+                                ) : null}
+                                {lead.uf ? (
+                                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                    {lead.uf}
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
 
-                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
                               #{lead.id}
                             </span>
                           </div>
 
-                          <div className="space-y-2 text-sm text-slate-600">
+                          <div className="space-y-1.5 text-sm text-slate-600">
                             <p>
                               <span className="font-bold text-slate-700">Vendedor:</span>{' '}
                               {lead.vendedor || '-'}
@@ -768,15 +791,20 @@ function abrirEdicaoLead(leadId: number) {
                               {lead.telefone || '-'}
                             </p>
                             <p>
-                              <span className="font-bold text-slate-700">Data contato:</span>{' '}
+                              <span className="font-bold text-slate-700">Contato:</span>{' '}
                               {formatDateBR(lead.data_contato)}
                             </p>
+                            {lead.data_retorno ? (
+                              <p>
+                                <span className="font-bold text-amber-600">Retorno:</span>{' '}
+                                <span className="font-semibold text-amber-700">{formatDateBR(lead.data_retorno)}</span>
+                              </p>
+                            ) : null}
                             <p>
-                              <span className="font-bold text-slate-700">Última movimentação:</span>{' '}
+                              <span className="font-bold text-slate-700">Movimentação:</span>{' '}
                               {formatDateTimeBR(lead.data_ultima_movimentacao)}
                             </p>
-                            <p>
-                              <span className="font-bold text-slate-700">Orçamento:</span>{' '}
+                            <p className="pt-1 text-base font-black text-slate-900">
                               {formatCurrency(lead.valor_orcamento)}
                             </p>
                           </div>
@@ -888,7 +916,7 @@ function abrirEdicaoLead(leadId: number) {
                       <td className="px-4 py-3">{formatDateTimeBR(mov.movido_em)}</td>
                       <td className="px-4 py-3">{mov.status_anterior || '-'}</td>
                       <td className="px-4 py-3 font-bold text-slate-900">{mov.novo_status}</td>
-                      <td className="px-4 py-3">{mov.user_id || '-'}</td>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-400">{mov.user_id ? mov.user_id.slice(0, 8) + '…' : '-'}</td>
                     </tr>
                   ))}
                 </tbody>
