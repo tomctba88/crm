@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser-client'
 
@@ -24,6 +23,27 @@ type Lead = {
   observacoes: string | null
   data_ultima_movimentacao: string | null
 }
+
+type DadosEdicao = {
+  nome_cliente: string
+  nome_empresa: string
+  telefone: string
+  vendedor: string
+  uf: string
+  produto_interesse: string
+  status: string
+  valor_orcamento: string
+  data_retorno: string
+  observacoes: string
+}
+
+const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO']
+
+const STATUS_ATIVOS = [
+  { valor: 'ORÇAR', label: 'Orçar' },
+  { valor: 'AGUARDANDO', label: 'Aguardando' },
+  { valor: 'NEGOCIANDO', label: 'Negociando' },
+]
 
 function formatDateBR(value: string | null) {
   if (!value) return '-'
@@ -125,6 +145,17 @@ export default function TarefasManager() {
   const [dataConclusao, setDataConclusao] = useState('')
   const [salvandoConclusao, setSalvandoConclusao] = useState(false)
   const [observacoesConclusao, setObservacoesConclusao] = useState('')
+  const [modalEditarAberto, setModalEditarAberto] = useState(false)
+  const [leadEditando, setLeadEditando] = useState<Lead | null>(null)
+  const [dadosEdicao, setDadosEdicao] = useState<DadosEdicao>({
+    nome_cliente: '', nome_empresa: '', telefone: '', vendedor: '',
+    uf: '', produto_interesse: '', status: '', valor_orcamento: '',
+    data_retorno: '', observacoes: '',
+  })
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+  const [optsVendedores, setOptsVendedores] = useState<string[]>([])
+  const [optsProdutos, setOptsProdutos] = useState<string[]>([])
+  const [carregandoCadastros, setCarregandoCadastros] = useState(false)
   const urgenciaFromUrl = searchParams.get('urgencia')
 
   async function buscarTarefas() {
@@ -208,6 +239,78 @@ export default function TarefasManager() {
       alert(err.message || 'Erro ao concluir lead.')
     } finally {
       setSalvandoConclusao(false)
+    }
+  }
+
+  async function abrirModalEditar(lead: Lead) {
+    setLeadEditando(lead)
+    setDadosEdicao({
+      nome_cliente: lead.nome_cliente || '',
+      nome_empresa: lead.nome_empresa || '',
+      telefone: lead.telefone || '',
+      vendedor: lead.vendedor || '',
+      uf: lead.uf || '',
+      produto_interesse: lead.produto_interesse || '',
+      status: lead.status || '',
+      valor_orcamento: lead.valor_orcamento != null ? String(lead.valor_orcamento) : '',
+      data_retorno: lead.data_retorno ? lead.data_retorno.slice(0, 10) : '',
+      observacoes: lead.observacoes || '',
+    })
+    setModalEditarAberto(true)
+
+    if (optsVendedores.length === 0 || optsProdutos.length === 0) {
+      setCarregandoCadastros(true)
+      const [{ data: vends }, { data: prods }] = await Promise.all([
+        supabase.from('cadastro_vendedores').select('nome').order('nome'),
+        supabase.from('cadastro_produtos_interesse').select('nome').order('nome'),
+      ])
+      setOptsVendedores((vends || []).map((v: any) => v.nome))
+      setOptsProdutos((prods || []).map((p: any) => p.nome))
+      setCarregandoCadastros(false)
+    }
+  }
+
+  async function salvarEdicao() {
+    if (!leadEditando) return
+    if (!dadosEdicao.nome_cliente.trim()) {
+      alert('Nome do cliente é obrigatório.')
+      return
+    }
+
+    setSalvandoEdicao(true)
+    try {
+      const res = await fetch('/api/leads/salvar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: leadEditando.id,
+          payload: {
+            nome_cliente: dadosEdicao.nome_cliente.trim(),
+            nome_empresa: dadosEdicao.nome_empresa.trim() || null,
+            telefone: dadosEdicao.telefone.trim() || null,
+            vendedor: dadosEdicao.vendedor || null,
+            uf: dadosEdicao.uf || null,
+            produto_interesse: dadosEdicao.produto_interesse || null,
+            status: dadosEdicao.status || null,
+            valor_orcamento: dadosEdicao.valor_orcamento !== '' ? Number(dadosEdicao.valor_orcamento) : null,
+            data_retorno: dadosEdicao.data_retorno || null,
+            observacoes: dadosEdicao.observacoes.trim() || null,
+          },
+        }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error || 'Erro ao salvar lead.')
+      }
+
+      setModalEditarAberto(false)
+      setLeadEditando(null)
+      await buscarTarefas()
+    } catch (err: any) {
+      alert(err.message || 'Erro ao salvar lead.')
+    } finally {
+      setSalvandoEdicao(false)
     }
   }
 
@@ -707,12 +810,13 @@ export default function TarefasManager() {
                           }`}
                         >
                           <div className="flex flex-col gap-2">
-                            <Link
-                              href={`/leads?lead=${lead.id}`}
-                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-center text-xs font-bold text-blue-700 hover:bg-blue-100"
+                            <button
+                              type="button"
+                              onClick={() => abrirModalEditar(lead)}
+                              className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
                             >
                               Editar lead
-                            </Link>
+                            </button>
 
                             <button
                               type="button"
@@ -740,6 +844,162 @@ export default function TarefasManager() {
           </div>
         )}
       </section>
+
+      {modalEditarAberto && leadEditando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-black text-slate-900">Editar lead</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {leadEditando.nome_cliente}
+              {leadEditando.nome_empresa ? ` — ${leadEditando.nome_empresa}` : ''}
+            </p>
+
+            {carregandoCadastros && (
+              <p className="mt-3 text-xs text-slate-400">Carregando opções...</p>
+            )}
+
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-bold text-slate-600">Nome do cliente *</label>
+                <input
+                  type="text"
+                  value={dadosEdicao.nome_cliente}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, nome_cliente: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Empresa</label>
+                <input
+                  type="text"
+                  value={dadosEdicao.nome_empresa}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, nome_empresa: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Telefone</label>
+                <input
+                  type="text"
+                  value={dadosEdicao.telefone}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, telefone: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Vendedor</label>
+                <select
+                  value={dadosEdicao.vendedor}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, vendedor: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white"
+                >
+                  <option value="">Selecione</option>
+                  {optsVendedores.map((v) => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">UF</label>
+                <select
+                  value={dadosEdicao.uf}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, uf: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white"
+                >
+                  <option value="">Selecione</option>
+                  {UFS.map((uf) => (
+                    <option key={uf} value={uf}>{uf}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Produto de interesse</label>
+                <select
+                  value={dadosEdicao.produto_interesse}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, produto_interesse: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white"
+                >
+                  <option value="">Selecione</option>
+                  {optsProdutos.map((pr) => (
+                    <option key={pr} value={pr}>{pr}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Status</label>
+                <select
+                  value={dadosEdicao.status}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, status: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 bg-white"
+                >
+                  <option value="">Selecione</option>
+                  {STATUS_ATIVOS.map((s) => (
+                    <option key={s.valor} value={s.valor}>{s.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Valor orçamento (R$)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={dadosEdicao.valor_orcamento}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, valor_orcamento: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-slate-600">Data de retorno</label>
+                <input
+                  type="date"
+                  value={dadosEdicao.data_retorno}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, data_retorno: e.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-bold text-slate-600">Observações</label>
+                <textarea
+                  value={dadosEdicao.observacoes}
+                  onChange={(e) => setDadosEdicao((p) => ({ ...p, observacoes: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setModalEditarAberto(false); setLeadEditando(null) }}
+                disabled={salvandoEdicao}
+                className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={salvarEdicao}
+                disabled={salvandoEdicao}
+                className="rounded-xl bg-[linear-gradient(90deg,#08142d_0%,#1e4ca1_100%)] px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:opacity-95 disabled:opacity-60"
+              >
+                {salvandoEdicao ? 'Salvando...' : 'Salvar alterações'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalConcluirAberto && leadConcluindo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
