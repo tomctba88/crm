@@ -42,10 +42,16 @@ export default function ProtectedShell({
 }) {
   const pathname = usePathname()
   const isPortal = pathname === '/dashboard'
-  const isFretes = pathname.startsWith('/fretes')
+
+  const modulos_externos = [
+    { prefix: '/fretes', emoji: '🚚', titulo: 'Fretes / Expedição' },
+    { prefix: '/financeiro', emoji: '💰', titulo: 'Financeiro' },
+  ]
+  const moduloAtivo = modulos_externos.find((m) => pathname.startsWith(m.prefix))
+
   const [sidebarAberta, setSidebarAberta] = useState(false)
 
-  if (isFretes) {
+  if (moduloAtivo) {
     return (
       <div className="flex min-h-screen flex-col bg-slate-50">
         <header className="border-b border-slate-200 bg-[#0A2A3A] px-4 py-3 sm:px-6">
@@ -61,8 +67,8 @@ export default function ProtectedShell({
             </Link>
             <div className="h-4 w-px bg-white/20" />
             <div className="flex items-center gap-2">
-              <span className="text-lg">🚚</span>
-              <span className="text-sm font-bold text-white">Fretes / Expedição</span>
+              <span className="text-lg">{moduloAtivo.emoji}</span>
+              <span className="text-sm font-bold text-white">{moduloAtivo.titulo}</span>
             </div>
             <div className="ml-auto flex items-center gap-3">
               <span className="hidden text-xs text-white/50 sm:block">{userEmail}</span>
