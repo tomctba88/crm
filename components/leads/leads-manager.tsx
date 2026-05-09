@@ -270,6 +270,7 @@ const [tiposContato, setTiposContato] = useState<CadastroOption[]>([])
 const [statusLead, setStatusLead] = useState<CadastroOption[]>([])
 const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
 const [erros, setErros] = useState<Record<string, string>>({})
+const [popupErroAberto, setPopupErroAberto] = useState(false)
 
   const leadIdFromUrl = useMemo(() => {
     const value = searchParams.get('lead')
@@ -427,6 +428,7 @@ const [erros, setErros] = useState<Record<string, string>>({})
 
     if (Object.keys(novosErros).length > 0) {
       setErros(novosErros)
+      setPopupErroAberto(true)
       setLoading(false)
       return
     }
@@ -722,6 +724,43 @@ useEffect(() => {
 
   return (
     <div className="space-y-6">
+      {popupErroAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-black text-slate-900">
+              Lead não cadastrado
+            </h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Preencha todos os campos obrigatórios antes de salvar:
+            </p>
+            <ul className="mt-3 space-y-1">
+              {Object.keys(erros).map((campo) => (
+                <li key={campo} className="flex items-center gap-2 text-sm text-red-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                  {campo === 'nome_cliente' && 'Nome do cliente'}
+                  {campo === 'tipo_contato' && 'Tipo de contato'}
+                  {campo === 'vendedor' && 'Vendedor'}
+                  {campo === 'uf' && 'UF'}
+                  {campo === 'status' && 'Status'}
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => setPopupErroAberto(false)}
+              className="mt-5 w-full rounded-xl bg-red-600 py-3 text-sm font-bold text-white transition hover:bg-red-700"
+            >
+              Entendi, vou corrigir
+            </button>
+          </div>
+        </div>
+      )}
+
   {mensagemTopo && (
     <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">
       {mensagemTopo}
