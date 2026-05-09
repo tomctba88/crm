@@ -725,8 +725,8 @@ export default function TarefasManager() {
               Role lateralmente para ver todas as colunas. A coluna de ações fica travada à direita.
             </div>
 
-            <div className="max-h-[70vh] overflow-auto">
-              <table className="min-w-[1700px] text-sm">
+            <div className="max-h-[70vh] overflow-auto rounded-2xl">
+              <table className="min-w-[900px] w-full text-sm">
                 <thead className="sticky top-0 z-20 bg-slate-50 text-left text-slate-600">
                   <tr>
                     <th className="px-4 py-3 font-bold">Urgência</th>

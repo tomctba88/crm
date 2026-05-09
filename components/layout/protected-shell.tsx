@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import Sidebar from '@/components/layout/sidebar'
@@ -41,16 +42,31 @@ export default function ProtectedShell({
 }) {
   const pathname = usePathname()
   const isPortal = pathname === '/dashboard'
+  const [sidebarAberta, setSidebarAberta] = useState(false)
 
   if (!isPortal) {
     return (
       <div className="flex min-h-screen w-full bg-slate-50">
-        <Sidebar />
+        {/* Overlay mobile */}
+        {sidebarAberta && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setSidebarAberta(false)}
+          />
+        )}
+
+        <Sidebar
+          isOpen={sidebarAberta}
+          onClose={() => setSidebarAberta(false)}
+        />
 
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header userEmail={userEmail} />
+          <Header
+            userEmail={userEmail}
+            onMenuToggle={() => setSidebarAberta((v) => !v)}
+          />
 
-          <main className="min-w-0 flex-1 overflow-x-auto p-4 lg:p-6">
+          <main className="min-w-0 flex-1 overflow-x-auto p-3 sm:p-4 lg:p-6">
             <div className="w-full min-w-0">{children}</div>
           </main>
         </div>
@@ -58,6 +74,7 @@ export default function ProtectedShell({
     )
   }
 
+  // Layout do Portal (dashboard principal)
   return (
     <div className="min-h-screen bg-[#f3f6fb]">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[290px_1fr]">
@@ -120,24 +137,24 @@ export default function ProtectedShell({
         </aside>
 
         <div className="flex min-h-screen flex-col">
-          <header className="border-b border-slate-200 bg-white px-6 py-4">
+          <header className="border-b border-slate-200 bg-white px-4 py-4 sm:px-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[#1b4fd6]">
                   Portal central
                 </p>
-                <h2 className="text-2xl font-black text-[#0b1733]">
+                <h2 className="text-xl font-black text-[#0b1733] sm:text-2xl">
                   Ergotex One
                 </h2>
               </div>
 
-              <div className="rounded-2xl bg-[#eef3fb] px-4 py-3 text-sm font-semibold text-[#0b1733]">
+              <div className="hidden rounded-2xl bg-[#eef3fb] px-4 py-3 text-sm font-semibold text-[#0b1733] sm:block">
                 A escolha certa para o seu negócio.
               </div>
             </div>
           </header>
 
-          <main className="flex-1 p-6">{children}</main>
+          <main className="flex-1 p-4 sm:p-6">{children}</main>
         </div>
       </div>
     </div>
