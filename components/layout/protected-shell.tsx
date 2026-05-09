@@ -42,7 +42,40 @@ export default function ProtectedShell({
 }) {
   const pathname = usePathname()
   const isPortal = pathname === '/dashboard'
+  const isFretes = pathname.startsWith('/fretes')
   const [sidebarAberta, setSidebarAberta] = useState(false)
+
+  if (isFretes) {
+    return (
+      <div className="flex min-h-screen flex-col bg-slate-50">
+        <header className="border-b border-slate-200 bg-[#0A2A3A] px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard"
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path d="M10 12L6 8l4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Portal
+            </Link>
+            <div className="h-4 w-px bg-white/20" />
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🚚</span>
+              <span className="text-sm font-bold text-white">Fretes / Expedição</span>
+            </div>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="hidden text-xs text-white/50 sm:block">{userEmail}</span>
+              <LogoutButton />
+            </div>
+          </div>
+        </header>
+        <main className="flex-1 p-3 sm:p-4 lg:p-6">
+          <div className="w-full">{children}</div>
+        </main>
+      </div>
+    )
+  }
 
   if (!isPortal) {
     return (
