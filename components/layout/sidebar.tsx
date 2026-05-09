@@ -124,8 +124,6 @@ export default function Sidebar({
         {podeVerPipeline && link('/pipeline', 'Pipeline')}
         {podeVerPosVendas && link('/pos-vendas', 'Pós-vendas')}
         {podeVerTarefas && link('/tarefas', 'Tarefas')}
-        {link('/fretes', 'Fretes', true)}
-
         {podeVerRelatorios && (
           <div className="space-y-0.5">
             <div
