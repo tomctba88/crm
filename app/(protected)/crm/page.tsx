@@ -121,12 +121,13 @@ export default function DashboardPage() {
   const [usuariosFiltro, setUsuariosFiltro] = useState<UsuarioFiltro[]>([])
   const [filtroModulo, setFiltroModulo] = useState('')
   const [filtroUsuario, setFiltroUsuario] = useState('')
-  const [filtroDataInicio, setFiltroDataInicio] = useState('')
-  const [filtroDataFim, setFiltroDataFim] = useState('')
+  const hoje = toDateOnlyString(new Date())
+  const [filtroDataInicio, setFiltroDataInicio] = useState(hoje)
+  const [filtroDataFim, setFiltroDataFim] = useState(hoje)
 
   useEffect(() => {
     buscarDados()
-    buscarAtividades()
+    buscarAtividades({ dataInicio: hoje, dataFim: hoje })
   }, [])
 
   async function buscarAtividades(params?: {

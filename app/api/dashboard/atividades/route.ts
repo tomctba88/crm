@@ -24,14 +24,19 @@ export async function GET(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Busca todos os usuários para montar o mapa nome
-    const { data: usuariosData } = await admin
-      .from('usuarios_portal')
-      .select('id, nome')
+    // Busca nomes de ambas as tabelas; profiles tem prioridade
+    const [{ data: profilesData }, { data: portalData }] = await Promise.all([
+      admin.from('profiles').select('id, nome, email'),
+      admin.from('usuarios_portal').select('id, nome, email'),
+    ])
 
-    const usuariosMap = new Map<string, string>(
-      (usuariosData || []).map((u: any) => [u.id, u.nome])
-    )
+    const usuariosMap = new Map<string, string>()
+    for (const u of portalData || []) {
+      if (u.id && u.nome) usuariosMap.set(u.id, u.nome)
+    }
+    for (const u of profilesData || []) {
+      if (u.id && u.nome) usuariosMap.set(u.id, u.nome)
+    }
 
     const atividades: {
       id: string
