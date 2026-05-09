@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server-client'
+import { criarOrdemProducao } from '@/lib/producao/criar-ordem'
 
 function normalizarStatus(status?: string | null) {
   return String(status || '')
@@ -116,7 +117,7 @@ export async function POST(req: Request) {
         .maybeSingle()
 
       if (!existente) {
-        await admin.from('pos_vendas').insert({
+        const { data: novoPosVenda } = await admin.from('pos_vendas').insert({
           lead_id: leadId,
           user_id: user.id,
           status_pos_venda: 'EM PRODUÇÃO',
@@ -124,7 +125,11 @@ export async function POST(req: Request) {
           data_inicio: hoje,
           created_at: agoraIso,
           updated_at: agoraIso,
-        })
+        }).select().single()
+
+        if (novoPosVenda) {
+          await criarOrdemProducao(admin, novoPosVenda.id, leadId, leadAtual.produto_interesse, leadAtual.vendedor)
+        }
       }
     }
 

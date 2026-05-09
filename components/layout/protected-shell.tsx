@@ -46,6 +46,7 @@ export default function ProtectedShell({
   const modulos_externos = [
     { prefix: '/fretes', emoji: '🚚', titulo: 'Fretes / Expedição' },
     { prefix: '/financeiro', emoji: '💰', titulo: 'Financeiro' },
+    { prefix: '/producao', emoji: '🏭', titulo: 'Produção' },
   ]
   const moduloAtivo = modulos_externos.find((m) => pathname.startsWith(m.prefix))
 

@@ -6,6 +6,7 @@ import {
   isVendaFechada,
   obterDatasParaStatus,
 } from '@/lib/constants/status'
+import { criarOrdemProducao } from '@/lib/producao/criar-ordem'
 
 export async function POST(req: Request) {
   try {
@@ -80,7 +81,7 @@ export async function POST(req: Request) {
 
           if (!existente) {
             const hoje = new Date().toISOString().slice(0, 10)
-            await admin.from('pos_vendas').insert({
+            const { data: novoPosVenda } = await admin.from('pos_vendas').insert({
               lead_id: leadId,
               user_id: user.id,
               status_pos_venda: 'EM PRODUÇÃO',
@@ -88,7 +89,11 @@ export async function POST(req: Request) {
               data_inicio: hoje,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-            })
+            }).select().single()
+
+            if (novoPosVenda) {
+              await criarOrdemProducao(admin, novoPosVenda.id, leadId, leadAtual.produto_interesse, leadAtual.vendedor)
+            }
           }
         }
       }
@@ -130,10 +135,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Se o novo lead já foi criado com status de venda fechada, cria pós-vendas
+    // Se o novo lead já foi criado com status de venda fechada, cria pós-vendas e ordem de produção
     if (novoLead && isVendaFechada(payload.status)) {
       const hoje = new Date().toISOString().slice(0, 10)
-      await admin.from('pos_vendas').insert({
+      const { data: novoPosVenda } = await admin.from('pos_vendas').insert({
         lead_id: novoLead.id,
         user_id: user.id,
         status_pos_venda: 'EM PRODUÇÃO',
@@ -141,7 +146,11 @@ export async function POST(req: Request) {
         data_inicio: hoje,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      })
+      }).select().single()
+
+      if (novoPosVenda) {
+        await criarOrdemProducao(admin, novoPosVenda.id, novoLead.id, payload.produto_interesse, payload.vendedor)
+      }
     }
 
     return NextResponse.json({
