@@ -149,13 +149,20 @@ function toggleNovoModulo(slug: string) {
     // Carrega os módulos que o usuário já tem acesso
     const { data: umData } = await supabase
       .from('usuarios_modulos')
-      .select('modulos(slug)')
+      .select('modulo_id')
       .eq('usuario_id', usuario.id)
       .eq('pode_acessar', true)
 
-    const slugs = (umData || [])
-      .map((row: any) => (Array.isArray(row.modulos) ? row.modulos[0]?.slug : row.modulos?.slug))
-      .filter(Boolean) as string[]
+    const moduloIds = (umData || []).map((row: any) => row.modulo_id)
+
+    let slugs: string[] = []
+    if (moduloIds.length > 0) {
+      const { data: modulosData } = await supabase
+        .from('modulos')
+        .select('slug')
+        .in('id', moduloIds)
+      slugs = (modulosData || []).map((m: any) => m.slug)
+    }
 
     setModulosUsuarioEdit(slugs)
     setModalAberto(true)

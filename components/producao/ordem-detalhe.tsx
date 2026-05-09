@@ -51,7 +51,7 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
       .eq('ordem_id', ordemId)
       .order('sequencia')
 
-    setOrdem(ordemData as Ordem)
+    setOrdem(ordemData as unknown as Ordem)
     setEtapas(etapasData || [])
     if (ordemData) {
       setForm({

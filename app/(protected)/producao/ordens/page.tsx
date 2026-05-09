@@ -45,7 +45,7 @@ export default function OrdensPage() {
         .from('producao_ordens')
         .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,created_at,leads(nome_cliente,nome_empresa)')
         .order('id', { ascending: false })
-      setOrdens((data || []) as Ordem[])
+      setOrdens((data || []) as unknown as Ordem[])
       setLoading(false)
     }
     carregar()
