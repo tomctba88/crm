@@ -272,7 +272,7 @@ const leadsFiltrados = leads.filter((lead) => {
   const termo = busca.toLowerCase()
   const valor = Number(lead.valor_orcamento || 0)
 
-  const dataBase = lead.data_contato || lead.created_at || ''
+  const dataBase = lead.data_retorno || ''
   const mesAnoLead = dataBase
     ? String(dataBase).slice(0, 7)
     : ''
@@ -322,7 +322,7 @@ const anosDisponiveis = Array.from(
   new Set(
     leads
       .map((lead) => {
-        const dataBase = lead.data_contato || lead.created_at
+        const dataBase = lead.data_retorno
         if (!dataBase) return null
         return new Date(dataBase).getFullYear()
       })
