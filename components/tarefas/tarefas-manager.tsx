@@ -119,6 +119,11 @@ export default function TarefasManager() {
   const [modalRemarcarAberto, setModalRemarcarAberto] = useState(false)
   const [leadRemarcando, setLeadRemarcando] = useState<Lead | null>(null)
   const [novaDataRetorno, setNovaDataRetorno] = useState('')
+  const [modalConcluirAberto, setModalConcluirAberto] = useState(false)
+  const [leadConcluindo, setLeadConcluindo] = useState<Lead | null>(null)
+  const [statusConclusao, setStatusConclusao] = useState('FECHADO')
+  const [dataConclusao, setDataConclusao] = useState('')
+  const [salvandoConclusao, setSalvandoConclusao] = useState(false)
   const urgenciaFromUrl = searchParams.get('urgencia')
 
   async function buscarTarefas() {
@@ -157,19 +162,41 @@ export default function TarefasManager() {
     }
   }
 
-  async function concluirTarefa(id: number) {
-    const { error } = await supabase
-      .from('leads')
-      .update({ data_retorno: null })
-      .eq('id', id)
+  function abrirModalConcluir(lead: Lead) {
+    const hoje = toDateOnlyString(new Date())
+    setLeadConcluindo(lead)
+    setStatusConclusao('FECHADO')
+    setDataConclusao(hoje)
+    setModalConcluirAberto(true)
+  }
 
-    if (error) {
-      console.error('Erro ao concluir tarefa:', error)
-      alert('Erro ao concluir tarefa.')
-      return
+  async function confirmarConclusao() {
+    if (!leadConcluindo) return
+
+    setSalvandoConclusao(true)
+    try {
+      const res = await fetch('/api/pipeline/mover-lead', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leadId: leadConcluindo.id,
+          novoStatus: statusConclusao,
+        }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        throw new Error(json.error || 'Erro ao concluir lead.')
+      }
+
+      setModalConcluirAberto(false)
+      setLeadConcluindo(null)
+      await buscarTarefas()
+    } catch (err: any) {
+      alert(err.message || 'Erro ao concluir lead.')
+    } finally {
+      setSalvandoConclusao(false)
     }
-
-    await buscarTarefas()
   }
 
   function remarcarTarefa(lead: Lead) {
@@ -685,7 +712,7 @@ export default function TarefasManager() {
 
                             <button
                               type="button"
-                              onClick={() => concluirTarefa(lead.id)}
+                              onClick={() => abrirModalConcluir(lead)}
                               className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-bold text-green-700 hover:bg-green-100"
                             >
                               Concluir tarefa
@@ -701,6 +728,98 @@ export default function TarefasManager() {
           </div>
         )}
       </section>
+
+      {modalConcluirAberto && leadConcluindo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-900">
+              Concluir lead
+            </h3>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Lead:{' '}
+              <span className="font-bold text-slate-900">
+                {leadConcluindo.nome_cliente}
+                {leadConcluindo.nome_empresa ? ` — ${leadConcluindo.nome_empresa}` : ''}
+              </span>
+            </p>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Resultado da negociação
+              </label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { valor: 'FECHADO', label: 'Fechado', desc: 'Venda realizada com sucesso', cor: 'green' },
+                  { valor: 'CANCELADO', label: 'Perdido', desc: 'Lead perdido / cancelado', cor: 'red' },
+                  { valor: 'DESQUALIFICADO', label: 'Desqualificado', desc: 'Lead não se enquadra no perfil', cor: 'slate' },
+                ].map((op) => (
+                  <label
+                    key={op.valor}
+                    className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition ${
+                      statusConclusao === op.valor
+                        ? op.cor === 'green'
+                          ? 'border-green-400 bg-green-50'
+                          : op.cor === 'red'
+                          ? 'border-red-400 bg-red-50'
+                          : 'border-slate-400 bg-slate-100'
+                        : 'border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="statusConclusao"
+                      value={op.valor}
+                      checked={statusConclusao === op.valor}
+                      onChange={() => setStatusConclusao(op.valor)}
+                      className="accent-blue-600"
+                    />
+                    <div>
+                      <p className="text-sm font-bold text-slate-900">{op.label}</p>
+                      <p className="text-xs text-slate-500">{op.desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Data de encerramento
+              </label>
+              <input
+                type="date"
+                value={dataConclusao}
+                readOnly
+                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-slate-600 outline-none"
+              />
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalConcluirAberto(false)
+                  setLeadConcluindo(null)
+                }}
+                disabled={salvandoConclusao}
+                className="rounded-xl border border-slate-300 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={confirmarConclusao}
+                disabled={salvandoConclusao}
+                className="rounded-xl bg-[linear-gradient(90deg,#08142d_0%,#1e4ca1_100%)] px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:opacity-95 disabled:opacity-60"
+              >
+                {salvandoConclusao ? 'Salvando...' : 'Confirmar conclusão'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {modalRemarcarAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
