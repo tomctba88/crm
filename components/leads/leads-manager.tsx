@@ -269,6 +269,7 @@ const [vendedores, setVendedores] = useState<CadastroOption[]>([])
 const [tiposContato, setTiposContato] = useState<CadastroOption[]>([])
 const [statusLead, setStatusLead] = useState<CadastroOption[]>([])
 const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
+const [erros, setErros] = useState<Record<string, string>>({})
 
   const leadIdFromUrl = useMemo(() => {
     const value = searchParams.get('lead')
@@ -338,6 +339,9 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
     campo: K,
     valor: FormDataType[K]
   ) {
+    if (erros[campo as string]) {
+      setErros((prev) => { const next = { ...prev }; delete next[campo as string]; return next })
+    }
     setForm((prev) => {
       const novoForm = {
         ...prev,
@@ -414,11 +418,20 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
       return
     }
 
-    if (!form.nome_cliente.trim()) {
-      alert('Informe o nome do cliente.')
+    const novosErros: Record<string, string> = {}
+    if (!form.nome_cliente.trim()) novosErros.nome_cliente = 'Campo obrigatório'
+    if (!form.tipo_contato) novosErros.tipo_contato = 'Campo obrigatório'
+    if (!form.vendedor) novosErros.vendedor = 'Campo obrigatório'
+    if (!form.uf) novosErros.uf = 'Campo obrigatório'
+    if (!form.status) novosErros.status = 'Campo obrigatório'
+
+    if (Object.keys(novosErros).length > 0) {
+      setErros(novosErros)
       setLoading(false)
       return
     }
+
+    setErros({})
 
 const payload = {
   user_id: user.id,
@@ -756,12 +769,16 @@ useEffect(() => {
 
           <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">
-              Tipo de contato
+              Tipo de contato <span className="text-red-500">*</span>
             </label>
             <select
               value={form.tipo_contato}
               onChange={(e) => atualizarCampo('tipo_contato', e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className={`h-12 w-full rounded-xl border px-4 outline-none focus:ring-4 ${
+                erros.tipo_contato
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                  : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'
+              }`}
             >
               <option value="">Selecione</option>
               {tiposContato.map((item) => (
@@ -770,16 +787,23 @@ useEffect(() => {
                 </option>
               ))}
             </select>
+            {erros.tipo_contato && (
+              <p className="mt-1 text-xs font-medium text-red-600">{erros.tipo_contato}</p>
+            )}
           </div>
 
           <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">
-              Vendedor
+              Vendedor <span className="text-red-500">*</span>
             </label>
             <select
               value={form.vendedor}
               onChange={(e) => atualizarCampo('vendedor', e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className={`h-12 w-full rounded-xl border px-4 outline-none focus:ring-4 ${
+                erros.vendedor
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                  : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'
+              }`}
             >
               <option value="">Selecione</option>
               {vendedores.map((item) => (
@@ -788,6 +812,9 @@ useEffect(() => {
                 </option>
               ))}
             </select>
+            {erros.vendedor && (
+              <p className="mt-1 text-xs font-medium text-red-600">{erros.vendedor}</p>
+            )}
           </div>
 
           <div>
@@ -833,20 +860,27 @@ useEffect(() => {
 
             <div>
               <label className="mb-2 block text-sm font-bold text-slate-700">
-                UF
+                UF <span className="text-red-500">*</span>
               </label>
               <select
                 value={form.uf}
                 onChange={(e) => atualizarCampo('uf', e.target.value)}
-                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                className={`h-12 w-full rounded-xl border px-4 outline-none focus:ring-4 ${
+                  erros.uf
+                    ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                    : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'
+                }`}
               >
                 <option value="">Selecione</option>
                 {ufOptions.map((uf) => (
                   <option key={uf} value={uf}>
                     {uf}
-                </option>
-              ))}
-            </select>
+                  </option>
+                ))}
+              </select>
+              {erros.uf && (
+                <p className="mt-1 text-xs font-medium text-red-600">{erros.uf}</p>
+              )}
           </div>
 
           <div className="xl:col-span-2">
@@ -897,12 +931,16 @@ useEffect(() => {
 
           <div>
             <label className="mb-2 block text-sm font-bold text-slate-700">
-              Status
+              Status <span className="text-red-500">*</span>
             </label>
             <select
               value={form.status}
               onChange={(e) => atualizarCampo('status', e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className={`h-12 w-full rounded-xl border px-4 outline-none focus:ring-4 ${
+                erros.status
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                  : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'
+              }`}
             >
               <option value="">Selecione</option>
 
@@ -919,6 +957,9 @@ useEffect(() => {
   </option>
 ))}
             </select>
+            {erros.status && (
+              <p className="mt-1 text-xs font-medium text-red-600">{erros.status}</p>
+            )}
           </div>
 
           <div>
