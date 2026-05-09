@@ -650,9 +650,9 @@ function MetricCard({
       : 'border-slate-200 bg-white'
 
   return (
-    <div className={`min-h-[140px] rounded-[28px] border p-6 shadow-sm ${accentClasses}`}>
+    <div className={`min-h-[140px] overflow-hidden rounded-[28px] border p-6 shadow-sm ${accentClasses}`}>
       <p className="text-sm font-medium text-slate-500">{title}</p>
-      <h3 className="mt-3 whitespace-nowrap text-3xl font-black leading-tight text-slate-900 xl:text-4xl">
+      <h3 className="mt-3 text-2xl font-black leading-tight text-slate-900 xl:text-3xl">
         {value}
       </h3>
       <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
