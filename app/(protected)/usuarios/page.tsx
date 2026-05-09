@@ -40,6 +40,8 @@ const [cargoEdit, setCargoEdit] = useState('')
 const [nivelEdit, setNivelEdit] = useState<NivelAcesso>('operacional')
 const [ativoEdit, setAtivoEdit] = useState(true)
 
+const [modulosUsuarioEdit, setModulosUsuarioEdit] = useState<string[]>([])
+
 const [modalSenhaAberto, setModalSenhaAberto] = useState(false)
 const [usuarioSenha, setUsuarioSenha] = useState<UsuarioSistema | null>(null)
 const [novaSenhaEdit, setNovaSenhaEdit] = useState('')
@@ -135,7 +137,7 @@ function toggleNovoModulo(slug: string) {
     return 'Consulta'
   }
 
-  function abrirModalEdicao(usuario: UsuarioSistema) {
+  async function abrirModalEdicao(usuario: UsuarioSistema) {
     setUsuarioEditando(usuario)
     setNomeEdit(usuario.nome || '')
     setEmailEdit(usuario.email || '')
@@ -143,6 +145,19 @@ function toggleNovoModulo(slug: string) {
     setCargoEdit(usuario.cargo || '')
     setNivelEdit(usuario.nivel_acesso)
     setAtivoEdit(usuario.ativo)
+
+    // Carrega os módulos que o usuário já tem acesso
+    const { data: umData } = await supabase
+      .from('usuarios_modulos')
+      .select('modulos(slug)')
+      .eq('usuario_id', usuario.id)
+      .eq('pode_acessar', true)
+
+    const slugs = (umData || [])
+      .map((row: any) => (Array.isArray(row.modulos) ? row.modulos[0]?.slug : row.modulos?.slug))
+      .filter(Boolean) as string[]
+
+    setModulosUsuarioEdit(slugs)
     setModalAberto(true)
   }
 
@@ -155,6 +170,7 @@ function toggleNovoModulo(slug: string) {
   setCargoEdit('')
   setNivelEdit('operacional')
   setAtivoEdit(true)
+  setModulosUsuarioEdit([])
 }
 
 function abrirModalSenha(usuario: UsuarioSistema) {
@@ -203,6 +219,17 @@ function exigirAdministrador() {
       setSalvandoId(null)
       return
     }
+
+    // Atualiza módulos e sincroniza role_geral no portal
+    await fetch('/api/usuarios/atualizar-modulos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: usuarioEditando.id,
+        modulos: modulosUsuarioEdit,
+        nivel_acesso: nivelEdit,
+      }),
+    })
 
     setUsuarios((prev) =>
       prev.map((usuario) =>
@@ -607,7 +634,7 @@ async function salvarNovaSenha() {
 
       {modalAberto && usuarioEditando ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
             <h2 className="mb-4 text-xl font-black text-slate-900">
               Editar usuário
             </h2>
@@ -685,6 +712,45 @@ async function salvarNovaSenha() {
                   <option value="inativo">Inativo</option>
                 </select>
               </div>
+            </div>
+
+            {/* Módulos do portal */}
+            <div className="mt-4 md:col-span-2">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Módulos do portal
+              </label>
+              {nivelEdit === 'administrador' ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-700">
+                  Administradores têm acesso automático a todos os módulos.
+                </div>
+              ) : modulos.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                  Nenhum módulo ativo encontrado.
+                </div>
+              ) : (
+                <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+                  {modulos.map((modulo) => {
+                    const checked = modulosUsuarioEdit.includes(modulo.slug)
+                    return (
+                      <button
+                        key={modulo.id}
+                        type="button"
+                        onClick={() =>
+                          setModulosUsuarioEdit((prev) =>
+                            checked ? prev.filter((s) => s !== modulo.slug) : [...prev, modulo.slug]
+                          )
+                        }
+                        className={`flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm font-bold transition ${
+                          checked ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span>{modulo.nome}</span>
+                        <span>{checked ? '✓' : '+'}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">
