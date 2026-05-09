@@ -424,6 +424,7 @@ const [popupErroAberto, setPopupErroAberto] = useState(false)
     if (!form.tipo_contato) novosErros.tipo_contato = 'Campo obrigatório'
     if (!form.vendedor) novosErros.vendedor = 'Campo obrigatório'
     if (!form.uf) novosErros.uf = 'Campo obrigatório'
+    if (!form.produto_interesse) novosErros.produto_interesse = 'Campo obrigatório'
     if (!form.status) novosErros.status = 'Campo obrigatório'
 
     if (Object.keys(novosErros).length > 0) {
@@ -912,12 +913,16 @@ useEffect(() => {
 
           <div className="xl:col-span-2">
             <label className="mb-2 block text-sm font-bold text-slate-700">
-              Produto de interesse
+              Produto de interesse <span className="text-red-500">*</span>
             </label>
             <select
               value={form.produto_interesse}
               onChange={(e) => atualizarCampo('produto_interesse', e.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              className={`h-12 w-full rounded-xl border px-4 outline-none focus:ring-4 ${
+                erros.produto_interesse
+                  ? 'border-red-400 focus:border-red-500 focus:ring-red-100'
+                  : 'border-slate-300 focus:border-blue-500 focus:ring-blue-100'
+              }`}
             >
               <option value="">Selecione</option>
               {produtosInteresse.map((item) => (
@@ -926,6 +931,9 @@ useEffect(() => {
                 </option>
               ))}
             </select>
+            {erros.produto_interesse && (
+              <p className="mt-1 text-xs font-medium text-red-600">{erros.produto_interesse}</p>
+            )}
           </div>
 
           <div>
