@@ -69,12 +69,12 @@ export default function Sidebar({
   const podeVerRelatorios =
     podeVerRelatorioComercial || podeVerRelatorioVendedores || podeVerMarketing
 
-  const link = (href: string, label: string) => (
+  const link = (href: string, label: string, prefix?: boolean) => (
     <a
       href={href}
       onClick={onClose}
       className={`block px-4 py-2.5 rounded-lg hover:bg-white/10 transition-colors ${
-        pathname === href ? 'bg-white/15 font-semibold' : ''
+        (prefix ? pathname.startsWith(href) : pathname === href) ? 'bg-white/15 font-semibold' : ''
       }`}
     >
       {label}
@@ -124,6 +124,7 @@ export default function Sidebar({
         {podeVerPipeline && link('/pipeline', 'Pipeline')}
         {podeVerPosVendas && link('/pos-vendas', 'Pós-vendas')}
         {podeVerTarefas && link('/tarefas', 'Tarefas')}
+        {link('/fretes', 'Fretes', true)}
 
         {podeVerRelatorios && (
           <div className="space-y-0.5">
