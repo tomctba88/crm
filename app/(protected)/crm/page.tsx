@@ -21,6 +21,20 @@ type ItemGrafico = {
   valor?: number
 }
 
+type Atividade = {
+  id: string
+  modulo: string
+  descricao: string
+  usuario: string
+  user_id: string | null
+  timestamp: string
+}
+
+type UsuarioFiltro = {
+  id: string
+  nome: string
+}
+
 function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', {
     style: 'currency',
@@ -92,7 +106,6 @@ export default function DashboardPage() {
   const [valorFechado, setValorFechado] = useState(0)
   const [origens, setOrigens] = useState<{ nome: string; total: number }[]>([])
   const [vendedores, setVendedores] = useState<{ nome: string; total: number }[]>([])
-  const [movimentadosRecentes, setMovimentadosRecentes] = useState<Lead[]>([])
   const [tarefasAtrasadas, setTarefasAtrasadas] = useState(0)
   const [tarefasHoje, setTarefasHoje] = useState(0)
   const [tarefasAmanha, setTarefasAmanha] = useState(0)
@@ -103,9 +116,61 @@ export default function DashboardPage() {
   const [leadsPorMes, setLeadsPorMes] = useState<ItemGrafico[]>([])
   const [vendedoresFechamento, setVendedoresFechamento] = useState<ItemGrafico[]>([])
 
+  const [atividades, setAtividades] = useState<Atividade[]>([])
+  const [loadingAtividades, setLoadingAtividades] = useState(true)
+  const [usuariosFiltro, setUsuariosFiltro] = useState<UsuarioFiltro[]>([])
+  const [filtroModulo, setFiltroModulo] = useState('')
+  const [filtroUsuario, setFiltroUsuario] = useState('')
+  const [filtroDataInicio, setFiltroDataInicio] = useState('')
+  const [filtroDataFim, setFiltroDataFim] = useState('')
+
   useEffect(() => {
     buscarDados()
+    buscarAtividades()
   }, [])
+
+  async function buscarAtividades(params?: {
+    modulo?: string
+    userId?: string
+    dataInicio?: string
+    dataFim?: string
+  }) {
+    setLoadingAtividades(true)
+    try {
+      const qs = new URLSearchParams()
+      if (params?.modulo) qs.set('modulo', params.modulo)
+      if (params?.userId) qs.set('userId', params.userId)
+      if (params?.dataInicio) qs.set('dataInicio', params.dataInicio)
+      if (params?.dataFim) qs.set('dataFim', params.dataFim)
+
+      const res = await fetch(`/api/dashboard/atividades?${qs.toString()}`)
+      if (!res.ok) throw new Error('Erro ao buscar atividades')
+      const json = await res.json()
+      setAtividades(json.atividades || [])
+      setUsuariosFiltro(json.usuarios || [])
+    } catch {
+      setAtividades([])
+    } finally {
+      setLoadingAtividades(false)
+    }
+  }
+
+  function aplicarFiltrosAtividades() {
+    buscarAtividades({
+      modulo: filtroModulo,
+      userId: filtroUsuario,
+      dataInicio: filtroDataInicio,
+      dataFim: filtroDataFim,
+    })
+  }
+
+  function limparFiltrosAtividades() {
+    setFiltroModulo('')
+    setFiltroUsuario('')
+    setFiltroDataInicio('')
+    setFiltroDataFim('')
+    buscarAtividades({})
+  }
 
   async function buscarDados() {
     setLoading(true)
@@ -277,21 +342,6 @@ setTarefasAmanha(
         .slice(0, 5)
     )
 
-    setMovimentadosRecentes(
-      [...leads]
-        .filter((lead) => lead.data_ultima_movimentacao)
-        .sort((a, b) => {
-          const aTime = a.data_ultima_movimentacao
-            ? new Date(a.data_ultima_movimentacao).getTime()
-            : 0
-          const bTime = b.data_ultima_movimentacao
-            ? new Date(b.data_ultima_movimentacao).getTime()
-            : 0
-          return bTime - aTime
-        })
-        .slice(0, 5)
-    )
-
     setLoading(false)
   }
 
@@ -454,50 +504,129 @@ setTarefasAmanha(
       </section>
 
       <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="mb-5">
-          <h2 className="text-2xl font-black text-slate-900">
-            Últimas movimentações do pipeline
-          </h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Leads mais recentemente movidos entre etapas.
-          </p>
+        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900">
+              Histórico de atividades
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Todas as alterações e inclusões no CRM — leads, pipeline, pós-vendas e mais.
+            </p>
+          </div>
+
+          {loadingAtividades && (
+            <span className="text-xs text-slate-400">Carregando...</span>
+          )}
         </div>
 
-        {movimentadosRecentes.length === 0 ? (
+        {/* Filtros */}
+        <div className="mb-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-5">
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">Módulo</label>
+            <select
+              value={filtroModulo}
+              onChange={(e) => setFiltroModulo(e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Todos</option>
+              <option value="Leads">Leads</option>
+              <option value="Pipeline">Pipeline</option>
+              <option value="Pós-vendas">Pós-vendas</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">Usuário</label>
+            <select
+              value={filtroUsuario}
+              onChange={(e) => setFiltroUsuario(e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+            >
+              <option value="">Todos</option>
+              {usuariosFiltro.map((u) => (
+                <option key={u.id} value={u.id}>{u.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">De</label>
+            <input
+              type="date"
+              value={filtroDataInicio}
+              onChange={(e) => setFiltroDataInicio(e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-bold text-slate-600">Até</label>
+            <input
+              type="date"
+              value={filtroDataFim}
+              onChange={(e) => setFiltroDataFim(e.target.value)}
+              className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={aplicarFiltrosAtividades}
+              className="h-10 flex-1 rounded-xl bg-[linear-gradient(90deg,#08142d_0%,#1e4ca1_100%)] px-4 text-sm font-bold text-white shadow transition hover:opacity-90"
+            >
+              Filtrar
+            </button>
+            <button
+              type="button"
+              onClick={limparFiltrosAtividades}
+              className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100"
+            >
+              Limpar
+            </button>
+          </div>
+        </div>
+
+        {/* Tabela */}
+        {atividades.length === 0 && !loadingAtividades ? (
           <div className="rounded-2xl bg-slate-50 p-8 text-center text-slate-500">
-            Nenhuma movimentação registrada ainda.
+            Nenhuma atividade encontrada.
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-600">
+              <thead className="bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-bold">Lead</th>
-                  <th className="px-4 py-3 font-bold">Status</th>
-                  <th className="px-4 py-3 font-bold">Vendedor</th>
-                  <th className="px-4 py-3 font-bold">Valor</th>
-                  <th className="px-4 py-3 font-bold">Última movimentação</th>
+                  <th className="px-4 py-3">Módulo</th>
+                  <th className="px-4 py-3">Ação</th>
+                  <th className="px-4 py-3">Usuário</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Data / Hora</th>
                 </tr>
               </thead>
               <tbody>
-                {movimentadosRecentes.map((lead) => (
-                  <tr key={lead.id} className="border-t border-slate-200">
-                    <td className="px-4 py-3 font-medium text-slate-900">
-                      {lead.nome_cliente}
-                    </td>
-                    <td className="px-4 py-3">{lead.status || '-'}</td>
-                    <td className="px-4 py-3">{lead.vendedor || '-'}</td>
+                {atividades.map((a) => (
+                  <tr key={a.id} className="border-t border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3">
-                      {formatCurrency(lead.valor_orcamento || 0)}
+                      <AtividadeTag modulo={a.modulo} />
                     </td>
-                    <td className="px-4 py-3">
-                      {formatDateTimeBR(lead.data_ultima_movimentacao)}
+                    <td className="px-4 py-3 text-slate-800">{a.descricao}</td>
+                    <td className="px-4 py-3 font-medium text-slate-700 whitespace-nowrap">
+                      {a.usuario}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
+                      {formatDateTimeBR(a.timestamp)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        )}
+
+        {atividades.length > 0 && (
+          <p className="mt-3 text-right text-xs text-slate-400">
+            {atividades.length} registro{atividades.length !== 1 ? 's' : ''} exibido{atividades.length !== 1 ? 's' : ''}
+          </p>
         )}
       </section>
     </div>
@@ -619,6 +748,22 @@ function VisualListCard({
         </div>
       )}
     </div>
+  )
+}
+
+function AtividadeTag({ modulo }: { modulo: string }) {
+  const map: Record<string, string> = {
+    'Leads': 'bg-green-100 text-green-800',
+    'Pipeline': 'bg-blue-100 text-blue-800',
+    'Pós-vendas': 'bg-purple-100 text-purple-800',
+    'Tarefas': 'bg-yellow-100 text-yellow-800',
+    'Importação': 'bg-orange-100 text-orange-800',
+  }
+  const cls = map[modulo] || 'bg-slate-100 text-slate-700'
+  return (
+    <span className={`inline-block rounded-full px-3 py-1 text-xs font-bold whitespace-nowrap ${cls}`}>
+      {modulo}
+    </span>
   )
 }
 
