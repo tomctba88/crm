@@ -124,6 +124,7 @@ export default function TarefasManager() {
   const [statusConclusao, setStatusConclusao] = useState('FECHADO')
   const [dataConclusao, setDataConclusao] = useState('')
   const [salvandoConclusao, setSalvandoConclusao] = useState(false)
+  const [observacoesConclusao, setObservacoesConclusao] = useState('')
   const urgenciaFromUrl = searchParams.get('urgencia')
 
   async function buscarTarefas() {
@@ -167,6 +168,7 @@ export default function TarefasManager() {
     setLeadConcluindo(lead)
     setStatusConclusao('FECHADO')
     setDataConclusao(hoje)
+    setObservacoesConclusao(lead.observacoes || '')
     setModalConcluirAberto(true)
   }
 
@@ -175,6 +177,15 @@ export default function TarefasManager() {
 
     setSalvandoConclusao(true)
     try {
+      if (observacoesConclusao !== (leadConcluindo.observacoes || '')) {
+        const { error: obsError } = await supabase
+          .from('leads')
+          .update({ observacoes: observacoesConclusao })
+          .eq('id', leadConcluindo.id)
+
+        if (obsError) throw new Error('Erro ao salvar observações.')
+      }
+
       const res = await fetch('/api/pipeline/mover-lead', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -191,6 +202,7 @@ export default function TarefasManager() {
 
       setModalConcluirAberto(false)
       setLeadConcluindo(null)
+      setObservacoesConclusao('')
       await buscarTarefas()
     } catch (err: any) {
       alert(err.message || 'Erro ao concluir lead.')
@@ -792,6 +804,19 @@ export default function TarefasManager() {
                 value={dataConclusao}
                 readOnly
                 className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-slate-600 outline-none"
+              />
+            </div>
+
+            <div className="mt-5">
+              <label className="mb-2 block text-sm font-bold text-slate-700">
+                Observações
+              </label>
+              <textarea
+                value={observacoesConclusao}
+                onChange={(e) => setObservacoesConclusao(e.target.value)}
+                rows={3}
+                placeholder="Adicione observações sobre o encerramento..."
+                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 resize-none"
               />
             </div>
 
