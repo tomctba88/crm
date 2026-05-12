@@ -74,9 +74,9 @@ function toDateOnlyString(date: Date) {
 function getUrgencia(dataRetorno: string | null) {
   if (!dataRetorno) {
     return {
-      label: 'Sem data',
-      order: 5,
-      classes: 'bg-slate-100 text-slate-600',
+      label: 'Hoje',
+      order: 2,
+      classes: 'bg-yellow-50 text-yellow-700',
     }
   }
 
@@ -170,9 +170,8 @@ export default function TarefasManager() {
         const { data, error } = await supabase
           .from('leads')
           .select('*')
-          .not('data_retorno', 'is', null)
           .not('status', 'in', '("CANCELADO","DESQUALIFICADO","FECHADO","PEDIDO","FORNECEDOR")')
-          .order('data_retorno', { ascending: true })
+          .order('data_retorno', { ascending: true, nullsFirst: false })
           .range(inicio, inicio + tamanhoLote - 1)
 
         if (error) throw error
