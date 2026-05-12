@@ -225,45 +225,41 @@ export default function DashboardPage() {
     )
 
     function normalizarData(value: string | null) {
-  if (!value) return null
-  return value.slice(0, 10)
-}
+      if (!value) return null
+      return value.slice(0, 10)
+    }
 
-const hoje = new Date()
-hoje.setHours(0, 0, 0, 0)
+    const STATUS_ENCERRADO = new Set(['CANCELADO', 'DESQUALIFICADO', 'FECHADO', 'PEDIDO', 'FORNECEDOR'])
+    const leadsAbertos = leads.filter((lead) => !STATUS_ENCERRADO.has(lead.status || ''))
 
-const hojeStr = toDateOnlyString(hoje)
+    const hoje = new Date()
+    hoje.setHours(0, 0, 0, 0)
 
-const amanha = new Date(hoje)
-amanha.setDate(amanha.getDate() + 1)
+    const hojeStr = toDateOnlyString(hoje)
 
-const amanhaStr = toDateOnlyString(amanha)
+    const amanha = new Date(hoje)
+    amanha.setDate(amanha.getDate() + 1)
+    const amanhaStr = toDateOnlyString(amanha)
 
-setTarefasAtrasadas(
-  leads.filter((lead) => {
-    const data = normalizarData(lead.data_retorno)
-    return data && data < hojeStr
-  }).length
-)
+    setTarefasAtrasadas(
+      leadsAbertos.filter((lead) => {
+        const data = normalizarData(lead.data_retorno)
+        return data !== null && data < hojeStr
+      }).length
+    )
 
-setTarefasHoje(
-  leads.filter((lead) => {
-    const data = normalizarData(lead.data_retorno)
-    return data === hojeStr
-  }).length
-)
-
-setTarefasAmanha(
-  leads.filter((lead) => {
-    const data = normalizarData(lead.data_retorno)
-    return data === amanhaStr
-  }).length
-)
+    setTarefasHoje(
+      leadsAbertos.filter((lead) => {
+        const data = normalizarData(lead.data_retorno)
+        return data === null || data === hojeStr
+      }).length
+    )
 
     setTarefasAmanha(
-      leads.filter(
-        (lead) => lead.data_retorno === amanhaStr
-      ).length
+      leadsAbertos.filter((lead) => {
+        const data = normalizarData(lead.data_retorno)
+        return data === amanhaStr
+      }).length
     )
 
     const origemMap = new Map<string, number>()
