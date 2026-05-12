@@ -109,6 +109,7 @@ export default function DashboardPage() {
   const [tarefasAtrasadas, setTarefasAtrasadas] = useState(0)
   const [tarefasHoje, setTarefasHoje] = useState(0)
   const [tarefasAmanha, setTarefasAmanha] = useState(0)
+  const [tarefasProximas, setTarefasProximas] = useState(0)
   const [taxaConversao, setTaxaConversao] = useState(0)
   const [ticketMedio, setTicketMedio] = useState(0)
   const [leadsComRetorno, setLeadsComRetorno] = useState(0)
@@ -230,7 +231,8 @@ export default function DashboardPage() {
     }
 
     const STATUS_ENCERRADO = new Set(['CANCELADO', 'DESQUALIFICADO', 'FECHADO', 'PEDIDO', 'FORNECEDOR'])
-    const leadsAbertos = leads.filter((lead) => !STATUS_ENCERRADO.has(lead.status || ''))
+    // Exclui leads com status null ou encerrado — igual ao comportamento do NOT IN no SQL da aba de tarefas
+    const leadsAbertos = leads.filter((lead) => lead.status && !STATUS_ENCERRADO.has(lead.status))
 
     const hoje = new Date()
     hoje.setHours(0, 0, 0, 0)
@@ -259,6 +261,13 @@ export default function DashboardPage() {
       leadsAbertos.filter((lead) => {
         const data = normalizarData(lead.data_retorno)
         return data === amanhaStr
+      }).length
+    )
+
+    setTarefasProximas(
+      leadsAbertos.filter((lead) => {
+        const data = normalizarData(lead.data_retorno)
+        return data !== null && data > amanhaStr
       }).length
     )
 
@@ -469,10 +478,12 @@ export default function DashboardPage() {
               />
             </a>
 
-            <AlertCard
-              color="green"
-              text={`${vendasFechadas} lead(s) fechados`}
-            />
+            <a href="/tarefas?urgencia=Próximo" className="block">
+              <AlertCard
+                color="green"
+                text={`${tarefasProximas} tarefa(s) próximas`}
+              />
+            </a>
           </div>
         </div>
       </section>
