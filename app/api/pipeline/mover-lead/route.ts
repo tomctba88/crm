@@ -67,20 +67,23 @@ export async function POST(req: Request) {
 
     const agoraIso = new Date().toISOString()
     const hoje = agoraIso.slice(0, 10)
+    const dataEncerramento = body.dataEncerramento
+      ? String(body.dataEncerramento).slice(0, 10)
+      : hoje
 
     const dadosExtras: Record<string, any> = {}
 
     if (novoStatus === 'FECHADO' || novoStatus === 'PEDIDO') {
-      dadosExtras.data_fechamento = hoje
+      dadosExtras.data_fechamento = dataEncerramento
     }
 
     if (novoStatus === 'CANCELADO') {
-      dadosExtras.data_cancelamento = hoje
-      dadosExtras.data_finalizacao = hoje
+      dadosExtras.data_cancelamento = dataEncerramento
+      dadosExtras.data_finalizacao = dataEncerramento
     }
 
     if (novoStatus === 'DESQUALIFICADO') {
-      dadosExtras.data_finalizacao = hoje
+      dadosExtras.data_finalizacao = dataEncerramento
     }
 
     const { data: leadAtualizado, error: updateError } = await admin

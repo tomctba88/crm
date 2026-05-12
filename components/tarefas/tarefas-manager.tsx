@@ -223,6 +223,7 @@ export default function TarefasManager() {
         body: JSON.stringify({
           leadId: leadConcluindo.id,
           novoStatus: statusConclusao,
+          dataEncerramento: dataConclusao,
         }),
       })
 
@@ -1062,8 +1063,8 @@ export default function TarefasManager() {
               <input
                 type="date"
                 value={dataConclusao}
-                readOnly
-                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-slate-600 outline-none"
+                onChange={(e) => setDataConclusao(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               />
             </div>
 
