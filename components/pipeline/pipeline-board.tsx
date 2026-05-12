@@ -21,6 +21,9 @@ type Lead = {
   data_retorno: string | null
   observacoes: string | null
   data_ultima_movimentacao: string | null
+  data_fechamento: string | null
+  data_cancelamento: string | null
+  data_finalizacao: string | null
 }
 
 type StatusItem = {
@@ -264,6 +267,20 @@ function statusParaBanco(statusVisual: string) {
   return String(statusVisual || '').trim().toUpperCase()
 }
 
+function getDataReferenciaLead(lead: Lead): string {
+  const status = normalizarStatus(lead.status)
+  if ((status === 'FECHADO' || status === 'PEDIDO') && lead.data_fechamento) {
+    return lead.data_fechamento
+  }
+  if (status === 'CANCELADO' && lead.data_cancelamento) {
+    return lead.data_cancelamento
+  }
+  if (status === 'DESQUALIFICADO' && lead.data_finalizacao) {
+    return lead.data_finalizacao
+  }
+  return lead.data_retorno || ''
+}
+
   const vendedores = Array.from(
   new Set(leads.map((lead) => lead.vendedor).filter(Boolean))
 ) as string[]
@@ -272,7 +289,7 @@ const leadsFiltrados = leads.filter((lead) => {
   const termo = busca.toLowerCase()
   const valor = Number(lead.valor_orcamento || 0)
 
-  const dataBase = lead.data_retorno || ''
+  const dataBase = getDataReferenciaLead(lead)
   const mesAnoLead = dataBase
     ? String(dataBase).slice(0, 7)
     : ''
@@ -322,7 +339,7 @@ const anosDisponiveis = Array.from(
   new Set(
     leads
       .map((lead) => {
-        const dataBase = lead.data_retorno
+        const dataBase = getDataReferenciaLead(lead)
         if (!dataBase) return null
         return new Date(dataBase).getFullYear()
       })
