@@ -49,6 +49,9 @@ function getMonthKey(dateString: string | null | undefined) {
 }
 
 function getLeadMonthKey(lead: Lead) {
+  if (isFechado(lead.status) && lead.data_fechamento) {
+    return getMonthKey(lead.data_fechamento)
+  }
   return getMonthKey(lead.data_contato) || getMonthKey(lead.created_at)
 }
 
