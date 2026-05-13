@@ -340,6 +340,8 @@ const [graficoMensal, setGraficoMensal] = useState<
     pedidos: number
   }[]
 >([])
+const [rankingProduto, setRankingProduto] = useState<'txConversao' | 'leads' | 'orcamentos' | 'pedidos' | 'valorPedidos' | 'valorOrcamento' | 'txQualificacao'>('txConversao')
+const [produtosExpandido, setProdutosExpandido] = useState(false)
 
   useEffect(() => {
     buscarDados()
@@ -607,75 +609,111 @@ setLoading(false)
 </div>
 
             <div className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-2xl font-black text-slate-900">
-                  Conversão por Produto
-                </h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  Relatório consolidado por grupo de produto, conforme as origens selecionadas.
-                </p>
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900">Conversão por Produto</h3>
+                  <p className="mt-1 text-sm text-slate-500">Relatório consolidado por grupo de produto, conforme as origens selecionadas.</p>
+                </div>
+                <select
+                  value={rankingProduto}
+                  onChange={(e) => setRankingProduto(e.target.value as typeof rankingProduto)}
+                  className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500"
+                >
+                  <option value="txConversao">Maior conversão</option>
+                  <option value="leads">Mais leads</option>
+                  <option value="orcamentos">Mais orçamentos</option>
+                  <option value="pedidos">Mais pedidos</option>
+                  <option value="valorPedidos">Maior valor de pedidos</option>
+                  <option value="valorOrcamento">Maior valor orçado</option>
+                  <option value="txQualificacao">Maior qualificação</option>
+                </select>
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3 font-bold">Produto</th>
-                      <th className="px-4 py-3 font-bold">Leads</th>
-                      <th className="px-4 py-3 font-bold">Orçamentos</th>
-                      <th className="px-4 py-3 font-bold">Pedidos</th>
-                      <th className="px-4 py-3 font-bold">Tx. Qualificação</th>
-                      <th className="px-4 py-3 font-bold">Tx. Conversão</th>
-                      <th className="px-4 py-3 font-bold">Valor Orçamento</th>
-                      <th className="px-4 py-3 font-bold">Valor Pedidos</th>
-                      <th className="px-4 py-3 font-bold">Orç. em Aberto</th>
-                      <th className="px-4 py-3 font-bold">Valor em Aberto</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {dados.conversaoProduto.map((item) => (
-                      <tr key={item.produto} className="border-t border-slate-200">
-                        <td className="px-4 py-3 font-bold text-slate-900">{item.produto}</td>
-                        <td className="px-4 py-3">{item.leads}</td>
-                        <td className="px-4 py-3">{item.orcamentos}</td>
-                        <td className="px-4 py-3">{item.pedidos}</td>
-                        <td className="px-4 py-3">{item.txQualificacao.toFixed(2)}%</td>
-                        <td className="px-4 py-3">{item.txConversao.toFixed(2)}%</td>
-                        <td className="px-4 py-3">{formatCurrency(item.valorOrcamento)}</td>
-                        <td className="px-4 py-3">{formatCurrency(item.valorPedidos)}</td>
-                        <td className="px-4 py-3">{item.orcamentosEmAberto}</td>
-                        <td className="px-4 py-3">{formatCurrency(item.valorEmAberto)}</td>
-                      </tr>
-                    ))}
+              {(() => {
+                const ordenado = [...dados.conversaoProduto].sort((a, b) => b[rankingProduto] - a[rankingProduto])
+                const exibidos = produtosExpandido ? ordenado : ordenado.slice(0, 5)
 
-                    <tr className="border-t border-slate-200 bg-yellow-50">
-                      <td className="px-4 py-3 font-bold text-slate-900">{dados.conversaoProdutoNaoClassificados.produto}</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.leads}</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.orcamentos}</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.pedidos}</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.txQualificacao.toFixed(2)}%</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.txConversao.toFixed(2)}%</td>
-                      <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorOrcamento)}</td>
-                      <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorPedidos)}</td>
-                      <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.orcamentosEmAberto}</td>
-                      <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorEmAberto)}</td>
-                    </tr>
+                return (
+                  <>
+                    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-slate-600">
+                          <tr>
+                            <th className="px-4 py-3 font-bold">#</th>
+                            <th className="px-4 py-3 font-bold">Produto</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'leads' ? 'text-blue-700' : ''}`}>Leads</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'orcamentos' ? 'text-blue-700' : ''}`}>Orçamentos</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'pedidos' ? 'text-blue-700' : ''}`}>Pedidos</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'txQualificacao' ? 'text-blue-700' : ''}`}>Tx. Qualif.</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'txConversao' ? 'text-blue-700' : ''}`}>Tx. Conv.</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'valorOrcamento' ? 'text-blue-700' : ''}`}>Vlr. Orçamento</th>
+                            <th className={`px-4 py-3 font-bold ${rankingProduto === 'valorPedidos' ? 'text-blue-700' : ''}`}>Vlr. Pedidos</th>
+                            <th className="px-4 py-3 font-bold">Orç. Aberto</th>
+                            <th className="px-4 py-3 font-bold">Vlr. Aberto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {exibidos.map((item, i) => (
+                            <tr key={item.produto} className={`border-t border-slate-200 hover:bg-slate-50 ${i === 0 ? 'bg-amber-50/40' : ''}`}>
+                              <td className="px-4 py-3 text-xs font-bold text-slate-400">{i + 1}º</td>
+                              <td className="px-4 py-3 font-bold text-slate-900">{item.produto}</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'leads' ? 'font-black text-blue-700' : ''}`}>{item.leads}</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'orcamentos' ? 'font-black text-blue-700' : ''}`}>{item.orcamentos}</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'pedidos' ? 'font-black text-blue-700' : ''}`}>{item.pedidos}</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'txQualificacao' ? 'font-black text-blue-700' : ''}`}>{item.txQualificacao.toFixed(2)}%</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'txConversao' ? 'font-black text-blue-700' : ''}`}>{item.txConversao.toFixed(2)}%</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'valorOrcamento' ? 'font-black text-blue-700' : ''}`}>{formatCurrency(item.valorOrcamento)}</td>
+                              <td className={`px-4 py-3 ${rankingProduto === 'valorPedidos' ? 'font-black text-blue-700' : ''}`}>{formatCurrency(item.valorPedidos)}</td>
+                              <td className="px-4 py-3">{item.orcamentosEmAberto}</td>
+                              <td className="px-4 py-3">{formatCurrency(item.valorEmAberto)}</td>
+                            </tr>
+                          ))}
 
-                    <tr className="border-t-2 border-slate-300 bg-slate-50">
-                      <td className="px-4 py-3 font-black text-slate-900">RESULTADO</td>
-                      <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.leads}</td>
-                      <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.orcamentos}</td>
-                      <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.pedidos}</td>
-                      <td className="px-4 py-3">-</td>
-                      <td className="px-4 py-3">-</td>
-                      <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorOrcamento)}</td>
-                      <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorPedidos)}</td>
-                      <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.orcamentosEmAberto}</td>
-                      <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorEmAberto)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                          <tr className="border-t border-slate-200 bg-yellow-50">
+                            <td className="px-4 py-3 text-xs text-slate-400">—</td>
+                            <td className="px-4 py-3 font-bold text-slate-900">{dados.conversaoProdutoNaoClassificados.produto}</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.leads}</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.orcamentos}</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.pedidos}</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.txQualificacao.toFixed(2)}%</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.txConversao.toFixed(2)}%</td>
+                            <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorOrcamento)}</td>
+                            <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorPedidos)}</td>
+                            <td className="px-4 py-3">{dados.conversaoProdutoNaoClassificados.orcamentosEmAberto}</td>
+                            <td className="px-4 py-3">{formatCurrency(dados.conversaoProdutoNaoClassificados.valorEmAberto)}</td>
+                          </tr>
+
+                          <tr className="border-t-2 border-slate-300 bg-slate-50">
+                            <td className="px-4 py-3" />
+                            <td className="px-4 py-3 font-black text-slate-900">RESULTADO</td>
+                            <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.leads}</td>
+                            <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.orcamentos}</td>
+                            <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.pedidos}</td>
+                            <td className="px-4 py-3">-</td>
+                            <td className="px-4 py-3">-</td>
+                            <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorOrcamento)}</td>
+                            <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorPedidos)}</td>
+                            <td className="px-4 py-3 font-bold">{dados.conversaoProdutoResultado.orcamentosEmAberto}</td>
+                            <td className="px-4 py-3 font-bold">{formatCurrency(dados.conversaoProdutoResultado.valorEmAberto)}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {dados.conversaoProduto.length > 5 && (
+                      <button
+                        type="button"
+                        onClick={() => setProdutosExpandido((v) => !v)}
+                        className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100"
+                      >
+                        {produtosExpandido
+                          ? 'Mostrar menos'
+                          : `Ver todos os ${dados.conversaoProduto.length} produtos`}
+                      </button>
+                    )}
+                  </>
+                )
+              })()}
             </div>
 
             <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
