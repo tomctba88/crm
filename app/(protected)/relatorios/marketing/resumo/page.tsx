@@ -297,6 +297,8 @@ export default function MarketingResumoPage() {
   const [dados, setDados] = useState<DadosMarketing | null>(null)
   const [anoFiltro, setAnoFiltro] = useState(hoje.getFullYear())
   const [mesFiltro, setMesFiltro] = useState(0)
+  const [rankingProduto, setRankingProduto] = useState<'txConversao' | 'leads' | 'orcados' | 'fechados' | 'faturamento' | 'ticketMedio'>('txConversao')
+  const [produtosExpandido, setProdutosExpandido] = useState(false)
 
   const anosDisponiveis = useMemo(() => {
     const a = hoje.getFullYear()
@@ -576,44 +578,85 @@ export default function MarketingResumoPage() {
 
       {/* TABELA COMPLETA POR PRODUTO */}
       <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 text-xl font-black text-slate-900">Tabela completa por produto</h2>
-        <div className="overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-[900px] w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-bold">Produto</th>
-                <th className="px-4 py-3 text-right font-bold">Leads</th>
-                <th className="px-4 py-3 text-right font-bold">Orçados</th>
-                <th className="px-4 py-3 text-right font-bold">Tx. orç.</th>
-                <th className="px-4 py-3 text-right font-bold">Fechados</th>
-                <th className="px-4 py-3 text-right font-bold">Tx. conv.</th>
-                <th className="px-4 py-3 text-right font-bold">Ticket médio</th>
-                <th className="px-4 py-3 text-right font-bold">Faturamento</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dados.produtos.map((p) => {
-                const corConv =
-                  p.txConversao >= 40 ? 'text-emerald-700 font-black'
-                  : p.txConversao >= 15 ? 'text-slate-900 font-bold'
-                  : p.txConversao > 0 ? 'text-amber-700 font-bold'
-                  : 'text-red-500 font-bold'
-                return (
-                  <tr key={p.produto} className="border-t border-slate-100 hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-800">{p.produto}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{p.leads}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{p.orcados}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{formatPct(p.txOrcamento)}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{p.fechados}</td>
-                    <td className={`px-4 py-3 text-right ${corConv}`}>{formatPct(p.txConversao)}</td>
-                    <td className="px-4 py-3 text-right text-slate-700">{p.fechados > 0 ? formatCurrency(p.ticketMedio) : '—'}</td>
-                    <td className="px-4 py-3 text-right font-black text-slate-900">{p.faturamento > 0 ? formatCurrency(p.faturamento) : 'R$ 0'}</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-xl font-black text-slate-900">Conversão por produto</h2>
+          <select
+            value={rankingProduto}
+            onChange={(e) => setRankingProduto(e.target.value as typeof rankingProduto)}
+            className="h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-500"
+          >
+            <option value="txConversao">Maior conversão</option>
+            <option value="leads">Mais leads</option>
+            <option value="orcados">Mais orçamentos</option>
+            <option value="fechados">Mais pedidos</option>
+            <option value="faturamento">Maior faturamento</option>
+            <option value="ticketMedio">Maior ticket médio</option>
+          </select>
         </div>
+
+        {(() => {
+          const ordenado = [...dados.produtos].sort((a, b) => b[rankingProduto] - a[rankingProduto])
+          const exibidos = produtosExpandido ? ordenado : ordenado.slice(0, 5)
+
+          return (
+            <>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <table className="min-w-[900px] w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-bold">#</th>
+                      <th className="px-4 py-3 font-bold">Produto</th>
+                      <th className="px-4 py-3 text-right font-bold">Leads</th>
+                      <th className="px-4 py-3 text-right font-bold">Orçados</th>
+                      <th className="px-4 py-3 text-right font-bold">Tx. orç.</th>
+                      <th className="px-4 py-3 text-right font-bold">Pedidos</th>
+                      <th className="px-4 py-3 text-right font-bold">Tx. conv.</th>
+                      <th className="px-4 py-3 text-right font-bold">Ticket médio</th>
+                      <th className="px-4 py-3 text-right font-bold">Faturamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exibidos.map((p, i) => {
+                      const corConv =
+                        p.txConversao >= 40 ? 'text-emerald-700 font-black'
+                        : p.txConversao >= 15 ? 'text-slate-900 font-bold'
+                        : p.txConversao > 0 ? 'text-amber-700 font-bold'
+                        : 'text-red-500 font-bold'
+                      const destaque = rankingProduto !== 'txConversao'
+                        ? 'bg-blue-50 font-black text-blue-700'
+                        : corConv
+                      return (
+                        <tr key={p.produto} className={`border-t border-slate-100 hover:bg-slate-50 ${i === 0 ? 'bg-amber-50/40' : ''}`}>
+                          <td className="px-4 py-3 text-xs font-bold text-slate-400">{i + 1}º</td>
+                          <td className="px-4 py-3 font-medium text-slate-800">{p.produto}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'leads' ? destaque : 'text-slate-600'}`}>{p.leads}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'orcados' ? destaque : 'text-slate-600'}`}>{p.orcados}</td>
+                          <td className="px-4 py-3 text-right text-slate-600">{formatPct(p.txOrcamento)}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'fechados' ? destaque : 'text-slate-600'}`}>{p.fechados}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'txConversao' ? corConv : 'text-slate-600'}`}>{formatPct(p.txConversao)}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'ticketMedio' ? destaque : 'text-slate-700'}`}>{p.fechados > 0 ? formatCurrency(p.ticketMedio) : '—'}</td>
+                          <td className={`px-4 py-3 text-right ${rankingProduto === 'faturamento' ? destaque : 'font-black text-slate-900'}`}>{p.faturamento > 0 ? formatCurrency(p.faturamento) : 'R$ 0'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {dados.produtos.length > 5 && (
+                <button
+                  type="button"
+                  onClick={() => setProdutosExpandido((v) => !v)}
+                  className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-slate-100"
+                >
+                  {produtosExpandido
+                    ? 'Mostrar menos'
+                    : `Ver todos os ${dados.produtos.length} produtos`}
+                </button>
+              )}
+            </>
+          )
+        })()}
       </section>
 
       {/* PRODUTOS POR VENDEDOR */}
