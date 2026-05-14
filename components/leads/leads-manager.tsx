@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/browser-client'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 type Lead = {
   id: number
@@ -262,6 +264,7 @@ const [filtroMes, setFiltroMes] = useState('Todos')
 const [periodoInicial, setPeriodoInicial] = useState('')
 const [periodoFinal, setPeriodoFinal] = useState('')
 const [selecionados, setSelecionados] = useState<number[]>([])
+const [exportDropdownAberto, setExportDropdownAberto] = useState(false)
 const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
 const [leadAutoOpenDone, setLeadAutoOpenDone] = useState(false)
 
@@ -600,6 +603,56 @@ async function excluirSelecionados() {
 
   setLoading(false)
 }
+
+  function exportarLeads(formato: 'xlsx' | 'xls' | 'csv') {
+    const leadsSelecionados = leadsFiltrados.filter((lead) =>
+      selecionados.includes(lead.id)
+    )
+
+    const dados = leadsSelecionados.map((lead) => ({
+      ID: lead.id,
+      'Data Contato': lead.data_contato ?? '',
+      'Tipo Contato': lead.tipo_contato ?? '',
+      Vendedor: lead.vendedor ?? '',
+      'Nome Cliente': lead.nome_cliente,
+      'Nome Empresa': lead.nome_empresa ?? '',
+      Telefone: lead.telefone ?? '',
+      UF: lead.uf ?? '',
+      'Produto Interesse': lead.produto_interesse ?? '',
+      'Valor Orçamento': lead.valor_orcamento ?? '',
+      'Valor Frete': lead.valor_frete ?? '',
+      Status: lead.status ?? '',
+      'Data Retorno': lead.data_retorno ?? '',
+      'Data Fechamento': lead.data_fechamento ?? '',
+      'Data Cancelamento': lead.data_cancelamento ?? '',
+      'Data Finalização': lead.data_finalizacao ?? '',
+      Observações: lead.observacoes ?? '',
+    }))
+
+    const ws = XLSX.utils.json_to_sheet(dados)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Leads')
+
+    const dataHoje = new Date().toISOString().slice(0, 10)
+    const nomeArquivo = `leads_${dataHoje}`
+
+    if (formato === 'csv') {
+      const csv = XLSX.utils.sheet_to_csv(ws)
+      const blob = new Blob(['﻿' + csv], {
+        type: 'text/csv;charset=utf-8;',
+      })
+      saveAs(blob, `${nomeArquivo}.csv`)
+    } else {
+      const wbout = XLSX.write(wb, {
+        bookType: formato,
+        type: 'array',
+      })
+      const blob = new Blob([wbout], { type: 'application/octet-stream' })
+      saveAs(blob, `${nomeArquivo}.${formato}`)
+    }
+
+    setExportDropdownAberto(false)
+  }
 
   useEffect(() => {
     if (!leadIdFromUrl) return
@@ -1160,6 +1213,30 @@ useEffect(() => {
             >
               Excluir selecionados
             </button>
+
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setExportDropdownAberto((prev) => !prev)}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700"
+              >
+                Exportar relatório ▾
+              </button>
+              {exportDropdownAberto && (
+                <div className="absolute left-0 top-full z-50 mt-1 w-40 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                  {(['xlsx', 'xls', 'csv'] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      onClick={() => exportarLeads(fmt)}
+                      className="w-full px-4 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-700"
+                    >
+                      .{fmt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
             <button
               type="button"
