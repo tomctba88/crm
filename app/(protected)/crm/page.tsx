@@ -334,7 +334,7 @@ export default function DashboardPage() {
     setLeadsPorMes(
       Array.from(mesMap.entries())
         .map(([nome, total]) => ({ nome, total }))
-        .slice(-6)
+        .sort((a, b) => b.total - a.total)
     )
 
     setVendedoresFechamento(
