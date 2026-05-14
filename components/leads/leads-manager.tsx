@@ -155,6 +155,19 @@ function parseDateSafe(value: string | null) {
 }
 
 function getLeadBaseDate(lead: Lead) {
+  if (lead.status === 'FECHADO') {
+    return parseDateSafe(
+      lead.data_fechamento || lead.data_contato || lead.created_at
+    )
+  }
+  if (lead.status === 'PERDIDO' || lead.status === 'DESQUALIFICADO') {
+    return parseDateSafe(
+      lead.data_cancelamento ||
+        lead.data_finalizacao ||
+        lead.data_contato ||
+        lead.created_at
+    )
+  }
   return parseDateSafe(lead.data_contato || lead.created_at)
 }
 
@@ -735,6 +748,14 @@ const mesesDisponiveis = [
     bateMes &&
     batePeriodo
   )
+})
+.sort((a, b) => {
+  const dateA = getLeadBaseDate(a)
+  const dateB = getLeadBaseDate(b)
+  if (!dateA && !dateB) return 0
+  if (!dateA) return 1
+  if (!dateB) return -1
+  return dateB.getTime() - dateA.getTime()
 })
 
   const mapaCoresStatus = new Map(statusLead.map((item) => [item.nome, item.cor || null]))
