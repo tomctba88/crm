@@ -493,18 +493,12 @@ const desqualificadosPeriodo = leadsData.filter((lead) => {
     )
 
     const totalOrcamentos = orcamentos.reduce(
-      (acc, lead) =>
-        acc +
-        parseMoney(lead.valor_orcamento) +
-        parseMoney(lead.valor_frete),
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
 
     const totalPedidos = pedidos.reduce(
-      (acc, lead) =>
-        acc +
-        parseMoney(lead.valor_orcamento) +
-        parseMoney(lead.valor_frete),
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
 
@@ -559,18 +553,12 @@ const taxaDesqualificado =
     })
 
     const valorVendasNovas = vendasNovas.reduce(
-      (acc, lead) =>
-        acc +
-        parseMoney(lead.valor_orcamento) +
-        parseMoney(lead.valor_frete),
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
 
     const valorVendasPostergadas = vendasPostergadas.reduce(
-      (acc, lead) =>
-        acc +
-        parseMoney(lead.valor_orcamento) +
-        parseMoney(lead.valor_frete),
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
 
@@ -579,7 +567,7 @@ const taxaDesqualificado =
       (lead) => !TIPOS_REVENDA.has(normalizeText(lead.tipo_contato))
     )
     const valorSemRevenda = pedidosSemRevenda.reduce(
-      (acc, lead) => acc + parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete),
+      (acc, lead) => acc + parseMoney(lead.valor_orcamento),
       0
     )
     const ticketSemRevenda = pedidosSemRevenda.length > 0 ? valorSemRevenda / pedidosSemRevenda.length : 0
@@ -669,10 +657,7 @@ taxaDesqualificado,
           )
         })
         .reduce(
-          (acc, lead) =>
-            acc +
-            parseMoney(lead.valor_orcamento) +
-            parseMoney(lead.valor_frete),
+          (acc, lead) => acc + parseMoney(lead.valor_orcamento),
           0
         )
 
@@ -760,18 +745,12 @@ const valorPostergado = fechadosPostergados.reduce(
 )
 
   const valorLeads = base.reduce(
-    (acc, lead) =>
-      acc +
-      parseMoney(lead.valor_orcamento) +
-      parseMoney(lead.valor_frete),
+    (acc, lead) => acc + parseMoney(lead.valor_orcamento),
     0
   )
 
   const valorFechados = fechadosBase.reduce(
-    (acc, lead) =>
-      acc +
-      parseMoney(lead.valor_orcamento) +
-      parseMoney(lead.valor_frete),
+    (acc, lead) => acc + parseMoney(lead.valor_orcamento),
     0
   )
 
@@ -868,13 +847,11 @@ leadsFiltrados.forEach((lead) => {
   }
 
   if (temValorOrcamento(lead.valor_orcamento)) {
-    atual.valorOrcado +=
-      parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+    atual.valorOrcado += parseMoney(lead.valor_orcamento)
   }
 
   if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
-    atual.valorFechado +=
-      parseMoney(lead.valor_orcamento) + parseMoney(lead.valor_frete)
+    atual.valorFechado += parseMoney(lead.valor_orcamento)
 
     atual.quantidadeVendas += 1
   }

@@ -227,7 +227,8 @@ export default function RelatorioVendedoresPage() {
       const totalVendidoGeral = leadsFiltrados
         .filter((lead) => temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status))
         .reduce(
-          (acc, lead) => acc + parseMoney(lead.valor_orcamento),
+          (acc, lead) =>
+            acc + parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete),
           0
         )
 
@@ -265,7 +266,8 @@ export default function RelatorioVendedoresPage() {
 
         if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
           atual.vendas += 1
-          atual.valorVendido += parseMoney(lead.valor_orcamento)
+          atual.valorVendido +=
+            parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete)
           atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
         }
 
