@@ -1227,6 +1227,28 @@ useEffect(() => {
               {selecionados.length} lead(s) selecionado(s)
             </span>
 
+            <span className="text-sm text-slate-600">
+              Orçamento:{' '}
+              <span className="font-bold text-slate-800">
+                {formatCurrency(
+                  leadsFiltrados
+                    .filter((l) => selecionados.includes(l.id))
+                    .reduce((acc, l) => acc + (l.valor_orcamento ?? 0), 0)
+                )}
+              </span>
+            </span>
+
+            <span className="text-sm text-slate-600">
+              Frete:{' '}
+              <span className="font-bold text-slate-800">
+                {formatCurrency(
+                  leadsFiltrados
+                    .filter((l) => selecionados.includes(l.id))
+                    .reduce((acc, l) => acc + (l.valor_frete ?? 0), 0)
+                )}
+              </span>
+            </span>
+
             <button
               type="button"
               onClick={excluirSelecionados}
