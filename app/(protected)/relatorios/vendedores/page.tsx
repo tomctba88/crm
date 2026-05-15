@@ -566,6 +566,7 @@ function VendedorDetalheCard({ item }: { item: VendedorItem }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <MiniIndicador titulo="Vendas totais" valor={formatCurrency(item.valorVendidoSemFrete)} destaque />
         <MiniIndicador titulo="Valor vendido" valor={formatCurrency(item.valorVendido)} destaque />
         <MiniIndicador titulo="Meta" valor={formatCurrency(item.meta)} />
         <MiniIndicador titulo="Falta meta" valor={formatCurrency(item.faltaMeta)} />
