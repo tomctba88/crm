@@ -18,14 +18,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json()
+    const id = Number(body.id)
 
-    const ids = Array.isArray(body.ids)
-      ? body.ids.map(Number).filter(Boolean)
-      : []
-
-    if (ids.length === 0) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Nenhum lead informado.' },
+        { error: 'ID do lead não informado.' },
         { status: 400 }
       )
     }
@@ -35,26 +32,17 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    const { error } = await admin
-      .from('leads')
-      .delete()
-      .in('id', ids)
+    const { error } = await admin.from('leads').delete().eq('id', id)
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    return NextResponse.json({
-      success: true,
-    })
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('ERRO AO EXCLUIR LEADS:', error)
-
+    console.error('ERRO AO EXCLUIR LEAD:', error)
     return NextResponse.json(
-      { error: 'Erro interno ao excluir leads.' },
+      { error: 'Erro interno ao excluir lead.' },
       { status: 500 }
     )
   }

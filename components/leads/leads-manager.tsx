@@ -549,14 +549,21 @@ setTimeout(() => {
     const confirmar = confirm('Tem certeza que deseja excluir este lead?')
     if (!confirmar) return
 
-    const { error } = await supabase
-      .from('leads')
-      .delete()
-      .eq('id', id)
+    try {
+      const response = await fetch('/api/leads/excluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
 
-    if (error) {
-      console.error('Erro ao excluir lead:', error)
-      alert('Erro ao excluir lead.')
+      const result = await response.json()
+
+      if (!response.ok) {
+        alert(result.error || 'Erro ao excluir lead.')
+        return
+      }
+    } catch {
+      alert('Erro inesperado ao excluir lead.')
       return
     }
 
