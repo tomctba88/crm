@@ -297,7 +297,7 @@ const [erros, setErros] = useState<Record<string, string>>({})
 const [popupErroAberto, setPopupErroAberto] = useState(false)
 
 const [clientesSugestoes, setClientesSugestoes] = useState<ClienteSugestao[]>([])
-const [sugestaoAtiva, setSugestaoAtiva] = useState<'nome_cliente' | 'nome_empresa' | null>(null)
+const [sugestaoAtiva, setSugestaoAtiva] = useState<'nome_cliente' | 'nome_empresa' | 'telefone' | null>(null)
 const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const leadIdFromUrl = useMemo(() => {
@@ -510,7 +510,7 @@ const payload = {
     setLoading(false)
   }
 
-  async function buscarSugestoesCliente(q: string, campo: 'nome_cliente' | 'nome_empresa') {
+  async function buscarSugestoesCliente(q: string, campo: 'nome_cliente' | 'nome_empresa' | 'telefone') {
     if (q.trim().length < 2) {
       setClientesSugestoes([])
       setSugestaoAtiva(null)
@@ -1057,17 +1057,45 @@ useEffect(() => {
             )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="mb-2 block text-sm font-bold text-slate-700">
               Telefone
             </label>
             <input
               type="text"
               value={form.telefone}
-              onChange={(e) => atualizarCampo('telefone', formatPhone(e.target.value))}
+              onChange={(e) => {
+                atualizarCampo('telefone', formatPhone(e.target.value))
+                const digits = e.target.value.replace(/\D/g, '')
+                if (timerSugestaoRef.current) clearTimeout(timerSugestaoRef.current)
+                timerSugestaoRef.current = setTimeout(
+                  () => buscarSugestoesCliente(digits, 'telefone'),
+                  300
+                )
+              }}
+              onBlur={fecharSugestoes}
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               placeholder="(41) 99999-9999"
+              autoComplete="off"
             />
+            {sugestaoAtiva === 'telefone' && clientesSugestoes.length > 0 && (
+              <ul className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {clientesSugestoes.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onMouseDown={() => preencherDadosCliente(c)}
+                      className="w-full px-4 py-3 text-left hover:bg-blue-50"
+                    >
+                      <span className="block text-sm font-bold text-slate-800">{c.nome_cliente}</span>
+                      <span className="block text-xs text-slate-500">
+                        {[c.telefone, c.nome_empresa].filter(Boolean).join(' · ')}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
             <div>

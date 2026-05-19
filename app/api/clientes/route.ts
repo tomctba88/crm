@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const { data, error } = await admin
       .from('clientes')
       .select('id, nome_cliente, nome_empresa, telefone, uf')
-      .or(`nome_cliente.ilike.%${q}%,nome_empresa.ilike.%${q}%`)
+      .or(`nome_cliente.ilike.%${q}%,nome_empresa.ilike.%${q}%,telefone.ilike.%${q}%`)
       .order('nome_cliente', { ascending: true })
       .limit(10)
 
