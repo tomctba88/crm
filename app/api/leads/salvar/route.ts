@@ -17,25 +17,32 @@ async function upsertCliente(admin: any, payload: Record<string, unknown>) {
 
   if (!nomeCliente) return
 
-  const { data: existente } = await admin
+  const { data: existente, error: erroBusca } = await admin
     .from('clientes')
     .select('id')
     .eq('nome_cliente', nomeCliente)
     .maybeSingle()
+
+  if (erroBusca) {
+    console.error('UPSERT CLIENTE - erro ao buscar:', erroBusca)
+    return
+  }
 
   if (existente) {
     const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
     if (payload.nome_empresa) updates.nome_empresa = payload.nome_empresa
     if (payload.telefone) updates.telefone = payload.telefone
     if (payload.uf) updates.uf = payload.uf
-    await admin.from('clientes').update(updates).eq('id', existente.id)
+    const { error: erroUpdate } = await admin.from('clientes').update(updates).eq('id', existente.id)
+    if (erroUpdate) console.error('UPSERT CLIENTE - erro ao atualizar:', erroUpdate)
   } else {
-    await admin.from('clientes').insert({
+    const { error: erroInsert } = await admin.from('clientes').insert({
       nome_cliente: nomeCliente,
       nome_empresa: payload.nome_empresa || null,
       telefone: payload.telefone || null,
       uf: payload.uf || null,
     })
+    if (erroInsert) console.error('UPSERT CLIENTE - erro ao inserir:', erroInsert)
   }
 }
 
