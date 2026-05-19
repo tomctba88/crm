@@ -440,7 +440,7 @@ const [popupErroAberto, setPopupErroAberto] = useState(false)
     if (!form.tipo_contato) novosErros.tipo_contato = 'Campo obrigatório'
     if (!form.vendedor) novosErros.vendedor = 'Campo obrigatório'
     if (!form.uf) novosErros.uf = 'Campo obrigatório'
-    if (!form.produto_interesse) novosErros.produto_interesse = 'Campo obrigatório'
+    if (!form.produto_interesse && form.status !== 'DESQUALIFICADO') novosErros.produto_interesse = 'Campo obrigatório'
     if (!form.status) novosErros.status = 'Campo obrigatório'
 
     if (Object.keys(novosErros).length > 0) {
