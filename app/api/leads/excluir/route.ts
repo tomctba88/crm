@@ -32,6 +32,15 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    const { error: erroOrdens } = await admin
+      .from('producao_ordens')
+      .delete()
+      .eq('lead_id', id)
+
+    if (erroOrdens) {
+      return NextResponse.json({ error: erroOrdens.message }, { status: 400 })
+    }
+
     const { error } = await admin.from('leads').delete().eq('id', id)
 
     if (error) {
