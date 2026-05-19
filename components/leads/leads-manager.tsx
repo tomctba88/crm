@@ -47,6 +47,14 @@ type FormDataType = {
   observacoes: string
 }
 
+type ClienteSugestao = {
+  id: number
+  nome_cliente: string
+  nome_empresa: string | null
+  telefone: string | null
+  uf: string | null
+}
+
 type CadastroOption = {
   id: number
   nome: string
@@ -288,6 +296,10 @@ const [produtosInteresse, setProdutosInteresse] = useState<CadastroOption[]>([])
 const [erros, setErros] = useState<Record<string, string>>({})
 const [popupErroAberto, setPopupErroAberto] = useState(false)
 
+const [clientesSugestoes, setClientesSugestoes] = useState<ClienteSugestao[]>([])
+const [sugestaoAtiva, setSugestaoAtiva] = useState<'nome_cliente' | 'nome_empresa' | null>(null)
+const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const leadIdFromUrl = useMemo(() => {
     const value = searchParams.get('lead')
     if (!value) return null
@@ -496,6 +508,43 @@ const payload = {
     limparFormulario()
     await buscarLeads()
     setLoading(false)
+  }
+
+  async function buscarSugestoesCliente(q: string, campo: 'nome_cliente' | 'nome_empresa') {
+    if (q.trim().length < 2) {
+      setClientesSugestoes([])
+      setSugestaoAtiva(null)
+      return
+    }
+    try {
+      const res = await fetch(`/api/clientes?q=${encodeURIComponent(q)}`)
+      if (res.ok) {
+        const data = await res.json()
+        setClientesSugestoes(data.clientes || [])
+        setSugestaoAtiva(data.clientes?.length > 0 ? campo : null)
+      }
+    } catch {
+      // silently ignore
+    }
+  }
+
+  function preencherDadosCliente(cliente: ClienteSugestao) {
+    setForm((prev) => ({
+      ...prev,
+      nome_cliente: cliente.nome_cliente,
+      nome_empresa: cliente.nome_empresa || prev.nome_empresa,
+      telefone: cliente.telefone || prev.telefone,
+      uf: cliente.uf || prev.uf,
+    }))
+    setClientesSugestoes([])
+    setSugestaoAtiva(null)
+  }
+
+  function fecharSugestoes() {
+    setTimeout(() => {
+      setSugestaoAtiva(null)
+      setClientesSugestoes([])
+    }, 150)
   }
 
   function editarLead(lead: Lead) {
@@ -926,32 +975,86 @@ useEffect(() => {
             )}
           </div>
 
-          <div>
+          <div className="relative">
             <label className="mb-2 block text-sm font-bold text-slate-700">
               Nome do cliente
             </label>
             <input
-  ref={nomeClienteRef}
-  type="text"
-  value={form.nome_cliente}
-  onChange={(e) => atualizarCampo('nome_cliente', e.target.value)}
-  className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-  placeholder="Ex.: Patrícia Bergo"
-  required
-/>
+              ref={nomeClienteRef}
+              type="text"
+              value={form.nome_cliente}
+              onChange={(e) => {
+                atualizarCampo('nome_cliente', e.target.value)
+                if (timerSugestaoRef.current) clearTimeout(timerSugestaoRef.current)
+                timerSugestaoRef.current = setTimeout(
+                  () => buscarSugestoesCliente(e.target.value, 'nome_cliente'),
+                  300
+                )
+              }}
+              onBlur={fecharSugestoes}
+              className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              placeholder="Ex.: Patrícia Bergo"
+              required
+              autoComplete="off"
+            />
+            {sugestaoAtiva === 'nome_cliente' && clientesSugestoes.length > 0 && (
+              <ul className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {clientesSugestoes.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onMouseDown={() => preencherDadosCliente(c)}
+                      className="w-full px-4 py-3 text-left hover:bg-blue-50"
+                    >
+                      <span className="block text-sm font-bold text-slate-800">{c.nome_cliente}</span>
+                      {c.nome_empresa && (
+                        <span className="block text-xs text-slate-500">{c.nome_empresa}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          <div className="xl:col-span-2">
+          <div className="relative xl:col-span-2">
             <label className="mb-2 block text-sm font-bold text-slate-700">
               Nome da empresa
             </label>
             <input
               type="text"
               value={form.nome_empresa}
-              onChange={(e) => atualizarCampo('nome_empresa', e.target.value)}
+              onChange={(e) => {
+                atualizarCampo('nome_empresa', e.target.value)
+                if (timerSugestaoRef.current) clearTimeout(timerSugestaoRef.current)
+                timerSugestaoRef.current = setTimeout(
+                  () => buscarSugestoesCliente(e.target.value, 'nome_empresa'),
+                  300
+                )
+              }}
+              onBlur={fecharSugestoes}
               className="h-12 w-full rounded-xl border border-slate-300 px-4 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
               placeholder="Ex.: SPD Fabricação e Comércio"
+              autoComplete="off"
             />
+            {sugestaoAtiva === 'nome_empresa' && clientesSugestoes.length > 0 && (
+              <ul className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                {clientesSugestoes.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onMouseDown={() => preencherDadosCliente(c)}
+                      className="w-full px-4 py-3 text-left hover:bg-blue-50"
+                    >
+                      <span className="block text-sm font-bold text-slate-800">{c.nome_cliente}</span>
+                      {c.nome_empresa && (
+                        <span className="block text-xs text-slate-500">{c.nome_empresa}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           <div>

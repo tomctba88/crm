@@ -8,6 +8,37 @@ import {
 } from '@/lib/constants/status'
 import { criarOrdemProducao } from '@/lib/producao/criar-ordem'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function upsertCliente(admin: any, payload: Record<string, unknown>) {
+  const nomeCliente =
+    typeof payload.nome_cliente === 'string'
+      ? payload.nome_cliente.toUpperCase().trim()
+      : null
+
+  if (!nomeCliente) return
+
+  const { data: existente } = await admin
+    .from('clientes')
+    .select('id')
+    .eq('nome_cliente', nomeCliente)
+    .maybeSingle()
+
+  if (existente) {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (payload.nome_empresa) updates.nome_empresa = payload.nome_empresa
+    if (payload.telefone) updates.telefone = payload.telefone
+    if (payload.uf) updates.uf = payload.uf
+    await admin.from('clientes').update(updates).eq('id', existente.id)
+  } else {
+    await admin.from('clientes').insert({
+      nome_cliente: nomeCliente,
+      nome_empresa: payload.nome_empresa || null,
+      telefone: payload.telefone || null,
+      uf: payload.uf || null,
+    })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createServerClient()
@@ -107,6 +138,8 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: error.message }, { status: 400 })
       }
 
+      await upsertCliente(admin, payload)
+
       return NextResponse.json({
         success: true,
         message: 'Lead atualizado com sucesso.',
@@ -152,6 +185,8 @@ export async function POST(req: Request) {
         await criarOrdemProducao(admin, novoPosVenda.id, novoLead.id, payload.produto_interesse, payload.vendedor)
       }
     }
+
+    await upsertCliente(admin, payload)
 
     return NextResponse.json({
       success: true,
