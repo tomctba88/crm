@@ -30,11 +30,7 @@ const CANAIS_ORGANICO = new Set([
   'LOJISTA/REVENDA', 'TELEFONE',
 ])
 
-const ORIGENS_ORGANICO_OPCOES = [
-  { label: 'Recompra', value: 'RECOMPRA' },
-  { label: 'Retorno', value: 'RETORNO' },
-  { label: 'Indicação', value: 'INDICACAO' },
-]
+const ORIGENS_ORGANICO = ['RECOMPRA', 'RETORNO', 'INDICACAO']
 
 function normalizeText(value: string | null | undefined) {
   return (value || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -304,7 +300,6 @@ export default function MarketingResumoPage() {
   const [anoFiltro, setAnoFiltro] = useState(hoje.getFullYear())
   const [mesFiltro, setMesFiltro] = useState(0)
   const [leadsCache, setLeadsCache] = useState<Lead[]>([])
-  const [origensOrganico, setOrigensOrganico] = useState<string[]>(['RECOMPRA', 'RETORNO', 'INDICACAO'])
 
   const anosDisponiveis = useMemo(() => {
     const a = hoje.getFullYear()
@@ -312,12 +307,9 @@ export default function MarketingResumoPage() {
   }, [])
 
   const canalOrganicoFiltrado = useMemo(() => {
-    if (origensOrganico.length === 0) return { leads: 0, fechados: 0, conversao: 0, vendido: 0 }
-    const origensNorm = origensOrganico.map((o) => (o === 'E-MAIL' ? 'EMAIL' : o))
     const items = leadsCache.filter((l) => {
       const origem = normalizeText(l.tipo_contato)
-      const origemNorm = origem === 'E-MAIL' ? 'EMAIL' : origem
-      return origensNorm.some((o) => origemNorm === o || origemNorm.includes(o))
+      return ORIGENS_ORGANICO.some((o) => origem === o || origem.includes(o))
     })
     const fechados = items.filter((l) => isFechado(l.status))
     return {
@@ -326,7 +318,7 @@ export default function MarketingResumoPage() {
       conversao: items.length > 0 ? (fechados.length / items.length) * 100 : 0,
       vendido: fechados.reduce((acc, l) => acc + parseMoney(l.valor_orcamento), 0),
     }
-  }, [leadsCache, origensOrganico])
+  }, [leadsCache])
 
   useEffect(() => {
     buscarDados()
@@ -477,33 +469,9 @@ export default function MarketingResumoPage() {
 
         {/* ORGÂNICO */}
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Orgânico</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ORIGENS_ORGANICO_OPCOES.map((op) => {
-                const ativo = origensOrganico.includes(op.value)
-                return (
-                  <button
-                    key={op.value}
-                    type="button"
-                    onClick={() =>
-                      setOrigensOrganico((prev) =>
-                        ativo ? prev.filter((o) => o !== op.value) : [...prev, op.value]
-                      )
-                    }
-                    className={`rounded-full px-3 py-1 text-xs font-bold transition ${
-                      ativo
-                        ? 'bg-green-600 text-white'
-                        : 'bg-slate-100 text-slate-500'
-                    }`}
-                  >
-                    {op.label}
-                  </button>
-                )
-              })}
-            </div>
+          <div className="mb-4 flex items-center gap-2">
+            <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Orgânico</span>
+            <span className="text-xs text-slate-400">Recompra · Retorno · Indicação</span>
           </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
             <MetricMini label="Leads" value={String(canalOrganicoFiltrado.leads)} highlight green />
