@@ -166,7 +166,7 @@ function calcular(leads: Lead[]): DadosMarketing {
   const leadsOrganico = leads.filter((l) => getCanalCategoria(l.tipo_contato) === 'organico')
 
   function metricaCanal(items: Lead[], nome: string): CanalMetrica {
-    const f = items.filter((l) => isFechado(l.status))
+    const f = items.filter((l) => isFechado(l.status) && temValor(l.valor_orcamento))
     const v = f.reduce((acc, l) => acc + parseMoney(l.valor_orcamento), 0)
     return {
       canal: nome,
@@ -189,7 +189,11 @@ function calcular(leads: Lead[]): DadosMarketing {
   // Canais pagos em detalhe
   const canaisNomes = ['GOOGLE', 'SITE', 'EMAIL', 'INSTAGRAM']
   const canaisPagoDetalhe: CanalMetrica[] = canaisNomes.map((canal) => {
-    const items = leads.filter((l) => normalizeText(l.tipo_contato) === canal)
+    const items = leads.filter((l) => {
+      const origem = normalizeText(l.tipo_contato)
+      const origemNorm = origem === 'E-MAIL' ? 'EMAIL' : origem
+      return origemNorm === canal
+    })
     return metricaCanal(items, canal.charAt(0) + canal.slice(1).toLowerCase())
   })
 
@@ -311,7 +315,7 @@ export default function MarketingResumoPage() {
       const origem = normalizeText(l.tipo_contato)
       return ORIGENS_ORGANICO.some((o) => origem === o || origem.includes(o))
     })
-    const fechados = items.filter((l) => isFechado(l.status))
+    const fechados = items.filter((l) => isFechado(l.status) && temValor(l.valor_orcamento))
     return {
       leads: items.length,
       fechados: fechados.length,
