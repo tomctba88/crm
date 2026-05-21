@@ -30,6 +30,12 @@ const CANAIS_ORGANICO = new Set([
   'LOJISTA/REVENDA', 'TELEFONE',
 ])
 
+const ORIGENS_ORGANICO_OPCOES = [
+  { label: 'Recompra', value: 'RECOMPRA' },
+  { label: 'Retorno', value: 'RETORNO' },
+  { label: 'Indicação', value: 'INDICACAO' },
+]
+
 function normalizeText(value: string | null | undefined) {
   return (value || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
@@ -297,11 +303,30 @@ export default function MarketingResumoPage() {
   const [dados, setDados] = useState<DadosMarketing | null>(null)
   const [anoFiltro, setAnoFiltro] = useState(hoje.getFullYear())
   const [mesFiltro, setMesFiltro] = useState(0)
+  const [leadsCache, setLeadsCache] = useState<Lead[]>([])
+  const [origensOrganico, setOrigensOrganico] = useState<string[]>(['RECOMPRA', 'RETORNO', 'INDICACAO'])
 
   const anosDisponiveis = useMemo(() => {
     const a = hoje.getFullYear()
     return [a - 1, a, a + 1]
   }, [])
+
+  const canalOrganicoFiltrado = useMemo(() => {
+    if (origensOrganico.length === 0) return { leads: 0, fechados: 0, conversao: 0, vendido: 0 }
+    const origensNorm = origensOrganico.map((o) => (o === 'E-MAIL' ? 'EMAIL' : o))
+    const items = leadsCache.filter((l) => {
+      const origem = normalizeText(l.tipo_contato)
+      const origemNorm = origem === 'E-MAIL' ? 'EMAIL' : origem
+      return origensNorm.some((o) => origemNorm === o || origemNorm.includes(o))
+    })
+    const fechados = items.filter((l) => isFechado(l.status))
+    return {
+      leads: items.length,
+      fechados: fechados.length,
+      conversao: items.length > 0 ? (fechados.length / items.length) * 100 : 0,
+      vendido: fechados.reduce((acc, l) => acc + parseMoney(l.valor_orcamento), 0),
+    }
+  }, [leadsCache, origensOrganico])
 
   useEffect(() => {
     buscarDados()
@@ -341,6 +366,7 @@ export default function MarketingResumoPage() {
       })
 
       setDados(calcular(filtrados))
+      setLeadsCache(filtrados)
     } catch (err) {
       console.error('Erro ao carregar dados de marketing:', err)
     }
@@ -451,27 +477,51 @@ export default function MarketingResumoPage() {
 
         {/* ORGÂNICO */}
         <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-center gap-2">
-            <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Orgânico</span>
-            <span className="text-xs text-slate-400">Recompra · Retorno · Indicação</span>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">Orgânico</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {ORIGENS_ORGANICO_OPCOES.map((op) => {
+                const ativo = origensOrganico.includes(op.value)
+                return (
+                  <button
+                    key={op.value}
+                    type="button"
+                    onClick={() =>
+                      setOrigensOrganico((prev) =>
+                        ativo ? prev.filter((o) => o !== op.value) : [...prev, op.value]
+                      )
+                    }
+                    className={`rounded-full px-3 py-1 text-xs font-bold transition ${
+                      ativo
+                        ? 'bg-green-600 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {op.label}
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3 mb-4">
-            <MetricMini label="Leads" value={String(dados.canalOrganico.leads)} highlight green />
-            <MetricMini label="Fechados" value={String(dados.canalOrganico.fechados)} />
-            <MetricMini label="Conversão" value={formatPct(dados.canalOrganico.conversao)} />
-            <MetricMini label="Vendido" value={formatCurrency(dados.canalOrganico.vendido)} />
+            <MetricMini label="Leads" value={String(canalOrganicoFiltrado.leads)} highlight green />
+            <MetricMini label="Fechados" value={String(canalOrganicoFiltrado.fechados)} />
+            <MetricMini label="Conversão" value={formatPct(canalOrganicoFiltrado.conversao)} />
+            <MetricMini label="Vendido" value={formatCurrency(canalOrganicoFiltrado.vendido)} />
           </div>
           <div className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 leading-relaxed">
             <p className="text-xs font-bold uppercase tracking-wide text-slate-400 mb-1">Insight</p>
             Orgânico representa{' '}
             <span className="font-bold text-green-700">
-              {formatPct(dados.totalLeads > 0 ? (dados.canalOrganico.leads / dados.totalLeads) * 100 : 0)}
+              {formatPct(dados.totalLeads > 0 ? (canalOrganicoFiltrado.leads / dados.totalLeads) * 100 : 0)}
             </span>{' '}
             dos leads mas gera{' '}
-            <span className="font-bold text-green-700">{formatCurrency(dados.canalOrganico.vendido)}</span>{' '}
+            <span className="font-bold text-green-700">{formatCurrency(canalOrganicoFiltrado.vendido)}</span>{' '}
             em vendas — conversão{' '}
             {dados.canalPago.conversao > 0
-              ? `${(dados.canalOrganico.conversao / dados.canalPago.conversao).toFixed(1)}x maior que o tráfego pago.`
+              ? `${(canalOrganicoFiltrado.conversao / dados.canalPago.conversao).toFixed(1)}x maior que o tráfego pago.`
               : 'superior ao tráfego pago.'}
           </div>
         </div>
