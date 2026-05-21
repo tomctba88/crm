@@ -673,53 +673,174 @@ async function excluirSelecionados() {
   setLoading(false)
 }
 
-  function exportarLeads(formato: 'xlsx' | 'xls' | 'csv') {
+  async function exportarLeads(formato: 'xlsx' | 'xls' | 'csv') {
     const leadsSelecionados = leadsFiltrados.filter((lead) =>
       selecionados.includes(lead.id)
     )
-
-    const dados = leadsSelecionados.map((lead) => ({
-      ID: lead.id,
-      'Data Contato': lead.data_contato ?? '',
-      'Tipo Contato': lead.tipo_contato ?? '',
-      Vendedor: lead.vendedor ?? '',
-      'Nome Cliente': lead.nome_cliente,
-      'Nome Empresa': lead.nome_empresa ?? '',
-      Telefone: lead.telefone ?? '',
-      UF: lead.uf ?? '',
-      'Produto Interesse': lead.produto_interesse ?? '',
-      'Valor Orçamento': lead.valor_orcamento ?? '',
-      'Valor Frete': lead.valor_frete ?? '',
-      Status: lead.status ?? '',
-      'Data Retorno': lead.data_retorno ?? '',
-      'Data Fechamento': lead.data_fechamento ?? '',
-      'Data Cancelamento': lead.data_cancelamento ?? '',
-      'Data Finalização': lead.data_finalizacao ?? '',
-      Observações: lead.observacoes ?? '',
-    }))
-
-    const ws = XLSX.utils.json_to_sheet(dados)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, 'Leads')
 
     const dataHoje = new Date().toISOString().slice(0, 10)
     const nomeArquivo = `leads_${dataHoje}`
 
     if (formato === 'csv') {
+      const dados = leadsSelecionados.map((lead) => ({
+        ID: lead.id,
+        'Data Contato': lead.data_contato ?? '',
+        'Tipo Contato': lead.tipo_contato ?? '',
+        Vendedor: lead.vendedor ?? '',
+        'Nome Cliente': lead.nome_cliente,
+        'Nome Empresa': lead.nome_empresa ?? '',
+        Telefone: lead.telefone ?? '',
+        UF: lead.uf ?? '',
+        'Produto Interesse': lead.produto_interesse ?? '',
+        'Valor Orçamento': lead.valor_orcamento ?? '',
+        'Valor Frete': lead.valor_frete ?? '',
+        Status: lead.status ?? '',
+        'Data Retorno': lead.data_retorno ?? '',
+        'Data Fechamento': lead.data_fechamento ?? '',
+        'Data Cancelamento': lead.data_cancelamento ?? '',
+        'Data Finalização': lead.data_finalizacao ?? '',
+        Observações: lead.observacoes ?? '',
+      }))
+      const ws = XLSX.utils.json_to_sheet(dados)
       const csv = XLSX.utils.sheet_to_csv(ws)
-      const blob = new Blob(['﻿' + csv], {
-        type: 'text/csv;charset=utf-8;',
-      })
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
       saveAs(blob, `${nomeArquivo}.csv`)
-    } else {
-      const wbout = XLSX.write(wb, {
-        bookType: formato,
-        type: 'array',
-      })
-      const blob = new Blob([wbout], { type: 'application/octet-stream' })
-      saveAs(blob, `${nomeArquivo}.${formato}`)
+      setExportDropdownAberto(false)
+      return
     }
 
+    // xlsx / xls — planilha formatada com ExcelJS
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    wb.creator = 'Ergotex CRM'
+    wb.created = new Date()
+
+    const ws = wb.addWorksheet('Leads', {
+      views: [{ state: 'frozen', ySplit: 4 }],
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    })
+
+    const COLUNAS = [
+      { key: 'id',               header: '#',               width: 8  },
+      { key: 'data_contato',     header: 'Data Contato',    width: 14 },
+      { key: 'tipo_contato',     header: 'Origem',          width: 16 },
+      { key: 'vendedor',         header: 'Vendedor',        width: 20 },
+      { key: 'nome_cliente',     header: 'Cliente',         width: 26 },
+      { key: 'nome_empresa',     header: 'Empresa',         width: 26 },
+      { key: 'telefone',         header: 'Telefone',        width: 16 },
+      { key: 'uf',               header: 'UF',              width: 6  },
+      { key: 'produto_interesse',header: 'Produto',         width: 22 },
+      { key: 'valor_orcamento',  header: 'Valor Orçamento', width: 17 },
+      { key: 'valor_frete',      header: 'Frete',           width: 14 },
+      { key: 'status',           header: 'Status',          width: 18 },
+      { key: 'data_fechamento',  header: 'Fechamento',      width: 14 },
+      { key: 'data_retorno',     header: 'Retorno',         width: 14 },
+      { key: 'observacoes',      header: 'Observações',     width: 36 },
+    ]
+    const totalCols = COLUNAS.length
+
+    // ── Linha 1: título ──────────────────────────────────────────
+    ws.mergeCells(1, 1, 1, totalCols)
+    const titulo = ws.getCell(1, 1)
+    titulo.value = 'RELATÓRIO DE LEADS — ERGOTEX'
+    titulo.font   = { name: 'Calibri', size: 14, bold: true, color: { argb: 'FFFFFFFF' } }
+    titulo.fill   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }
+    titulo.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(1).height = 34
+
+    // ── Linha 2: subtítulo ───────────────────────────────────────
+    ws.mergeCells(2, 1, 2, totalCols)
+    const sub = ws.getCell(2, 1)
+    const dataFormatada = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    sub.value = `Gerado em ${dataFormatada}  •  ${leadsSelecionados.length} lead(s) exportado(s)`
+    sub.font  = { name: 'Calibri', size: 10, italic: true, color: { argb: 'FF475569' } }
+    sub.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } }
+    sub.alignment = { horizontal: 'center', vertical: 'middle' }
+    ws.getRow(2).height = 20
+
+    // ── Linha 3: separador ───────────────────────────────────────
+    ws.mergeCells(3, 1, 3, totalCols)
+    ws.getCell(3, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
+    ws.getRow(3).height = 4
+
+    // ── Linha 4: cabeçalhos ──────────────────────────────────────
+    ws.columns = COLUNAS.map((c) => ({ key: c.key, width: c.width }))
+    const headerRow = ws.getRow(4)
+    COLUNAS.forEach((col, i) => {
+      const cell = headerRow.getCell(i + 1)
+      cell.value = col.header
+      cell.font  = { name: 'Calibri', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.fill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
+      cell.alignment = { horizontal: 'center', vertical: 'middle' }
+      cell.border = { bottom: { style: 'medium', color: { argb: 'FF3B82F6' } } }
+    })
+    headerRow.height = 22
+
+    // ── Mapeamento de cor por status ─────────────────────────────
+    function corStatus(status: string | null): { bg: string; fg: string } {
+      const s = (status ?? '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+      if (s === 'FECHADO' || s === 'PEDIDO')    return { bg: 'FFD1FAE5', fg: 'FF065F46' }
+      if (s === 'CANCELADO' || s === 'CANCELADA') return { bg: 'FFFEE2E2', fg: 'FF991B1B' }
+      if (s.includes('AGUARD'))                 return { bg: 'FFFEF9C3', fg: 'FF854D0E' }
+      if (s.includes('NEGOC'))                  return { bg: 'FFDBEAFE', fg: 'FF1E40AF' }
+      if (s === 'DESQUALIFICADO')               return { bg: 'FFF3F4F6', fg: 'FF6B7280' }
+      return { bg: 'FFFFFFFF', fg: 'FF1E293B' }
+    }
+
+    // ── Linhas de dados ──────────────────────────────────────────
+    leadsSelecionados.forEach((lead, idx) => {
+      const isAlt = idx % 2 === 1
+      const baseBg = isAlt ? 'FFF1F5F9' : 'FFFFFFFF'
+
+      const row = ws.addRow({
+        id:                lead.id,
+        data_contato:      lead.data_contato      ?? '',
+        tipo_contato:      lead.tipo_contato      ?? '',
+        vendedor:          lead.vendedor           ?? '',
+        nome_cliente:      lead.nome_cliente       ?? '',
+        nome_empresa:      lead.nome_empresa       ?? '',
+        telefone:          lead.telefone           ?? '',
+        uf:                lead.uf                 ?? '',
+        produto_interesse: lead.produto_interesse  ?? '',
+        valor_orcamento:   lead.valor_orcamento    ? Number(lead.valor_orcamento) : null,
+        valor_frete:       lead.valor_frete        ? Number(lead.valor_frete)     : null,
+        status:            lead.status             ?? '',
+        data_fechamento:   lead.data_fechamento    ?? '',
+        data_retorno:      lead.data_retorno       ?? '',
+        observacoes:       lead.observacoes        ?? '',
+      })
+      row.height = 18
+
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        const chave = COLUNAS[colNum - 1]?.key ?? ''
+        const ehMoeda = chave === 'valor_orcamento' || chave === 'valor_frete'
+        const ehStatus = chave === 'status'
+        const ehCentro = chave === 'id' || chave === 'uf'
+
+        cell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1E293B' } }
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } } }
+
+        if (ehMoeda) {
+          cell.numFmt = '"R$" #,##0.00'
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: isAlt ? 'FFD1FAE5' : 'FFE8F5E9' } }
+          cell.alignment = { vertical: 'middle', horizontal: 'right' }
+        } else if (ehStatus) {
+          const { bg, fg } = corStatus(lead.status)
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bg } }
+          cell.font = { name: 'Calibri', size: 10, bold: true, color: { argb: fg } }
+          cell.alignment = { vertical: 'middle', horizontal: 'center' }
+        } else {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: baseBg } }
+          cell.alignment = { vertical: 'middle', horizontal: ehCentro ? 'center' : 'left' }
+        }
+      })
+    })
+
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    saveAs(blob, `${nomeArquivo}.xlsx`)
     setExportDropdownAberto(false)
   }
 
