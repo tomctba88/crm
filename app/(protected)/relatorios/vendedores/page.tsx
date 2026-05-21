@@ -569,9 +569,9 @@ function VendedorDetalheCard({ item }: { item: VendedorItem }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <MiniIndicador titulo="Total de venda" valor={formatCurrency(item.valorVendido)} destaque />
-        <MiniIndicador titulo="Valor do frete" valor={formatCurrency(item.valorFrete)} destaque />
-        <MiniIndicador titulo="Valor total da venda" valor={formatCurrency(item.valorVendidoSemFrete)} destaque />
+        <MiniIndicador titulo="Valor total de faturamento" valor={formatCurrency(item.valorVendidoSemFrete)} destaque />
+        <MiniIndicador titulo="Frete" valor={formatCurrency(item.valorFrete)} destaque />
+        <MiniIndicador titulo="Valor total de venda" valor={formatCurrency(item.valorVendido)} destaque />
         <MiniIndicador titulo="Meta" valor={formatCurrency(item.meta)} />
         <MiniIndicador titulo="Falta meta" valor={formatCurrency(item.faltaMeta)} />
 
