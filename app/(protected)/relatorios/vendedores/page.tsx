@@ -23,6 +23,7 @@ type VendedorItem = {
   vendas: number
   valorVendido: number
   valorVendidoSemFrete: number
+  valorFrete: number
   valorOrcado: number
   ticketMedio: number
   conversao: number
@@ -244,6 +245,7 @@ export default function RelatorioVendedoresPage() {
           vendas: 0,
           valorVendido: 0,
           valorVendidoSemFrete: 0,
+          valorFrete: 0,
           valorOrcado: 0,
           ticketMedio: 0,
           conversao: 0,
@@ -269,6 +271,7 @@ export default function RelatorioVendedoresPage() {
           atual.valorVendido +=
             parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete)
           atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
+          atual.valorFrete += parseMoney(lead.valor_frete)
         }
 
         if (isCancelado(lead.status)) {
@@ -566,8 +569,9 @@ function VendedorDetalheCard({ item }: { item: VendedorItem }) {
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <MiniIndicador titulo="Vendas totais" valor={formatCurrency(item.valorVendidoSemFrete)} destaque />
-        <MiniIndicador titulo="Valor vendido" valor={formatCurrency(item.valorVendido)} destaque />
+        <MiniIndicador titulo="Total de venda" valor={formatCurrency(item.valorVendido)} destaque />
+        <MiniIndicador titulo="Valor do frete" valor={formatCurrency(item.valorFrete)} destaque />
+        <MiniIndicador titulo="Valor total da venda" valor={formatCurrency(item.valorVendidoSemFrete)} destaque />
         <MiniIndicador titulo="Meta" valor={formatCurrency(item.meta)} />
         <MiniIndicador titulo="Falta meta" valor={formatCurrency(item.faltaMeta)} />
 
