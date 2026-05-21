@@ -6,6 +6,8 @@ export type MarketingLead = {
   valor_frete?: number | string | null
   produto_interesse?: string | null
   data_contato?: string | null
+  data_fechamento?: string | null
+  created_at?: string | null
 }
 
 export type MarketingScope = 'geral' | 'google' | 'organico_retorno'

@@ -93,31 +93,38 @@ function normalizeText(value: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, '')
 }
 
+function normalizarOrigem(origem: string) {
+  return origem === 'E-MAIL' ? 'EMAIL' : origem
+}
+
 function filtrarLeadsPorOrigens(leads: MarketingLead[], origens: string[]) {
   if (origens.length === 0) return []
-
+  const origensNorm = new Set(origens.map(normalizarOrigem))
   return leads.filter((lead) => {
-    const origemLead = normalizeText(lead.tipo_contato)
-    return origens.some((origem) => origemLead.includes(origem))
+    const origemLead = normalizarOrigem(normalizeText(lead.tipo_contato))
+    return origensNorm.has(origemLead)
   })
+}
+
+function getDataReferencia(lead: MarketingLead, isFechadoFn: (s: string | null | undefined) => boolean) {
+  if (isFechadoFn(lead.status) && lead.data_fechamento) return lead.data_fechamento
+  return lead.data_contato || lead.created_at || ''
 }
 
 function calcularDashboardMarketingPersonalizado(
   leads: MarketingLead[],
   mesKey?: string
 ) {
-  const leadsFiltrados = leads.filter((lead) => {
-    if (!mesKey) return true
-
-    const dataBase = lead.data_contato || ''
-
-    return String(dataBase).startsWith(mesKey)
-  })
-
   const isFechado = (status: string | null | undefined) => {
     const s = normalizeText(status)
     return s === 'FECHADO' || s === 'PEDIDO'
   }
+
+  const leadsFiltrados = leads.filter((lead) => {
+    if (!mesKey) return true
+    const dataBase = getDataReferencia(lead, isFechado)
+    return String(dataBase).startsWith(mesKey)
+  })
 
   const isAberto = (status: string | null | undefined) => {
     const statusNormalizado = normalizeText(status)
