@@ -99,10 +99,10 @@ function normalizarOrigem(origem: string) {
 
 function filtrarLeadsPorOrigens(leads: MarketingLead[], origens: string[]) {
   if (origens.length === 0) return []
-  const origensNorm = new Set(origens.map(normalizarOrigem))
+  const origensNorm = origens.map(normalizarOrigem)
   return leads.filter((lead) => {
     const origemLead = normalizarOrigem(normalizeText(lead.tipo_contato))
-    return origensNorm.has(origemLead)
+    return origensNorm.some((origem) => origemLead === origem || origemLead.includes(origem))
   })
 }
 
