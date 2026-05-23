@@ -53,11 +53,12 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(6)
 
-    // Testar tinyRequest diretamente para ver estrutura real
+    // Inspecionar estrutura real da resposta Tiny
     let tinyRetorno: Record<string, unknown> | null = null
     let tinyErro: string | null = null
-    let colecaoTipo = ''
+    let chaveAutoDetectada: string | null = null
     let primeiroItem: unknown = null
+    let totalItensNaPagina = 0
 
     try {
       tinyRetorno = await tinyRequest(integracao.token, 'contas.receber.pesquisa', {
@@ -65,11 +66,28 @@ export async function GET() {
         data_ini_vencimento: bodyFiltrado.get('data_ini_vencimento') ?? '',
         data_fim_vencimento: bodyFiltrado.get('data_fim_vencimento') ?? '',
       })
-      const col = tinyRetorno['contas_receber']
-      colecaoTipo = Array.isArray(col) ? `array[${(col as unknown[]).length}]` : typeof col
-      primeiroItem = Array.isArray(col) ? (col as unknown[])[0] : col
+
+      // Auto-detectar a chave da coleção
+      const arrayKey = Object.keys(tinyRetorno).find(k => Array.isArray(tinyRetorno![k]) && k !== 'erros')
+      if (arrayKey) {
+        chaveAutoDetectada = arrayKey
+        const col = tinyRetorno[arrayKey] as unknown[]
+        totalItensNaPagina = col.length
+        const rawFirst = col[0] as Record<string, unknown>
+        primeiroItem = rawFirst
+      }
     } catch (e) {
       tinyErro = String(e)
+    }
+
+    // Mostrar retorno bruto do raw fetch (sem passar por tinyRequest) — primeiros 3 itens
+    const rawRetornoData = resCR?.retorno as Record<string, unknown> | undefined
+    let rawPrimeiros3: unknown = null
+    if (rawRetornoData) {
+      const arrayKey = Object.keys(rawRetornoData).find(k => Array.isArray(rawRetornoData[k]))
+      if (arrayKey) {
+        rawPrimeiros3 = (rawRetornoData[arrayKey] as unknown[]).slice(0, 3)
+      }
     }
 
     return NextResponse.json({
@@ -80,8 +98,12 @@ export async function GET() {
       tiny_status_cp: resCP?.retorno?.status_processamento,
       token_ativo: integracao.ativo,
       tinyRequest_erro: tinyErro,
-      tinyRequest_colecao_tipo: colecaoTipo,
+      tinyRequest_todas_chaves: tinyRetorno ? Object.keys(tinyRetorno) : null,
+      tinyRequest_chave_auto: chaveAutoDetectada,
+      tinyRequest_itens_na_pagina1: totalItensNaPagina,
       tinyRequest_primeiro_item: primeiroItem,
+      raw_retorno_todas_chaves: rawRetornoData ? Object.keys(rawRetornoData) : null,
+      raw_primeiros3_itens: rawPrimeiros3,
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
