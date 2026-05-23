@@ -40,9 +40,30 @@ async function fetchDataReal(token: string, tinyId: string, tipo: 'receber' | 'p
   }
 }
 
-// Repara datas reais de recebimento/pagamento para contas históricas
-// chamando o endpoint de detalhe do Tiny (contas.receber.obter / contas.pagar.obter).
-// Execute uma vez após a primeira sincronização para corrigir dados históricos.
+// GET: retorna a resposta bruta do obter para diagnóstico da estrutura da API
+export async function GET() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
+
+    const { data: integracao } = await supabase
+      .from('integracoes_olist').select('token, ativo').eq('nome', 'olist_tiny').maybeSingle()
+    if (!integracao?.token) return NextResponse.json({ error: 'Token não configurado.' }, { status: 400 })
+
+    const { data: primeira } = await supabase
+      .from('fin_contas_receber').select('tiny_id').eq('status', 'recebido').limit(1).maybeSingle()
+
+    if (!primeira?.tiny_id) return NextResponse.json({ error: 'Nenhuma conta recebida encontrada.' }, { status: 404 })
+
+    const retorno = await tinyRequest(integracao.token, 'contas.receber.obter', { id: String(primeira.tiny_id) })
+    return NextResponse.json({ tiny_id: primeira.tiny_id, resposta_obter: retorno })
+  } catch (error) {
+    return NextResponse.json({ error: String(error) }, { status: 500 })
+  }
+}
+
+// POST: repara datas reais de recebimento/pagamento para contas históricas
 export async function POST() {
   try {
     const supabase = await createClient()
