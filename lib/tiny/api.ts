@@ -72,7 +72,12 @@ export async function tinyPaginado(
       ...extraParams,
     })
 
-    const collection = retorno[collectionKey]
+    // Try the specified key; if not found, auto-detect the first array in retorno
+    let collection = retorno[collectionKey]
+    if (!Array.isArray(collection)) {
+      const autoKey = Object.keys(retorno).find(k => Array.isArray(retorno[k]) && k !== 'erros')
+      if (autoKey) collection = retorno[autoKey]
+    }
     const items = Array.isArray(collection) ? collection : []
 
     for (const rawItem of items) {
