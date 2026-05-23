@@ -316,7 +316,7 @@ export default function FinanceiroDashboard() {
         {filtroTipo !== 'todos' && (
           <p className="text-xs text-slate-400">
             Exibindo: <span className="font-semibold text-[#1b4fd6]">{filtroLabel}</span>
-            <span className="ml-1">· por data de vencimento</span>
+            <span className="ml-1">· A Receber/Pagar por vencimento · Recebido/Pago por data real</span>
           </p>
         )}
       </div>
@@ -341,7 +341,7 @@ export default function FinanceiroDashboard() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Recebido</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por vencimento</p>}
+              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de recebimento</p>}
             </div>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">
               {filtroLabel}
@@ -354,7 +354,7 @@ export default function FinanceiroDashboard() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Pago</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por vencimento</p>}
+              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de pagamento</p>}
             </div>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
               {filtroLabel}
