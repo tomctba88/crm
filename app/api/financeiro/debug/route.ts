@@ -80,22 +80,22 @@ export async function GET() {
       tinyErro = String(e)
     }
 
-    // Testar tinyPaginado diretamente (só página 1) — mesmo código que o sync usa
-    let paginadoCount = -1
-    let paginadoErro: string | null = null
-    let paginadoPrimeiro: unknown = null
+    // Testar tinyPaginado para contas.pagar (só página 1)
+    let pagarCount = -1
+    let pagarErro: string | null = null
+    let pagarPrimeiro: unknown = null
     try {
       const ini2 = new Date(); ini2.setFullYear(ini2.getFullYear() - 3)
       const fim2 = new Date(); fim2.setFullYear(fim2.getFullYear() + 2)
       const dd = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
       const itens = await tinyPaginado(
-        integracao.token, 'contas.receber.pesquisa', 'contas', 'conta',
+        integracao.token, 'contas.pagar.pesquisa', 'contas', 'conta',
         { data_ini_vencimento: dd(ini2), data_fim_vencimento: dd(fim2) }, 1
       )
-      paginadoCount = itens.length
-      paginadoPrimeiro = itens[0] ?? null
+      pagarCount = itens.length
+      pagarPrimeiro = itens[0] ?? null
     } catch (e) {
-      paginadoErro = String(e)
+      pagarErro = String(e)
     }
 
     return NextResponse.json({
@@ -108,9 +108,9 @@ export async function GET() {
       tinyRequest_chave_auto: chaveAutoDetectada,
       tinyRequest_itens_na_pagina1: totalItensNaPagina,
       tinyRequest_primeiro_item: primeiroItem,
-      tinyPaginado_count_pagina1: paginadoCount,
-      tinyPaginado_primeiro: paginadoPrimeiro,
-      tinyPaginado_erro: paginadoErro,
+      contas_pagar_count_pagina1: pagarCount,
+      contas_pagar_primeiro: pagarPrimeiro,
+      contas_pagar_erro: pagarErro,
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })

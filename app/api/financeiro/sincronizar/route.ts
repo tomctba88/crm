@@ -20,11 +20,12 @@ export async function POST() {
 
     const token = integracao.token
 
-    const [cr, cp, fc] = await Promise.allSettled([
+    // Contas receber e pagar em paralelo; fluxo de caixa depois (deriva dos dados locais)
+    const [cr, cp] = await Promise.allSettled([
       syncContasReceber(supabase, token),
       syncContasPagar(supabase, token),
-      syncFluxoCaixa(supabase, token),
     ])
+    const fc = await syncFluxoCaixa(supabase).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
 
     const syncedAt = new Date().toISOString()
     await supabase

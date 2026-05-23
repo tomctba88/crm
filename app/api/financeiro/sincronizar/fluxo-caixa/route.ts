@@ -14,7 +14,7 @@ export async function POST() {
     if (!integracao?.token || !integracao.ativo)
       return NextResponse.json({ error: 'Token não configurado ou integração inativa.' }, { status: 400 })
 
-    const resultado = await syncFluxoCaixa(supabase, integracao.token)
+    const resultado = await syncFluxoCaixa(supabase)
     return NextResponse.json({ ...resultado, ultima_sync: new Date().toISOString() })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Erro inesperado.' }, { status: 500 })

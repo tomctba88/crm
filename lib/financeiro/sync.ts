@@ -126,62 +126,59 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
   return { sincronizados, erros, total_tiny: itens.length }
 }
 
-export async function syncFluxoCaixa(supabase: SupabaseClient, token: string) {
-  const filtro = filtroDataVencimento()
-
-  const [recebidas, pagas] = await Promise.all([
-    tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', { situacao: 'recebido', ...filtro }),
-    tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', { situacao: 'pago', ...filtro }),
+// Deriva fluxo de caixa das tabelas locais já sincronizadas — evita
+// depender do campo 'situacao' do Tiny (que pode ser 'pago' ou 'recebido').
+export async function syncFluxoCaixa(supabase: SupabaseClient) {
+  const [{ data: recebidas }, { data: pagas }] = await Promise.all([
+    supabase
+      .from('fin_contas_receber')
+      .select('tiny_id,descricao,valor,data_recebimento,data_vencimento,categoria,conta_bancaria,numero_documento')
+      .eq('status', 'recebido'),
+    supabase
+      .from('fin_contas_pagar')
+      .select('tiny_id,descricao,valor,data_pagamento,data_vencimento,categoria,conta_bancaria,numero_documento')
+      .eq('status', 'pago'),
   ])
 
-  const entradas = recebidas
-    .filter(item => !!item.id)
-    .map(item => {
-      const dataLanc = parseDateBR(str(item.data_ocorrencia ?? item.data_vencimento))
-      if (!dataLanc) return null
-      return {
-        tiny_id: `cr-${item.id}`,
-        tipo: 'entrada',
-        descricao: str(item.historico ?? item.descricao),
-        valor: Number(item.valor ?? 0),
-        data_lancamento: dataLanc,
-        categoria: str(item.categoria),
-        conta_bancaria: str(item.conta_bancaria),
-        documento_referencia: str(item.numero_doc ?? item.numero),
-        origem: 'tiny',
-      }
-    })
-    .filter(Boolean) as Record<string, unknown>[]
+  const entradas = (recebidas ?? [])
+    .map(r => ({
+      tiny_id: `cr-${r.tiny_id}`,
+      tipo: 'entrada',
+      descricao: r.descricao,
+      valor: r.valor,
+      data_lancamento: r.data_recebimento ?? r.data_vencimento,
+      categoria: r.categoria,
+      conta_bancaria: r.conta_bancaria,
+      documento_referencia: r.numero_documento,
+      origem: 'tiny',
+    }))
+    .filter(r => !!r.data_lancamento) as Record<string, unknown>[]
 
-  const saidas = pagas
-    .filter(item => !!item.id)
-    .map(item => {
-      const dataLanc = parseDateBR(str(item.data_ocorrencia ?? item.data_vencimento))
-      if (!dataLanc) return null
-      return {
-        tiny_id: `cp-${item.id}`,
-        tipo: 'saida',
-        descricao: str(item.historico ?? item.descricao),
-        valor: Number(item.valor ?? 0),
-        data_lancamento: dataLanc,
-        categoria: str(item.categoria),
-        conta_bancaria: str(item.conta_bancaria),
-        documento_referencia: str(item.numero_doc ?? item.numero),
-        origem: 'tiny',
-      }
-    })
-    .filter(Boolean) as Record<string, unknown>[]
+  const saidas = (pagas ?? [])
+    .map(p => ({
+      tiny_id: `cp-${p.tiny_id}`,
+      tipo: 'saida',
+      descricao: p.descricao,
+      valor: p.valor,
+      data_lancamento: p.data_pagamento ?? p.data_vencimento,
+      categoria: p.categoria,
+      conta_bancaria: p.conta_bancaria,
+      documento_referencia: p.numero_documento,
+      origem: 'tiny',
+    }))
+    .filter(p => !!p.data_lancamento) as Record<string, unknown>[]
 
-  const { sincronizados: se, erros: ee } = await batchUpsert(supabase, 'fin_fluxo_caixa', entradas)
-  const { sincronizados: ss, erros: es } = await batchUpsert(supabase, 'fin_fluxo_caixa', saidas)
-  const sincronizados = se + ss, erros = ee + es
+  const todos = [...entradas, ...saidas]
+  const { sincronizados, erros } = todos.length > 0
+    ? await batchUpsert(supabase, 'fin_fluxo_caixa', todos)
+    : { sincronizados: 0, erros: 0 }
 
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'fluxo_caixa',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
     mensagem: `${sincronizados} lançamentos sincronizados. ${erros} erros.`,
-    detalhes: { sincronizados, erros, total_recebidas: recebidas.length, total_pagas: pagas.length },
+    detalhes: { sincronizados, erros, total_entradas: entradas.length, total_saidas: saidas.length },
   })
 
-  return { sincronizados, erros, total_tiny: recebidas.length + pagas.length }
+  return { sincronizados, erros, total_tiny: todos.length }
 }
