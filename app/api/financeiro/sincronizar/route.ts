@@ -1,18 +1,29 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
+import { syncContasReceber, syncContasPagar, syncFluxoCaixa } from '@/lib/financeiro/sync'
 
-export async function POST(request: Request) {
+export async function POST() {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
-    const base = new URL(request.url).origin
+    const { data: integracao } = await supabase
+      .from('integracoes_olist')
+      .select('token, ativo')
+      .eq('nome', 'olist_tiny')
+      .maybeSingle()
+
+    if (!integracao?.token || !integracao.ativo) {
+      return NextResponse.json({ error: 'Token do Tiny não configurado ou integração inativa.' }, { status: 400 })
+    }
+
+    const token = integracao.token
 
     const [cr, cp, fc] = await Promise.allSettled([
-      fetch(`${base}/api/financeiro/sincronizar/contas-receber`, { method: 'POST' }).then(r => r.json()),
-      fetch(`${base}/api/financeiro/sincronizar/contas-pagar`, { method: 'POST' }).then(r => r.json()),
-      fetch(`${base}/api/financeiro/sincronizar/fluxo-caixa`, { method: 'POST' }).then(r => r.json()),
+      syncContasReceber(supabase, token),
+      syncContasPagar(supabase, token),
+      syncFluxoCaixa(supabase, token),
     ])
 
     const syncedAt = new Date().toISOString()
@@ -22,16 +33,16 @@ export async function POST(request: Request) {
       .eq('nome', 'olist_tiny')
 
     const resultado = {
-      contas_receber: cr.status === 'fulfilled' ? cr.value : { error: (cr as PromiseRejectedResult).reason?.message },
-      contas_pagar: cp.status === 'fulfilled' ? cp.value : { error: (cp as PromiseRejectedResult).reason?.message },
-      fluxo_caixa: fc.status === 'fulfilled' ? fc.value : { error: (fc as PromiseRejectedResult).reason?.message },
+      contas_receber: cr.status === 'fulfilled' ? cr.value : { error: String((cr as PromiseRejectedResult).reason) },
+      contas_pagar: cp.status === 'fulfilled' ? cp.value : { error: String((cp as PromiseRejectedResult).reason) },
+      fluxo_caixa: fc.status === 'fulfilled' ? fc.value : { error: String((fc as PromiseRejectedResult).reason) },
       ultima_sync: syncedAt,
     }
 
     const totalSincronizados =
-      (resultado.contas_receber?.sincronizados ?? 0) +
-      (resultado.contas_pagar?.sincronizados ?? 0) +
-      (resultado.fluxo_caixa?.sincronizados ?? 0)
+      ('sincronizados' in resultado.contas_receber ? resultado.contas_receber.sincronizados : 0) +
+      ('sincronizados' in resultado.contas_pagar ? resultado.contas_pagar.sincronizados : 0) +
+      ('sincronizados' in resultado.fluxo_caixa ? resultado.fluxo_caixa.sincronizados : 0)
 
     return NextResponse.json({ ...resultado, total_sincronizados: totalSincronizados })
   } catch (error) {

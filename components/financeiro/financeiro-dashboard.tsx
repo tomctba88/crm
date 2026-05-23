@@ -178,18 +178,6 @@ export default function FinanceiroDashboard() {
     </div>
   )
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-28 animate-pulse rounded-3xl bg-slate-200" />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -207,6 +195,16 @@ export default function FinanceiroDashboard() {
         <SincronizarButton tipo="completo" onSucesso={carregar} />
       </div>
 
+      {/* Skeleton de loading */}
+      {loading ? (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-28 animate-pulse rounded-3xl bg-slate-200" />)}
+          </div>
+          <div className="h-64 animate-pulse rounded-3xl bg-slate-200" />
+        </div>
+      ) : (
+      <>
       {/* KPIs principais */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cardKpi('Contas a Receber', kpis.totalReceber, 'text-[#1b4fd6]')}
@@ -336,6 +334,8 @@ export default function FinanceiroDashboard() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   )
 }
