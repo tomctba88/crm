@@ -47,8 +47,20 @@ export default function FinanceiroDashboard() {
   const [evolucao, setEvolucao] = useState<{ mes: string; recebido: number; pago: number }[]>([])
   const [vencimentos, setVencimentos] = useState<(ContaReceber & { tipoCard: 'receber' } | ContaPagar & { tipoCard: 'pagar' })[]>([])
   const [loading, setLoading] = useState(true)
+  const [sincronizando, setSincronizando] = useState(false)
 
   const supabase = createClient()
+
+  const sincronizarBackground = useCallback(async () => {
+    setSincronizando(true)
+    try {
+      await fetch('/api/financeiro/sincronizar', { method: 'POST' })
+    } catch {
+      // falha silenciosa — dados do banco já são exibidos
+    } finally {
+      setSincronizando(false)
+    }
+  }, [])
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -148,7 +160,9 @@ export default function FinanceiroDashboard() {
     }
   }, [])
 
-  useEffect(() => { carregar() }, [carregar])
+  useEffect(() => {
+    sincronizarBackground().then(() => carregar())
+  }, [])
 
   const cardKpi = (label: string, valor: number, cor?: string) => (
     <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
@@ -182,11 +196,13 @@ export default function FinanceiroDashboard() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#0b1733]">Dashboard Financeiro</h1>
-          {kpis.ultimaSync && (
-            <p className="mt-1 text-xs text-slate-400">
-              Última sincronização: {new Date(kpis.ultimaSync).toLocaleString('pt-BR')}
-            </p>
-          )}
+          <p className="mt-1 text-xs text-slate-400">
+            {sincronizando
+              ? '⟳ Sincronizando com Tiny...'
+              : kpis.ultimaSync
+                ? `Última sincronização: ${new Date(kpis.ultimaSync).toLocaleString('pt-BR')}`
+                : 'Nunca sincronizado'}
+          </p>
         </div>
         <SincronizarButton tipo="completo" onSucesso={carregar} />
       </div>
