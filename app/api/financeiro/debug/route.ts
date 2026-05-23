@@ -84,11 +84,30 @@ export async function GET() {
     let detalheReceber: unknown = null
     let detalheErro: string | null = null
     try {
-      const primId = '781832716' // id do primeiro item recebido que vimos no debug
+      const primId = '781832716'
       const det = await tinyRequest(integracao.token, 'contas.receber.obter', { id: primId })
       detalheReceber = det
     } catch (e) {
       detalheErro = String(e)
+    }
+
+    // Testar busca por data_ocorrencia (verifica se Tiny aceita esse filtro)
+    let crPorOcorrencia: unknown = null
+    let crOcorrenciaErro: string | null = null
+    try {
+      const ini3 = new Date(2026, 4, 1) // maio 2026
+      const fim3 = new Date(2026, 4, 31)
+      const dd = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+      const r = await tinyRequest(integracao.token, 'contas.receber.pesquisa', {
+        pagina: '1',
+        situacao: 'pago',
+        data_ini_ocorrencia: dd(ini3),
+        data_fim_ocorrencia: dd(fim3),
+      })
+      const col = r.contas as unknown[]
+      crPorOcorrencia = { total_paginas: r.numero_paginas, itens_pagina1: Array.isArray(col) ? col.length : 0, primeiro: Array.isArray(col) ? col[0] : null }
+    } catch (e) {
+      crOcorrenciaErro = String(e)
     }
 
     // Testar tinyPaginado para contas.pagar (só página 1)
@@ -112,16 +131,16 @@ export async function GET() {
     return NextResponse.json({
       tabelas: { fin_contas_receber: countCR, fin_contas_pagar: countCP, fin_fluxo_caixa: countFC },
       ultimos_logs: logs,
-      tiny_status_cr: resCR?.retorno?.status_processamento,
-      tiny_total_paginas_cr: resCR?.retorno?.numero_paginas,
       token_ativo: integracao.ativo,
-      tinyRequest_erro: tinyErro,
       tinyRequest_chave_auto: chaveAutoDetectada,
       tinyRequest_itens_na_pagina1: totalItensNaPagina,
       tinyRequest_primeiro_item: primeiroItem,
+      detalhe_receber_erro: detalheErro,
+      detalhe_receber: detalheReceber,
+      cr_por_ocorrencia_maio2026: crPorOcorrencia,
+      cr_ocorrencia_erro: crOcorrenciaErro,
       contas_pagar_count_pagina1: pagarCount,
       contas_pagar_primeiro: pagarPrimeiro,
-      contas_pagar_erro: pagarErro,
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
