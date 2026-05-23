@@ -80,6 +80,17 @@ export async function GET() {
       tinyErro = String(e)
     }
 
+    // Buscar detalhe de uma conta recebida para ver se tem data_ocorrencia
+    let detalheReceber: unknown = null
+    let detalheErro: string | null = null
+    try {
+      const primId = '781832716' // id do primeiro item recebido que vimos no debug
+      const det = await tinyRequest(integracao.token, 'contas.receber.obter', { id: primId })
+      detalheReceber = det
+    } catch (e) {
+      detalheErro = String(e)
+    }
+
     // Testar tinyPaginado para contas.pagar (só página 1)
     let pagarCount = -1
     let pagarErro: string | null = null
