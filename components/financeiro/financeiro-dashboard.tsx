@@ -78,18 +78,21 @@ export default function FinanceiroDashboard() {
   // Valores filtrados por período (recomputados quando período ou dados mudam)
   const { recebidoFiltrado, pagoFiltrado } = useMemo(() => {
     const range = getPeriodoRange(periodo, customInicio, customFim)
+    // Usa data_vencimento como fallback pois a API Tiny não retorna data efetiva de recebimento/pagamento
     const recebidoFiltrado = contasReceber
       .filter(r => {
         if (r.status !== 'recebido') return false
         if (!range) return true
-        return r.data_recebimento && r.data_recebimento >= range.ini && r.data_recebimento <= range.fim
+        const dataRef = r.data_recebimento ?? r.data_vencimento
+        return dataRef && dataRef >= range.ini && dataRef <= range.fim
       })
       .reduce((s, r) => s + r.valor, 0)
     const pagoFiltrado = contasPagar
       .filter(r => {
         if (r.status !== 'pago') return false
         if (!range) return true
-        return r.data_pagamento && r.data_pagamento >= range.ini && r.data_pagamento <= range.fim
+        const dataRef = r.data_pagamento ?? r.data_vencimento
+        return dataRef && dataRef >= range.ini && dataRef <= range.fim
       })
       .reduce((s, r) => s + r.valor, 0)
     return { recebidoFiltrado, pagoFiltrado }
