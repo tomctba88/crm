@@ -40,7 +40,7 @@ async function fetchDataReal(token: string, tinyId: string, tipo: 'receber' | 'p
   }
 }
 
-// GET: retorna a resposta bruta do obter para diagnóstico da estrutura da API
+// GET: diagnóstico — testa pesquisa por data_ocorrencia e retorna campos disponíveis
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -51,13 +51,60 @@ export async function GET() {
       .from('integracoes_olist').select('token, ativo').eq('nome', 'olist_tiny').maybeSingle()
     if (!integracao?.token) return NextResponse.json({ error: 'Token não configurado.' }, { status: 400 })
 
-    const { data: primeira } = await supabase
-      .from('fin_contas_receber').select('tiny_id').eq('status', 'recebido').limit(1).maybeSingle()
+    const token = integracao.token
+    const dd = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
 
-    if (!primeira?.tiny_id) return NextResponse.json({ error: 'Nenhuma conta recebida encontrada.' }, { status: 404 })
+    // Testa pesquisa filtrada por data_ocorrencia (últimos 3 anos)
+    const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
+    const fim = new Date()
 
-    const retorno = await tinyRequest(integracao.token, 'contas.receber.obter', { id: String(primeira.tiny_id) })
-    return NextResponse.json({ tiny_id: primeira.tiny_id, resposta_obter: retorno })
+    let porOcorrencia: unknown = null
+    let erroOcorrencia: string | null = null
+    try {
+      const r = await tinyRequest(token, 'contas.receber.pesquisa', {
+        pagina: '1', situacao: 'pago',
+        data_ini_ocorrencia: dd(ini), data_fim_ocorrencia: dd(fim),
+      })
+      const col = Array.isArray(r.contas) ? r.contas : []
+      const primeiroRaw = col[0] as Record<string, unknown> | undefined
+      const primeiro = primeiroRaw
+        ? (primeiroRaw.conta ?? primeiroRaw) as Record<string, unknown>
+        : null
+      porOcorrencia = {
+        numero_paginas: r.numero_paginas,
+        itens_pagina1: col.length,
+        campos_disponiveis: primeiro ? Object.keys(primeiro) : [],
+        primeiro_item_completo: primeiro,
+      }
+    } catch (e) { erroOcorrencia = String(e) }
+
+    // Testa pesquisa normal (por vencimento) — verifica campos do item
+    let porVencimento: unknown = null
+    let erroVencimento: string | null = null
+    try {
+      const r = await tinyRequest(token, 'contas.receber.pesquisa', {
+        pagina: '1', situacao: 'pago',
+        data_ini_vencimento: dd(ini), data_fim_vencimento: dd(fim),
+      })
+      const col = Array.isArray(r.contas) ? r.contas : []
+      const primeiroRaw = col[0] as Record<string, unknown> | undefined
+      const primeiro = primeiroRaw
+        ? (primeiroRaw.conta ?? primeiroRaw) as Record<string, unknown>
+        : null
+      porVencimento = {
+        numero_paginas: r.numero_paginas,
+        itens_pagina1: col.length,
+        campos_disponiveis: primeiro ? Object.keys(primeiro) : [],
+        primeiro_item_completo: primeiro,
+      }
+    } catch (e) { erroVencimento = String(e) }
+
+    return NextResponse.json({
+      pesquisa_por_ocorrencia: porOcorrencia,
+      erro_ocorrencia: erroOcorrencia,
+      pesquisa_por_vencimento: porVencimento,
+      erro_vencimento: erroVencimento,
+    })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
   }
