@@ -77,8 +77,8 @@ export default function FinanceiroDashboard() {
     return {
       totalReceber: crP.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0),
       totalPagar: cpP.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0),
-      recebido: contasReceber.filter(r => r.status === 'recebido' && inR(r.data_recebimento ?? r.data_vencimento)).reduce((s, r) => s + r.valor, 0),
-      pago: contasPagar.filter(r => r.status === 'pago' && inR(r.data_pagamento ?? r.data_vencimento)).reduce((s, r) => s + r.valor, 0),
+      recebido: crP.filter(r => r.status === 'recebido').reduce((s, r) => s + r.valor, 0),
+      pago: cpP.filter(r => r.status === 'pago').reduce((s, r) => s + r.valor, 0),
       vencidosReceber: crP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
       vencidosPagar: cpP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
       vence7Receber: crP.filter(r => r.status === 'aberto' && r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
@@ -316,7 +316,7 @@ export default function FinanceiroDashboard() {
         {filtroTipo !== 'todos' && (
           <p className="text-xs text-slate-400">
             Exibindo: <span className="font-semibold text-[#1b4fd6]">{filtroLabel}</span>
-            <span className="ml-1">· A Receber/Pagar por vencimento · Recebido/Pago por data real</span>
+            <span className="ml-1">· por data de vencimento</span>
           </p>
         )}
       </div>
@@ -341,7 +341,7 @@ export default function FinanceiroDashboard() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Recebido</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de recebimento</p>}
+              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por vencimento</p>}
             </div>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">
               {filtroLabel}
@@ -354,7 +354,7 @@ export default function FinanceiroDashboard() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Pago</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de pagamento</p>}
+              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por vencimento</p>}
             </div>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
               {filtroLabel}
