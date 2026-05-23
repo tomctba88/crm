@@ -40,12 +40,15 @@ export async function POST() {
 
     const retorno = result?.retorno
     if (retorno?.status_processamento !== 3) {
-      const erroApi = retorno?.erros?.[0]?.erro || 'Token inválido ou resposta inesperada da API.'
+      const erroApi =
+        retorno?.erros?.[0]?.erro ||
+        retorno?.erros?.[0]?.mensagem ||
+        (retorno ? `Resposta Tiny: status_processamento=${retorno.status_processamento}` : 'Resposta vazia ou inválida da API do Tiny.')
       await supabase
         .from('integracoes_olist')
         .update({ status: 'erro', observacoes: erroApi, updated_at: new Date().toISOString() })
         .eq('id', integracao.id)
-      return NextResponse.json({ error: erroApi, status: 'erro' }, { status: 400 })
+      return NextResponse.json({ error: erroApi, status: 'erro', debug: result }, { status: 400 })
     }
 
     await supabase
