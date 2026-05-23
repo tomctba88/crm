@@ -218,20 +218,6 @@ export default function FinanceiroDashboard() {
     </div>
   )
 
-  const btnPeriodo = (p: Periodo, label: string) => (
-    <button
-      key={p}
-      onClick={() => setPeriodo(p)}
-      className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-        periodo === p
-          ? 'bg-[#0b1733] text-white'
-          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-      }`}
-    >
-      {label}
-    </button>
-  )
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -292,28 +278,32 @@ export default function FinanceiroDashboard() {
         </div>
       </div>
 
-      {/* Seletor de período */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="mb-3 text-xs font-semibold text-slate-500">Período dos cards Recebido e Pago:</p>
-        <div className="flex flex-wrap gap-2">
-          {btnPeriodo('mes', 'Este mês')}
-          {btnPeriodo('ano', `${new Date().getFullYear()}`)}
-          {btnPeriodo('2026', '2026')}
-          {btnPeriodo('2025', '2025')}
-          {btnPeriodo('2024', '2024')}
-          {btnPeriodo('2023', '2023')}
-          {btnPeriodo('tudo', 'Todo período')}
-          {btnPeriodo('custom', 'Personalizado')}
-        </div>
+      {/* Seletor de período — menu suspenso */}
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-xs font-semibold text-slate-500">Período (Recebido / Pago):</label>
+        <select
+          value={periodo}
+          onChange={e => setPeriodo(e.target.value as Periodo)}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#0b1733] shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+        >
+          <option value="mes">Este mês</option>
+          <option value="ano">{new Date().getFullYear()}</option>
+          <option value="2026">2026</option>
+          <option value="2025">2025</option>
+          <option value="2024">2024</option>
+          <option value="2023">2023</option>
+          <option value="tudo">Todo período</option>
+          <option value="custom">Personalizado</option>
+        </select>
         {periodo === 'custom' && (
-          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <>
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-500">De:</label>
               <input
                 type="date"
                 value={customInicio}
                 onChange={e => setCustomInicio(e.target.value)}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -322,10 +312,10 @@ export default function FinanceiroDashboard() {
                 type="date"
                 value={customFim}
                 onChange={e => setCustomFim(e.target.value)}
-                className="rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
               />
             </div>
-          </div>
+          </>
         )}
       </div>
 
