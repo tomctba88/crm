@@ -45,10 +45,10 @@ export async function GET() {
       supabase.from('fin_fluxo_caixa').select('*', { count: 'exact', head: true }),
     ])
 
-    // Verificar últimos logs
+    // Verificar últimos logs (com detalhes para ver total_tiny)
     const { data: logs } = await supabase
       .from('logs_integracao')
-      .select('recurso,status,mensagem,created_at')
+      .select('recurso,status,mensagem,detalhes,created_at')
       .in('recurso', ['contas_receber', 'contas_pagar', 'fluxo_caixa'])
       .order('created_at', { ascending: false })
       .limit(6)

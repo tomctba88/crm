@@ -47,7 +47,8 @@ function mapStatusPagar(s: string): string {
 }
 
 export async function syncContasReceber(supabase: SupabaseClient, token: string) {
-  const itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas_receber', 'conta', filtroDataVencimento())
+  // Tiny returns collection key 'contas' (not 'contas_receber'); auto-detection in tinyPaginado handles fallback
+  const itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', filtroDataVencimento())
   let sincronizados = 0, erros = 0
 
   for (const item of itens) {
@@ -58,12 +59,12 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
       const { error } = await supabase.from('fin_contas_receber').upsert({
         tiny_id: tinyId,
         numero_documento: str(item.numero_doc ?? item.numero),
-        cliente: str(item.nome_conta ?? (item.cliente as Record<string, unknown>)?.nome ?? item.cliente),
+        cliente: str(item.nome_cliente ?? item.nome_conta ?? (item.cliente as Record<string, unknown>)?.nome ?? item.cliente),
         descricao: str(item.historico ?? item.descricao),
         valor: Number(item.valor ?? 0),
         valor_recebido: Number(item.valor_recebido ?? item.valor ?? 0),
         data_vencimento: parseDateBR(str(item.data_vencimento)),
-        data_recebimento: parseDateBR(str(item.data_ocorrencia ?? item.data_pagamento)),
+        data_recebimento: parseDateBR(str(item.data_ocorrencia ?? item.data_emissao ?? item.data_pagamento)),
         status: mapStatusReceber(str(item.situacao)),
         categoria: str(item.categoria),
         conta_bancaria: str(item.conta_bancaria),
@@ -87,7 +88,8 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
 }
 
 export async function syncContasPagar(supabase: SupabaseClient, token: string) {
-  const itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas_pagar', 'conta', filtroDataVencimento())
+  // Tiny returns collection key 'contas' (not 'contas_pagar'); auto-detection in tinyPaginado handles fallback
+  const itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', filtroDataVencimento())
   let sincronizados = 0, erros = 0
 
   for (const item of itens) {
@@ -98,12 +100,12 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
       const { error } = await supabase.from('fin_contas_pagar').upsert({
         tiny_id: tinyId,
         numero_documento: str(item.numero_doc ?? item.numero),
-        fornecedor: str(item.nome_conta ?? (item.fornecedor as Record<string, unknown>)?.nome ?? item.fornecedor),
+        fornecedor: str(item.nome_cliente ?? item.nome_conta ?? (item.fornecedor as Record<string, unknown>)?.nome ?? item.fornecedor),
         descricao: str(item.historico ?? item.descricao),
         valor: Number(item.valor ?? 0),
         valor_pago: Number(item.valor_pago ?? item.valor ?? 0),
         data_vencimento: parseDateBR(str(item.data_vencimento)),
-        data_pagamento: parseDateBR(str(item.data_ocorrencia ?? item.data_pagamento)),
+        data_pagamento: parseDateBR(str(item.data_ocorrencia ?? item.data_emissao ?? item.data_pagamento)),
         status: mapStatusPagar(str(item.situacao)),
         categoria: str(item.categoria),
         conta_bancaria: str(item.conta_bancaria),
@@ -130,8 +132,8 @@ export async function syncFluxoCaixa(supabase: SupabaseClient, token: string) {
   let sincronizados = 0, erros = 0
 
   const [recebidas, pagas] = await Promise.all([
-    tinyPaginado(token, 'contas.receber.pesquisa', 'contas_receber', 'conta', { situacao: 'recebido' }),
-    tinyPaginado(token, 'contas.pagar.pesquisa', 'contas_pagar', 'conta', { situacao: 'pago' }),
+    tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', { situacao: 'recebido', ...filtroDataVencimento() }),
+    tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', { situacao: 'pago', ...filtroDataVencimento() }),
   ])
 
   for (const item of recebidas) {
