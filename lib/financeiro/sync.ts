@@ -13,11 +13,17 @@ function str(v: unknown): string {
 }
 
 // Intervalo amplo em dd/mm/yyyy — obrigatório pela API Tiny (codigo_erro 31)
+// Formato fixo sem depender de locale (que pode variar no Vercel)
+function fmtBR(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0')
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  return `${dd}/${mm}/${d.getFullYear()}`
+}
+
 function filtroDataVencimento() {
   const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
   const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
-  const fmt = (d: Date) => d.toLocaleDateString('pt-BR')
-  return { data_ini_vencimento: fmt(ini), data_fim_vencimento: fmt(fim) }
+  return { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }
 }
 
 // Campos reais da API Tiny v2:

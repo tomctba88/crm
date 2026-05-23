@@ -37,9 +37,28 @@ export async function GET() {
       }).then(r => r.json()).catch(e => ({ fetch_error: String(e) })),
     ])
 
+    // Verificar quantos registros existem nas tabelas
+    const [{ count: countCR }, { count: countCP }, { count: countFC }] = await Promise.all([
+      supabase.from('fin_contas_receber').select('*', { count: 'exact', head: true }),
+      supabase.from('fin_contas_pagar').select('*', { count: 'exact', head: true }),
+      supabase.from('fin_fluxo_caixa').select('*', { count: 'exact', head: true }),
+    ])
+
+    // Verificar últimos logs
+    const { data: logs } = await supabase
+      .from('logs_integracao')
+      .select('recurso,status,mensagem,created_at')
+      .in('recurso', ['contas_receber', 'contas_pagar', 'fluxo_caixa'])
+      .order('created_at', { ascending: false })
+      .limit(6)
+
     return NextResponse.json({
-      contas_receber_raw: resCR,
-      contas_pagar_raw: resCP,
+      tabelas: { fin_contas_receber: countCR, fin_contas_pagar: countCP, fin_fluxo_caixa: countFC },
+      ultimos_logs: logs,
+      tiny_status_cr: resCR?.retorno?.status_processamento,
+      tiny_total_paginas_cr: resCR?.retorno?.numero_paginas,
+      tiny_total_registros_cr: resCR?.retorno?.numero_elementos,
+      tiny_status_cp: resCP?.retorno?.status_processamento,
       token_ativo: integracao.ativo,
     })
   } catch (error) {
