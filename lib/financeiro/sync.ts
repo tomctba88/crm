@@ -7,11 +7,21 @@ function parseDateBR(dataBR: string): string | null {
   return null
 }
 
+// Retorna intervalo amplo em formato dd/mm/yyyy exigido pelo Tiny
+function filtroDataVencimento() {
+  const ini = new Date()
+  ini.setFullYear(ini.getFullYear() - 3)
+  const fim = new Date()
+  fim.setFullYear(fim.getFullYear() + 2)
+  const fmt = (d: Date) => d.toLocaleDateString('pt-BR')
+  return { data_ini_vencimento: fmt(ini), data_fim_vencimento: fmt(fim) }
+}
+
 export async function syncContasReceber(supabase: SupabaseClient, token: string) {
   const mapStatus = (s: string) =>
     ({ aberto: 'aberto', 'em aberto': 'aberto', recebido: 'recebido', cancelado: 'cancelado' }[s?.toLowerCase()] ?? 'aberto')
 
-  const itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas_receber', 'conta')
+  const itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas_receber', 'conta', filtroDataVencimento())
   let sincronizados = 0, erros = 0
 
   for (const item of itens) {
@@ -52,7 +62,7 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
   const mapStatus = (s: string) =>
     ({ aberto: 'aberto', 'em aberto': 'aberto', pago: 'pago', cancelado: 'cancelado' }[s?.toLowerCase()] ?? 'aberto')
 
-  const itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas_pagar', 'conta')
+  const itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas_pagar', 'conta', filtroDataVencimento())
   let sincronizados = 0, erros = 0
 
   for (const item of itens) {
