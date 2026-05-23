@@ -211,7 +211,12 @@ export default function FinanceiroDashboard() {
       const res = await fetch('/api/financeiro/reparar-datas', { method: 'POST' })
       const json = await res.json()
       if (json.ok) {
-        setReparoMsg(`Datas corrigidas: ${json.contas_receber?.atualizadas ?? 0} a receber, ${json.contas_pagar?.atualizadas ?? 0} a pagar.`)
+        const cr = json.contas_receber ?? {}
+        const cp = json.contas_pagar ?? {}
+        setReparoMsg(
+          `Corrigidas: ${cr.atualizadas ?? 0} a receber (${cr.via_ocorrencia_tiny ?? 0} data real Tiny, ${cr.via_vencimento_fallback ?? 0} por vencimento) · ` +
+          `${cp.atualizadas ?? 0} a pagar (${cp.via_ocorrencia_tiny ?? 0} data real Tiny, ${cp.via_vencimento_fallback ?? 0} por vencimento)`
+        )
         await carregar()
       } else {
         setReparoMsg(`Erro: ${json.error}`)

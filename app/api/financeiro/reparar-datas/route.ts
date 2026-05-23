@@ -16,7 +16,7 @@ async function mapearPagamentosPorMes(
   endpoint: 'contas.receber.pesquisa' | 'contas.pagar.pesquisa',
   ano: number,
   mes: number,
-  maxPaginas = 5
+  maxPaginas = 10
 ): Promise<Set<string>> {
   const ids = new Set<string>()
   const ini = new Date(ano, mes, 1)
@@ -79,8 +79,9 @@ export async function GET() {
   }
 }
 
-// POST: identifica o mês real de pagamento via filtro data_ocorrencia
-// e atualiza data_recebimento/data_pagamento no banco.
+// POST: identifica o mês real de pagamento via filtro data_ocorrencia e atualiza
+// data_recebimento/data_pagamento. Contas sem data_ocorrencia no Tiny recebem
+// data_vencimento como fallback, eliminando o acúmulo na data do sync inicial.
 export async function POST() {
   try {
     const supabase = await createClient()
@@ -106,7 +107,7 @@ export async function POST() {
       meses.push({ ano, mes, dataRef })
     }
 
-    // Mapeia tiny_id → data de pagamento (por mês)
+    // Mapeia tiny_id → data de pagamento real (por mês via filtro data_ocorrencia)
     const pagamentoCR = new Map<string, string>()
     const pagamentoCP = new Map<string, string>()
 
@@ -119,29 +120,72 @@ export async function POST() {
       for (const id of idsCP) if (!pagamentoCP.has(id)) pagamentoCP.set(id, dataRef)
     }
 
+    // Busca TODAS as contas recebidas/pagas do banco para aplicar fallback
+    // em contas que o Tiny não retornou via data_ocorrencia
+    const [{ data: dbCR }, { data: dbCP }] = await Promise.all([
+      supabase
+        .from('fin_contas_receber')
+        .select('tiny_id, data_vencimento')
+        .eq('status', 'recebido'),
+      supabase
+        .from('fin_contas_pagar')
+        .select('tiny_id, data_vencimento')
+        .eq('status', 'pago'),
+    ])
+
+    let viaOcorrenciaCR = 0, viaVencimentoCR = 0
+    let viaOcorrenciaCP = 0, viaVencimentoCP = 0
+
+    // Para cada conta recebida: usa data_ocorrencia mapeada ou data_vencimento como fallback
+    const recsCR = (dbCR ?? []).map(r => {
+      const id = String(r.tiny_id)
+      const dataOcorrencia = pagamentoCR.get(id)
+      if (dataOcorrencia) { viaOcorrenciaCR++; return { tiny_id: id, data_recebimento: dataOcorrencia } }
+      viaVencimentoCR++
+      return { tiny_id: id, data_recebimento: r.data_vencimento }
+    })
+
+    const recsCP = (dbCP ?? []).map(r => {
+      const id = String(r.tiny_id)
+      const dataOcorrencia = pagamentoCP.get(id)
+      if (dataOcorrencia) { viaOcorrenciaCP++; return { tiny_id: id, data_pagamento: dataOcorrencia } }
+      viaVencimentoCP++
+      return { tiny_id: id, data_pagamento: r.data_vencimento }
+    })
+
     // Atualiza banco em lote
     const CHUNK = 500
     let atualizadasCR = 0, atualizadasCP = 0
 
-    const recsCR = Array.from(pagamentoCR.entries()).map(([tiny_id, data_recebimento]) => ({ tiny_id, data_recebimento }))
     for (let i = 0; i < recsCR.length; i += CHUNK) {
+      const chunk = recsCR.slice(i, i + CHUNK)
       const { error } = await supabase.from('fin_contas_receber')
-        .upsert(recsCR.slice(i, i + CHUNK), { onConflict: 'tiny_id' })
-      if (!error) atualizadasCR += recsCR.slice(i, i + CHUNK).length
+        .upsert(chunk, { onConflict: 'tiny_id' })
+      if (!error) atualizadasCR += chunk.length
     }
 
-    const recsCP = Array.from(pagamentoCP.entries()).map(([tiny_id, data_pagamento]) => ({ tiny_id, data_pagamento }))
     for (let i = 0; i < recsCP.length; i += CHUNK) {
+      const chunk = recsCP.slice(i, i + CHUNK)
       const { error } = await supabase.from('fin_contas_pagar')
-        .upsert(recsCP.slice(i, i + CHUNK), { onConflict: 'tiny_id' })
-      if (!error) atualizadasCP += recsCP.slice(i, i + CHUNK).length
+        .upsert(chunk, { onConflict: 'tiny_id' })
+      if (!error) atualizadasCP += chunk.length
     }
 
     return NextResponse.json({
       ok: true,
-      mensagem: 'Mês de pagamento identificado via filtro data_ocorrencia do Tiny.',
-      contas_receber: { mapeadas: pagamentoCR.size, atualizadas: atualizadasCR },
-      contas_pagar: { mapeadas: pagamentoCP.size, atualizadas: atualizadasCP },
+      mensagem: 'Datas de pagamento corrigidas. Contas com data_ocorrencia no Tiny usam o mês real; demais usam data_vencimento como referência.',
+      contas_receber: {
+        total: recsCR.length,
+        via_ocorrencia_tiny: viaOcorrenciaCR,
+        via_vencimento_fallback: viaVencimentoCR,
+        atualizadas: atualizadasCR,
+      },
+      contas_pagar: {
+        total: recsCP.length,
+        via_ocorrencia_tiny: viaOcorrenciaCP,
+        via_vencimento_fallback: viaVencimentoCP,
+        atualizadas: atualizadasCP,
+      },
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
