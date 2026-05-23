@@ -5,6 +5,10 @@ import { usePathname } from 'next/navigation'
 
 const abas = [
   { href: '/financeiro', label: 'Dashboard', exact: true },
+  { href: '/financeiro/contas-receber', label: 'Contas a Receber' },
+  { href: '/financeiro/contas-pagar', label: 'Contas a Pagar' },
+  { href: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa' },
+  { href: '/financeiro/dre', label: 'DRE' },
   { href: '/financeiro/integracoes', label: 'Integrações' },
 ]
 
