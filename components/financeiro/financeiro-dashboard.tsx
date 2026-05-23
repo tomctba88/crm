@@ -71,29 +71,30 @@ export default function FinanceiroDashboard() {
     const em7 = new Date(); em7.setDate(new Date().getDate() + 7)
     const em7Str = em7.toISOString().slice(0, 10)
 
-    // A Receber / A Pagar: only open accounts, filtered by due date
-    const crP = contasReceber.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
-    const cpP = contasPagar.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
+    // A Receber / A Pagar: open accounts filtered by due date
+    const crAberto = contasReceber.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
+    const cpAberto = contasPagar.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
 
-    // Recebido / Pago: actual cash movements from fin_fluxo_caixa (caixa.pesquisa)
-    const recebido = fluxoRaw
-      .filter(f => f.tipo === 'entrada' && inR(f.data_lancamento))
-      .reduce((s, f) => s + f.valor, 0)
-    const pago = fluxoRaw
-      .filter(f => f.tipo === 'saida' && inR(f.data_lancamento))
-      .reduce((s, f) => s + f.valor, 0)
+    // Recebido / Pago: paid accounts filtered by data_recebimento / data_pagamento
+    // (which equals data_vencimento — distributes correctly across months)
+    const recebido = contasReceber
+      .filter(r => r.status === 'recebido' && inR(r.data_recebimento ?? r.data_vencimento))
+      .reduce((s, r) => s + r.valor, 0)
+    const pago = contasPagar
+      .filter(r => r.status === 'pago' && inR(r.data_pagamento ?? r.data_vencimento))
+      .reduce((s, r) => s + r.valor, 0)
 
     return {
-      totalReceber: crP.reduce((s, r) => s + r.valor, 0),
-      totalPagar: cpP.reduce((s, r) => s + r.valor, 0),
+      totalReceber: crAberto.reduce((s, r) => s + r.valor, 0),
+      totalPagar: cpAberto.reduce((s, r) => s + r.valor, 0),
       recebido,
       pago,
-      vencidosReceber: crP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
-      vencidosPagar: cpP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
-      vence7Receber: crP.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
-      vence7Pagar: cpP.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
+      vencidosReceber: crAberto.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
+      vencidosPagar: cpAberto.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
+      vence7Receber: crAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
+      vence7Pagar: cpAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
     }
-  }, [contasReceber, contasPagar, fluxoRaw, range])
+  }, [contasReceber, contasPagar, range])
 
   const charts = useMemo(() => {
     const inR = (d: string | null) => !range || (!!d && d >= range.ini && d <= range.fim)
@@ -133,18 +134,18 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Projeção por vencimento (open accounts)
+    // Evolução: recebido vs pago (by data_recebimento / data_pagamento)
     const projecaoMap: Record<string, { receber: number; pagar: number }> = {}
     meses.forEach(m => { projecaoMap[m] = { receber: 0, pagar: 0 } })
     for (const r of contasReceber) {
-      if (r.status === 'aberto') {
-        const k = (r.data_vencimento ?? '').slice(0, 7)
+      if (r.status === 'recebido') {
+        const k = (r.data_recebimento ?? r.data_vencimento ?? '').slice(0, 7)
         if (projecaoMap[k]) projecaoMap[k].receber += r.valor
       }
     }
     for (const r of contasPagar) {
-      if (r.status === 'aberto') {
-        const k = (r.data_vencimento ?? '').slice(0, 7)
+      if (r.status === 'pago') {
+        const k = (r.data_pagamento ?? r.data_vencimento ?? '').slice(0, 7)
         if (projecaoMap[k]) projecaoMap[k].pagar += r.valor
       }
     }
@@ -422,8 +423,8 @@ export default function FinanceiroDashboard() {
 
       {/* Projeção por vencimento */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-black text-[#0b1733]">Projeção por Vencimento</h3>
-        <p className="text-xs text-slate-400">Contas em aberto agrupadas por data de vencimento</p>
+        <h3 className="text-xl font-black text-[#0b1733]">Recebimentos vs Pagamentos</h3>
+        <p className="text-xs text-slate-400">Por data de vencimento (contas recebidas e pagas)</p>
         <div className="mt-4">
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={charts.projecao} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>

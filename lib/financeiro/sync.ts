@@ -18,20 +18,28 @@ function fmtBR(d: Date): string {
   return `${dd}/${mm}/${d.getFullYear()}`
 }
 
-function isoParaBR(iso: string): string {
-  const [ano, mes, dia] = iso.split('-')
-  return `${dia}/${mes}/${ano}`
+function filtroDataVencimento() {
+  const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
+  const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
+  return { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }
 }
 
-// Wide range to capture all open accounts including long-overdue ones
-function filtroAbertoVencimento() {
-  const ini = new Date(); ini.setFullYear(ini.getFullYear() - 5)
-  const fim = new Date(); fim.setFullYear(fim.getFullYear() + 5)
-  return {
-    situacao: 'aberto',
-    data_ini_vencimento: fmtBR(ini),
-    data_fim_vencimento: fmtBR(fim),
+function mapStatusReceber(s: string): string {
+  const m: Record<string, string> = {
+    aberto: 'aberto', 'em aberto': 'aberto',
+    recebido: 'recebido', pago: 'recebido',
+    cancelado: 'cancelado',
   }
+  return m[s?.toLowerCase()] ?? 'aberto'
+}
+
+function mapStatusPagar(s: string): string {
+  const m: Record<string, string> = {
+    aberto: 'aberto', 'em aberto': 'aberto',
+    pago: 'pago', recebido: 'pago',
+    cancelado: 'cancelado',
+  }
+  return m[s?.toLowerCase()] ?? 'aberto'
 }
 
 async function batchUpsert(
@@ -50,25 +58,10 @@ async function batchUpsert(
   return { sincronizados, erros }
 }
 
-async function removerStale(
-  supabase: SupabaseClient,
-  table: string,
-  idsAtivos: string[]
-) {
-  if (idsAtivos.length === 0) return
-  const { data: existentes } = await supabase.from(table).select('tiny_id')
-  const paraExcluir = (existentes ?? [])
-    .map(r => String(r.tiny_id))
-    .filter(id => !idsAtivos.includes(id))
-  for (let i = 0; i < paraExcluir.length; i += 100) {
-    await supabase.from(table).delete().in('tiny_id', paraExcluir.slice(i, i + 100))
-  }
-}
-
 export async function syncContasReceber(supabase: SupabaseClient, token: string) {
   let itens: Record<string, unknown>[] = []
   try {
-    itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', filtroAbertoVencimento())
+    itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', filtroDataVencimento())
   } catch (e) {
     const erroFetch = String(e)
     await supabase.from('logs_integracao').insert({
@@ -81,32 +74,36 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
 
   const records = itens
     .filter(item => !!str(item.id))
-    .map(item => ({
-      tiny_id: str(item.id),
-      numero_documento: str(item.numero_doc ?? item.numero),
-      cliente: str(item.nome_cliente ?? item.nome_conta ?? (item.cliente as Record<string, unknown>)?.nome ?? item.cliente),
-      descricao: str(item.historico ?? item.descricao),
-      valor: Number(item.valor ?? 0),
-      valor_recebido: 0,
-      data_vencimento: parseDateBR(str(item.data_vencimento)),
-      data_recebimento: null,
-      status: 'aberto',
-      categoria: str(item.categoria),
-      conta_bancaria: str(item.conta_bancaria),
-      observacoes: str(item.historico ?? item.observacoes),
-      origem: 'tiny',
-      updated_at: new Date().toISOString(),
-    }))
+    .map(item => {
+      const novoStatus = mapStatusReceber(str(item.situacao))
+      // Use data_vencimento as the payment date reference.
+      // This correctly distributes received accounts by their due month
+      // instead of all accumulating on the sync date.
+      const dataRef = parseDateBR(str(item.data_vencimento ?? item.data_emissao))
+      return {
+        tiny_id: str(item.id),
+        numero_documento: str(item.numero_doc ?? item.numero),
+        cliente: str(item.nome_cliente ?? item.nome_conta ?? (item.cliente as Record<string, unknown>)?.nome ?? item.cliente),
+        descricao: str(item.historico ?? item.descricao),
+        valor: Number(item.valor ?? 0),
+        valor_recebido: Number(item.valor_recebido ?? item.valor ?? 0),
+        data_vencimento: parseDateBR(str(item.data_vencimento)),
+        data_recebimento: novoStatus === 'recebido' ? dataRef : parseDateBR(str(item.data_vencimento)),
+        status: novoStatus,
+        categoria: str(item.categoria),
+        conta_bancaria: str(item.conta_bancaria),
+        observacoes: str(item.historico ?? item.observacoes),
+        origem: 'tiny',
+        updated_at: new Date().toISOString(),
+      }
+    })
 
   const { sincronizados, erros } = await batchUpsert(supabase, 'fin_contas_receber', records)
-
-  // Remove accounts no longer open in Tiny (paid/cancelled)
-  await removerStale(supabase, 'fin_contas_receber', records.map(r => r.tiny_id as string))
 
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'contas_receber',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-    mensagem: `${sincronizados} contas a receber em aberto sincronizadas. ${erros} erros.`,
+    mensagem: `${sincronizados} contas a receber sincronizadas. ${erros} erros.`,
     detalhes: { sincronizados, erros, total_tiny: itens.length },
   })
 
@@ -116,7 +113,7 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
 export async function syncContasPagar(supabase: SupabaseClient, token: string) {
   let itens: Record<string, unknown>[] = []
   try {
-    itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', filtroAbertoVencimento())
+    itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', filtroDataVencimento())
   } catch (e) {
     const erroFetch = String(e)
     await supabase.from('logs_integracao').insert({
@@ -129,94 +126,103 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
 
   const records = itens
     .filter(item => !!str(item.id))
-    .map(item => ({
-      tiny_id: str(item.id),
-      numero_documento: str(item.numero_doc ?? item.numero),
-      fornecedor: str(item.nome_cliente ?? item.nome_conta ?? (item.fornecedor as Record<string, unknown>)?.nome ?? item.fornecedor),
-      descricao: str(item.historico ?? item.descricao),
-      valor: Number(item.valor ?? 0),
-      valor_pago: 0,
-      data_vencimento: parseDateBR(str(item.data_vencimento)),
-      data_pagamento: null,
-      status: 'aberto',
-      categoria: str(item.categoria),
-      conta_bancaria: str(item.conta_bancaria),
-      observacoes: str(item.historico ?? item.observacoes),
-      origem: 'tiny',
-      updated_at: new Date().toISOString(),
-    }))
+    .map(item => {
+      const novoStatus = mapStatusPagar(str(item.situacao))
+      const dataRef = parseDateBR(str(item.data_vencimento ?? item.data_emissao))
+      return {
+        tiny_id: str(item.id),
+        numero_documento: str(item.numero_doc ?? item.numero),
+        fornecedor: str(item.nome_cliente ?? item.nome_conta ?? (item.fornecedor as Record<string, unknown>)?.nome ?? item.fornecedor),
+        descricao: str(item.historico ?? item.descricao),
+        valor: Number(item.valor ?? 0),
+        valor_pago: Number(item.valor_pago ?? item.valor ?? 0),
+        data_vencimento: parseDateBR(str(item.data_vencimento)),
+        data_pagamento: novoStatus === 'pago' ? dataRef : parseDateBR(str(item.data_vencimento)),
+        status: novoStatus,
+        categoria: str(item.categoria),
+        conta_bancaria: str(item.conta_bancaria),
+        observacoes: str(item.historico ?? item.observacoes),
+        origem: 'tiny',
+        updated_at: new Date().toISOString(),
+      }
+    })
 
   const { sincronizados, erros } = await batchUpsert(supabase, 'fin_contas_pagar', records)
-
-  // Remove accounts no longer open in Tiny (paid/cancelled)
-  await removerStale(supabase, 'fin_contas_pagar', records.map(r => r.tiny_id as string))
 
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'contas_pagar',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-    mensagem: `${sincronizados} contas a pagar em aberto sincronizadas. ${erros} erros.`,
+    mensagem: `${sincronizados} contas a pagar sincronizadas. ${erros} erros.`,
     detalhes: { sincronizados, erros, total_tiny: itens.length },
   })
 
   return { sincronizados, erros, total_tiny: itens.length }
 }
 
-// Syncs actual cash movements from Tiny's caixa.pesquisa endpoint.
-// tipo "R" → entrada, "D" → saida. Uses real posting dates from the cash book.
-export async function syncCaixa(
-  supabase: SupabaseClient,
-  token: string,
-  dataInicialISO: string,
-  dataFinalISO: string,
-) {
-  const dataInicial = isoParaBR(dataInicialISO)
-  const dataFinal = isoParaBR(dataFinalISO)
+// Derives cash flow from local synced tables — avoids depending on a Tiny
+// endpoint that may not exist. Uses data_vencimento as the date reference.
+export async function syncFluxoCaixa(supabase: SupabaseClient) {
+  const [{ data: recebidas }, { data: pagas }] = await Promise.all([
+    supabase
+      .from('fin_contas_receber')
+      .select('tiny_id,descricao,valor,data_recebimento,data_vencimento,categoria,conta_bancaria,numero_documento')
+      .eq('status', 'recebido'),
+    supabase
+      .from('fin_contas_pagar')
+      .select('tiny_id,descricao,valor,data_pagamento,data_vencimento,categoria,conta_bancaria,numero_documento')
+      .eq('status', 'pago'),
+  ])
 
-  let itens: Record<string, unknown>[] = []
-  try {
-    // itemKey='' so tinyPaginado returns the raw item; we unwrap lancamento below
-    itens = await tinyPaginado(token, 'caixa.pesquisa', 'caixa', '', {
-      dataInicial,
-      dataFinal,
-    })
-  } catch (e) {
-    const erroFetch = String(e)
-    await supabase.from('logs_integracao').insert({
-      integracao: 'tiny', recurso: 'fluxo_caixa', status: 'erro',
-      mensagem: `Erro ao buscar caixa do Tiny: ${erroFetch}`,
-      detalhes: { erro: erroFetch },
-    })
-    return { sincronizados: 0, erros: 0, total_tiny: 0 }
-  }
+  const entradas = (recebidas ?? [])
+    .map(r => ({
+      tiny_id: `cr-${r.tiny_id}`,
+      tipo: 'entrada',
+      descricao: r.descricao,
+      valor: r.valor,
+      data_lancamento: r.data_recebimento ?? r.data_vencimento,
+      categoria: r.categoria,
+      conta_bancaria: r.conta_bancaria,
+      documento_referencia: r.numero_documento,
+      origem: 'tiny',
+    }))
+    .filter(r => !!r.data_lancamento) as Record<string, unknown>[]
 
-  const records = itens
-    .map(rawItem => {
-      // Handle both { lancamento: {...} } and flat item structures
-      const item = ((rawItem.lancamento ?? rawItem) as Record<string, unknown>)
-      return {
-        tiny_id: str(item.id),
-        tipo: str(item.tipo).toUpperCase() === 'R' ? 'entrada' : 'saida',
-        descricao: str(item.historico ?? item.descricao),
-        valor: Math.abs(Number(item.valor ?? 0)),
-        data_lancamento: parseDateBR(str(item.data)),
-        categoria: str(item.categoria),
-        conta_bancaria: str(item.contaBancaria ?? item.conta_bancaria),
-        documento_referencia: str(item.numeroDocumento ?? item.numero_documento ?? item.numero ?? ''),
-        origem: 'tiny',
-      }
-    })
-    .filter(r => !!r.tiny_id && !!r.data_lancamento) as Record<string, unknown>[]
+  const saidas = (pagas ?? [])
+    .map(p => ({
+      tiny_id: `cp-${p.tiny_id}`,
+      tipo: 'saida',
+      descricao: p.descricao,
+      valor: p.valor,
+      data_lancamento: p.data_pagamento ?? p.data_vencimento,
+      categoria: p.categoria,
+      conta_bancaria: p.conta_bancaria,
+      documento_referencia: p.numero_documento,
+      origem: 'tiny',
+    }))
+    .filter(p => !!p.data_lancamento) as Record<string, unknown>[]
 
-  const { sincronizados, erros } = records.length > 0
-    ? await batchUpsert(supabase, 'fin_fluxo_caixa', records)
+  const todos = [...entradas, ...saidas]
+  const { sincronizados, erros } = todos.length > 0
+    ? await batchUpsert(supabase, 'fin_fluxo_caixa', todos)
     : { sincronizados: 0, erros: 0 }
 
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'fluxo_caixa',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-    mensagem: `${sincronizados} lançamentos do caixa sincronizados. ${erros} erros.`,
-    detalhes: { sincronizados, erros, total_tiny: itens.length, periodo: `${dataInicialISO} → ${dataFinalISO}` },
+    mensagem: `${sincronizados} lançamentos sincronizados. ${erros} erros.`,
+    detalhes: { sincronizados, erros, total_entradas: entradas.length, total_saidas: saidas.length },
   })
 
-  return { sincronizados, erros, total_tiny: itens.length }
+  return { sincronizados, erros, total_tiny: todos.length }
+}
+
+// Stub kept for the /sincronizar/caixa route — may be replaced with real
+// caixa.pesquisa logic once the Tiny endpoint is confirmed to exist.
+export async function syncCaixa(
+  supabase: SupabaseClient,
+  _token: string,
+  _dataInicialISO: string,
+  _dataFinalISO: string,
+) {
+  return syncFluxoCaixa(supabase)
 }
