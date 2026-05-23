@@ -46,14 +46,14 @@ async function batchUpsert(
   supabase: SupabaseClient,
   table: string,
   records: Record<string, unknown>[],
-  chunkSize = 200
+  chunkSize = 500
 ): Promise<{ sincronizados: number; erros: number }> {
   let sincronizados = 0, erros = 0
   for (let i = 0; i < records.length; i += chunkSize) {
     const chunk = records.slice(i, i + chunkSize)
-    const { error, data } = await supabase.from(table).upsert(chunk, { onConflict: 'tiny_id' }).select('id')
+    const { error } = await supabase.from(table).upsert(chunk, { onConflict: 'tiny_id' })
     if (error) erros += chunk.length
-    else sincronizados += data?.length ?? chunk.length
+    else sincronizados += chunk.length
   }
   return { sincronizados, erros }
 }

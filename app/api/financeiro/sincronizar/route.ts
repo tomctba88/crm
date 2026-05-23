@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
 import { syncContasReceber, syncContasPagar, syncFluxoCaixa } from '@/lib/financeiro/sync'
 
+export const maxDuration = 300
+
 export async function POST() {
   try {
     const supabase = await createClient()
@@ -20,11 +22,9 @@ export async function POST() {
 
     const token = integracao.token
 
-    // Contas receber e pagar em paralelo; fluxo de caixa depois (deriva dos dados locais)
-    const [cr, cp] = await Promise.allSettled([
-      syncContasReceber(supabase, token),
-      syncContasPagar(supabase, token),
-    ])
+    // Sequencial: garante que cada sync completa antes do próximo iniciar
+    const cr = await syncContasReceber(supabase, token).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
+    const cp = await syncContasPagar(supabase, token).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
     const fc = await syncFluxoCaixa(supabase).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
 
     const syncedAt = new Date().toISOString()
