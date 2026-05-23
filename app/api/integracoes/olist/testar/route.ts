@@ -39,7 +39,7 @@ export async function POST() {
     }
 
     const retorno = result?.retorno
-    if (retorno?.status_processamento !== 3) {
+    if (Number(retorno?.status_processamento) !== 3) {
       const erroApi =
         retorno?.erros?.[0]?.erro ||
         retorno?.erros?.[0]?.mensagem ||

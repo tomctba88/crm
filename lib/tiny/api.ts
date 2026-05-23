@@ -25,7 +25,7 @@ export async function tinyRequest(
   const retorno = data?.retorno as Record<string, unknown> | undefined
   if (!retorno) throw new Error('Resposta sem retorno da API do Tiny')
 
-  if (retorno.status_processamento !== 3) {
+  if (Number(retorno.status_processamento) !== 3) {
     const erros = retorno.erros as Array<Record<string, string>> | undefined
     const msg = erros?.[0]?.erro || erros?.[0]?.mensagem || 'Erro na API do Tiny'
     throw new Error(msg)

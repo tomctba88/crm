@@ -45,7 +45,7 @@ async function buscarColecaoTiny(endpoint: string, token: string, collectionKey:
   const result = await response.json().catch(() => null)
   if (!response.ok) throw new Error('Falha HTTP ao consultar a API do Tiny.')
   const retorno = result?.retorno
-  if (retorno?.status_processamento !== 3) {
+  if (Number(retorno?.status_processamento) !== 3) {
     throw new Error(retorno?.erros?.[0]?.erro || retorno?.erros?.[0]?.mensagem || `Erro ao consultar ${collectionKey} na API do Tiny.`)
   }
   const collection = retorno?.[collectionKey]
