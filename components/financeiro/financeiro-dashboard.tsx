@@ -1,13 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatData, isVencido, diasParaVencer } from '@/lib/financeiro/formatters'
-import SincronizarButton from './sincronizar-button'
 import StatusBadge from './status-badge'
 
 type ContaReceber = {
@@ -21,27 +20,47 @@ type ContaPagar = {
 type FluxoItem = { data_lancamento: string; tipo: string; valor: number }
 
 type KPIs = {
-  totalReceber: number
-  totalPagar: number
-  recebidoMes: number
-  pagoMes: number
-  vencidosReceber: number
-  vencidosPagar: number
-  vence7Receber: number
-  vence7Pagar: number
+  totalReceber: number; totalPagar: number
+  vencidosReceber: number; vencidosPagar: number
+  vence7Receber: number; vence7Pagar: number
   ultimaSync: string | null
 }
+
+type Periodo = 'mes' | 'ano' | '2023' | '2024' | '2025' | '2026' | 'tudo' | 'custom'
 
 function mesAno(data: string) {
   const d = new Date(data + 'T00:00:00')
   return d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).replace('. ', '/')
 }
 
+function getPeriodoRange(periodo: Periodo, customInicio: string, customFim: string) {
+  const hoje = new Date()
+  if (periodo === 'mes') return {
+    ini: new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10),
+    fim: new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10),
+  }
+  if (periodo === 'ano') return { ini: `${hoje.getFullYear()}-01-01`, fim: `${hoje.getFullYear()}-12-31` }
+  if (['2023', '2024', '2025', '2026'].includes(periodo)) return { ini: `${periodo}-01-01`, fim: `${periodo}-12-31` }
+  if (periodo === 'custom' && customInicio && customFim) return { ini: customInicio, fim: customFim }
+  return null // tudo
+}
+
+function periodoLabel(periodo: Periodo, customInicio: string, customFim: string): string {
+  if (periodo === 'mes') return 'Este mês'
+  if (periodo === 'ano') return `${new Date().getFullYear()}`
+  if (periodo === 'tudo') return 'Todo período'
+  if (periodo === 'custom') return customInicio && customFim ? `${customInicio.slice(0, 7)} → ${customFim.slice(0, 7)}` : 'Personalizado'
+  return periodo
+}
+
 export default function FinanceiroDashboard() {
   const [kpis, setKpis] = useState<KPIs>({
-    totalReceber: 0, totalPagar: 0, recebidoMes: 0, pagoMes: 0,
-    vencidosReceber: 0, vencidosPagar: 0, vence7Receber: 0, vence7Pagar: 0, ultimaSync: null,
+    totalReceber: 0, totalPagar: 0,
+    vencidosReceber: 0, vencidosPagar: 0,
+    vence7Receber: 0, vence7Pagar: 0, ultimaSync: null,
   })
+  const [contasReceber, setContasReceber] = useState<ContaReceber[]>([])
+  const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
   const [fluxoMensal, setFluxoMensal] = useState<{ mes: string; entradas: number; saidas: number }[]>([])
   const [statusPizza, setStatusPizza] = useState<{ name: string; value: number; color: string }[]>([])
   const [evolucao, setEvolucao] = useState<{ mes: string; recebido: number; pago: number }[]>([])
@@ -49,27 +68,40 @@ export default function FinanceiroDashboard() {
   const [loading, setLoading] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
 
+  // Filtro de período
+  const [periodo, setPeriodo] = useState<Periodo>('tudo')
+  const [customInicio, setCustomInicio] = useState('')
+  const [customFim, setCustomFim] = useState('')
+
   const supabase = createClient()
 
-  const sincronizarBackground = useCallback(async () => {
-    setSincronizando(true)
-    try {
-      await fetch('/api/financeiro/sincronizar', { method: 'POST' })
-    } catch {
-      // falha silenciosa — dados do banco já são exibidos
-    } finally {
-      setSincronizando(false)
-    }
-  }, [])
+  // Valores filtrados por período (recomputados quando período ou dados mudam)
+  const { recebidoFiltrado, pagoFiltrado } = useMemo(() => {
+    const range = getPeriodoRange(periodo, customInicio, customFim)
+    const recebidoFiltrado = contasReceber
+      .filter(r => {
+        if (r.status !== 'recebido') return false
+        if (!range) return true
+        return r.data_recebimento && r.data_recebimento >= range.ini && r.data_recebimento <= range.fim
+      })
+      .reduce((s, r) => s + r.valor, 0)
+    const pagoFiltrado = contasPagar
+      .filter(r => {
+        if (r.status !== 'pago') return false
+        if (!range) return true
+        return r.data_pagamento && r.data_pagamento >= range.ini && r.data_pagamento <= range.fim
+      })
+      .reduce((s, r) => s + r.valor, 0)
+    return { recebidoFiltrado, pagoFiltrado }
+  }, [contasReceber, contasPagar, periodo, customInicio, customFim])
 
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
       const hoje = new Date()
-      const inicioMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10)
+      const hojeStr = hoje.toISOString().slice(0, 10)
       const em7 = new Date(hoje); em7.setDate(hoje.getDate() + 7)
       const em7Str = em7.toISOString().slice(0, 10)
-      const hojeStr = hoje.toISOString().slice(0, 10)
 
       const [
         { data: receber },
@@ -87,24 +119,24 @@ export default function FinanceiroDashboard() {
       const cp = (pagar ?? []) as ContaPagar[]
       const fc = (fluxo ?? []) as FluxoItem[]
 
-      // KPIs
+      setContasReceber(cr)
+      setContasPagar(cp)
+
+      // KPIs fixos (independentes do período)
       const totalReceber = cr.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0)
       const totalPagar = cp.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0)
-      const recebidoMes = cr.filter(r => r.status === 'recebido' && r.data_recebimento && r.data_recebimento >= inicioMes).reduce((s, r) => s + r.valor, 0)
-      const pagoMes = cp.filter(r => r.status === 'pago' && r.data_pagamento && r.data_pagamento >= inicioMes).reduce((s, r) => s + r.valor, 0)
       const vencidosReceber = cr.filter(r => r.data_vencimento && isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.valor, 0)
       const vencidosPagar = cp.filter(r => r.data_vencimento && isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.valor, 0)
       const vence7Receber = cr.filter(r => r.status === 'aberto' && r.data_vencimento && r.data_vencimento >= hojeStr && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0)
       const vence7Pagar = cp.filter(r => r.status === 'aberto' && r.data_vencimento && r.data_vencimento >= hojeStr && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0)
 
-      setKpis({ totalReceber, totalPagar, recebidoMes, pagoMes, vencidosReceber, vencidosPagar, vence7Receber, vence7Pagar, ultimaSync: integ?.ultimo_sync_em ?? null })
+      setKpis({ totalReceber, totalPagar, vencidosReceber, vencidosPagar, vence7Receber, vence7Pagar, ultimaSync: integ?.ultimo_sync_em ?? null })
 
       // Fluxo mensal últimos 6 meses
       const map6: Record<string, { entradas: number; saidas: number }> = {}
       for (let i = 5; i >= 0; i--) {
         const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
-        const key = d.toISOString().slice(0, 7)
-        map6[key] = { entradas: 0, saidas: 0 }
+        map6[d.toISOString().slice(0, 7)] = { entradas: 0, saidas: 0 }
       }
       for (const f of fc) {
         const k = f.data_lancamento.slice(0, 7)
@@ -160,9 +192,17 @@ export default function FinanceiroDashboard() {
     }
   }, [])
 
-  useEffect(() => {
-    sincronizarBackground().then(() => carregar())
-  }, [])
+  const sincronizarERecarregar = useCallback(async () => {
+    setSincronizando(true)
+    try {
+      await fetch('/api/financeiro/sincronizar', { method: 'POST' })
+    } catch { /* falha silenciosa */ }
+    finally { setSincronizando(false) }
+    await carregar()
+  }, [carregar])
+
+  // Carrega dados ao entrar, SEM sincronizar automaticamente
+  useEffect(() => { carregar() }, [])
 
   const cardKpi = (label: string, valor: number, cor?: string) => (
     <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
@@ -176,6 +216,20 @@ export default function FinanceiroDashboard() {
       <p className="text-xs font-semibold opacity-80">{label}</p>
       <p className="mt-2 text-lg font-black">{formatBRL(valor)}</p>
     </div>
+  )
+
+  const btnPeriodo = (p: Periodo, label: string) => (
+    <button
+      key={p}
+      onClick={() => setPeriodo(p)}
+      className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+        periodo === p
+          ? 'bg-[#0b1733] text-white'
+          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+      }`}
+    >
+      {label}
+    </button>
   )
 
   return (
@@ -192,10 +246,15 @@ export default function FinanceiroDashboard() {
                 : 'Nunca sincronizado'}
           </p>
         </div>
-        <SincronizarButton tipo="completo" onSucesso={carregar} />
+        <button
+          onClick={sincronizarERecarregar}
+          disabled={sincronizando}
+          className="rounded-2xl bg-[#0b1733] px-6 py-3 text-sm font-bold text-white shadow transition hover:bg-[#1b4fd6] disabled:opacity-50"
+        >
+          {sincronizando ? '⟳ Sincronizando...' : 'Sincronizar com Tiny'}
+        </button>
       </div>
 
-      {/* Skeleton de loading */}
       {loading ? (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -209,8 +268,65 @@ export default function FinanceiroDashboard() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cardKpi('Contas a Receber', kpis.totalReceber, 'text-[#1b4fd6]')}
         {cardKpi('Contas a Pagar', kpis.totalPagar, 'text-red-600')}
-        {cardKpi('Recebido no Mês', kpis.recebidoMes, 'text-green-600')}
-        {cardKpi('Pago no Mês', kpis.pagoMes, 'text-slate-700')}
+
+        {/* Card Recebido com filtro de período */}
+        <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-500">Recebido</p>
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">
+              {periodoLabel(periodo, customInicio, customFim)}
+            </span>
+          </div>
+          <p className="mt-3 text-2xl font-black text-green-600">{formatBRL(recebidoFiltrado)}</p>
+        </div>
+
+        {/* Card Pago com filtro de período */}
+        <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-500">Pago</p>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
+              {periodoLabel(periodo, customInicio, customFim)}
+            </span>
+          </div>
+          <p className="mt-3 text-2xl font-black text-slate-700">{formatBRL(pagoFiltrado)}</p>
+        </div>
+      </div>
+
+      {/* Seletor de período */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="mb-3 text-xs font-semibold text-slate-500">Período dos cards Recebido e Pago:</p>
+        <div className="flex flex-wrap gap-2">
+          {btnPeriodo('mes', 'Este mês')}
+          {btnPeriodo('ano', `${new Date().getFullYear()}`)}
+          {btnPeriodo('2026', '2026')}
+          {btnPeriodo('2025', '2025')}
+          {btnPeriodo('2024', '2024')}
+          {btnPeriodo('2023', '2023')}
+          {btnPeriodo('tudo', 'Todo período')}
+          {btnPeriodo('custom', 'Personalizado')}
+        </div>
+        {periodo === 'custom' && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-500">De:</label>
+              <input
+                type="date"
+                value={customInicio}
+                onChange={e => setCustomInicio(e.target.value)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-500">Até:</label>
+              <input
+                type="date"
+                value={customFim}
+                onChange={e => setCustomFim(e.target.value)}
+                className="rounded-lg border border-slate-200 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Alertas */}
@@ -223,7 +339,6 @@ export default function FinanceiroDashboard() {
 
       {/* Gráficos */}
       <div className="grid gap-6 xl:grid-cols-2">
-        {/* Fluxo mensal */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-xl font-black text-[#0b1733]">Fluxo de Caixa — últimos 6 meses</h3>
           <div className="mt-4">
@@ -241,7 +356,6 @@ export default function FinanceiroDashboard() {
           </div>
         </div>
 
-        {/* Pizza status */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-xl font-black text-[#0b1733]">Contas a Receber por Status</h3>
           <div className="mt-4">
