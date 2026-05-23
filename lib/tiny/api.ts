@@ -61,7 +61,8 @@ export async function tinyPaginado(
   endpoint: string,
   collectionKey: string,
   itemKey: string,
-  extraParams: Record<string, string> = {}
+  extraParams: Record<string, string> = {},
+  maxPaginas = 0
 ): Promise<Record<string, unknown>[]> {
   const todos: Record<string, unknown>[] = []
   let pagina = 1
@@ -87,7 +88,7 @@ export async function tinyPaginado(
     }
 
     const numPaginas = Number(retorno.numero_paginas ?? 1)
-    if (pagina >= numPaginas || items.length === 0) break
+    if (pagina >= numPaginas || items.length === 0 || (maxPaginas > 0 && pagina >= maxPaginas)) break
     pagina++
   }
 

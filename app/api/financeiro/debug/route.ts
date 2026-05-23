@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
-import { tinyRequest } from '@/lib/tiny/api'
+import { tinyRequest, tinyPaginado } from '@/lib/tiny/api'
 
 export async function GET() {
   try {
@@ -80,14 +80,22 @@ export async function GET() {
       tinyErro = String(e)
     }
 
-    // Mostrar retorno bruto do raw fetch (sem passar por tinyRequest) — primeiros 3 itens
-    const rawRetornoData = resCR?.retorno as Record<string, unknown> | undefined
-    let rawPrimeiros3: unknown = null
-    if (rawRetornoData) {
-      const arrayKey = Object.keys(rawRetornoData).find(k => Array.isArray(rawRetornoData[k]))
-      if (arrayKey) {
-        rawPrimeiros3 = (rawRetornoData[arrayKey] as unknown[]).slice(0, 3)
-      }
+    // Testar tinyPaginado diretamente (só página 1) — mesmo código que o sync usa
+    let paginadoCount = -1
+    let paginadoErro: string | null = null
+    let paginadoPrimeiro: unknown = null
+    try {
+      const ini2 = new Date(); ini2.setFullYear(ini2.getFullYear() - 3)
+      const fim2 = new Date(); fim2.setFullYear(fim2.getFullYear() + 2)
+      const dd = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+      const itens = await tinyPaginado(
+        integracao.token, 'contas.receber.pesquisa', 'contas', 'conta',
+        { data_ini_vencimento: dd(ini2), data_fim_vencimento: dd(fim2) }, 1
+      )
+      paginadoCount = itens.length
+      paginadoPrimeiro = itens[0] ?? null
+    } catch (e) {
+      paginadoErro = String(e)
     }
 
     return NextResponse.json({
@@ -95,15 +103,14 @@ export async function GET() {
       ultimos_logs: logs,
       tiny_status_cr: resCR?.retorno?.status_processamento,
       tiny_total_paginas_cr: resCR?.retorno?.numero_paginas,
-      tiny_status_cp: resCP?.retorno?.status_processamento,
       token_ativo: integracao.ativo,
       tinyRequest_erro: tinyErro,
-      tinyRequest_todas_chaves: tinyRetorno ? Object.keys(tinyRetorno) : null,
       tinyRequest_chave_auto: chaveAutoDetectada,
       tinyRequest_itens_na_pagina1: totalItensNaPagina,
       tinyRequest_primeiro_item: primeiroItem,
-      raw_retorno_todas_chaves: rawRetornoData ? Object.keys(rawRetornoData) : null,
-      raw_primeiros3_itens: rawPrimeiros3,
+      tinyPaginado_count_pagina1: paginadoCount,
+      tinyPaginado_primeiro: paginadoPrimeiro,
+      tinyPaginado_erro: paginadoErro,
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
