@@ -68,10 +68,14 @@ export async function tinyPaginado(
   let pagina = 1
 
   while (true) {
-    const retorno = await tinyRequest(token, endpoint, {
-      pagina: String(pagina),
-      ...extraParams,
-    })
+    let retorno: Record<string, unknown>
+    try {
+      retorno = await tinyRequest(token, endpoint, { pagina: String(pagina), ...extraParams })
+    } catch (e) {
+      // Se uma página falhar, retorna o que foi coletado até aqui
+      console.error(`tinyPaginado ${endpoint} pág ${pagina} erro:`, e)
+      break
+    }
 
     // Try the specified key; if not found, auto-detect the first array in retorno
     let collection = retorno[collectionKey]

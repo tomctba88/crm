@@ -59,7 +59,18 @@ async function batchUpsert(
 }
 
 export async function syncContasReceber(supabase: SupabaseClient, token: string) {
-  const itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', filtroDataVencimento())
+  let itens: Record<string, unknown>[] = []
+  try {
+    itens = await tinyPaginado(token, 'contas.receber.pesquisa', 'contas', 'conta', filtroDataVencimento())
+  } catch (e) {
+    const erroFetch = String(e)
+    await supabase.from('logs_integracao').insert({
+      integracao: 'tiny', recurso: 'contas_receber', status: 'erro',
+      mensagem: `Erro ao buscar contas a receber do Tiny: ${erroFetch}`,
+      detalhes: { erro: erroFetch },
+    })
+    return { sincronizados: 0, erros: 0, total_tiny: 0 }
+  }
 
   const records = itens
     .filter(item => !!str(item.id))
@@ -93,7 +104,19 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
 }
 
 export async function syncContasPagar(supabase: SupabaseClient, token: string) {
-  const itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', filtroDataVencimento())
+  let itens: Record<string, unknown>[] = []
+  let erroFetch: string | null = null
+  try {
+    itens = await tinyPaginado(token, 'contas.pagar.pesquisa', 'contas', 'conta', filtroDataVencimento())
+  } catch (e) {
+    erroFetch = String(e)
+    await supabase.from('logs_integracao').insert({
+      integracao: 'tiny', recurso: 'contas_pagar', status: 'erro',
+      mensagem: `Erro ao buscar contas a pagar do Tiny: ${erroFetch}`,
+      detalhes: { erro: erroFetch },
+    })
+    return { sincronizados: 0, erros: 0, total_tiny: 0 }
+  }
 
   const records = itens
     .filter(item => !!str(item.id))
