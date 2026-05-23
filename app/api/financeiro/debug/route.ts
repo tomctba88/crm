@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
+import { tinyRequest } from '@/lib/tiny/api'
 
 export async function GET() {
   try {
@@ -52,14 +53,35 @@ export async function GET() {
       .order('created_at', { ascending: false })
       .limit(6)
 
+    // Testar tinyRequest diretamente para ver estrutura real
+    let tinyRetorno: Record<string, unknown> | null = null
+    let tinyErro: string | null = null
+    let colecaoTipo = ''
+    let primeiroItem: unknown = null
+
+    try {
+      tinyRetorno = await tinyRequest(integracao.token, 'contas.receber.pesquisa', {
+        pagina: '1',
+        data_ini_vencimento: bodyFiltrado.get('data_ini_vencimento') ?? '',
+        data_fim_vencimento: bodyFiltrado.get('data_fim_vencimento') ?? '',
+      })
+      const col = tinyRetorno['contas_receber']
+      colecaoTipo = Array.isArray(col) ? `array[${(col as unknown[]).length}]` : typeof col
+      primeiroItem = Array.isArray(col) ? (col as unknown[])[0] : col
+    } catch (e) {
+      tinyErro = String(e)
+    }
+
     return NextResponse.json({
       tabelas: { fin_contas_receber: countCR, fin_contas_pagar: countCP, fin_fluxo_caixa: countFC },
       ultimos_logs: logs,
       tiny_status_cr: resCR?.retorno?.status_processamento,
       tiny_total_paginas_cr: resCR?.retorno?.numero_paginas,
-      tiny_total_registros_cr: resCR?.retorno?.numero_elementos,
       tiny_status_cp: resCP?.retorno?.status_processamento,
       token_ativo: integracao.ativo,
+      tinyRequest_erro: tinyErro,
+      tinyRequest_colecao_tipo: colecaoTipo,
+      tinyRequest_primeiro_item: primeiroItem,
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
