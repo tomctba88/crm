@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
-import { syncContasReceber, syncContasPagar, syncFluxoCaixa } from '@/lib/financeiro/sync'
+import { syncContasReceber, syncContasPagar, syncCaixa } from '@/lib/financeiro/sync'
 
 export const maxDuration = 300
 
@@ -22,10 +22,24 @@ export async function POST() {
 
     const token = integracao.token
 
-    // Sequencial: garante que cada sync completa antes do próximo iniciar
-    const cr = await syncContasReceber(supabase, token).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
-    const cp = await syncContasPagar(supabase, token).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
-    const fc = await syncFluxoCaixa(supabase).then(v => ({ status: 'fulfilled' as const, value: v })).catch(e => ({ status: 'rejected' as const, reason: e }))
+    // Caixa: last 3 years of real cash movements
+    const hoje = new Date()
+    const dataFinal = hoje.toISOString().slice(0, 10)
+    const ini3anos = new Date(hoje); ini3anos.setFullYear(ini3anos.getFullYear() - 3)
+    const dataInicial = ini3anos.toISOString().slice(0, 10)
+
+    // Contas a receber/pagar (only open) run first; caixa runs after
+    const cr = await syncContasReceber(supabase, token)
+      .then(v => ({ status: 'fulfilled' as const, value: v }))
+      .catch(e => ({ status: 'rejected' as const, reason: e }))
+
+    const cp = await syncContasPagar(supabase, token)
+      .then(v => ({ status: 'fulfilled' as const, value: v }))
+      .catch(e => ({ status: 'rejected' as const, reason: e }))
+
+    const fc = await syncCaixa(supabase, token, dataInicial, dataFinal)
+      .then(v => ({ status: 'fulfilled' as const, value: v }))
+      .catch(e => ({ status: 'rejected' as const, reason: e }))
 
     const syncedAt = new Date().toISOString()
     await supabase

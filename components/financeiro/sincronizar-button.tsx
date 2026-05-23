@@ -2,12 +2,13 @@
 
 import { useState } from 'react'
 
-type Tipo = 'completo' | 'receber' | 'pagar' | 'fluxo'
+type Tipo = 'completo' | 'receber' | 'pagar' | 'caixa' | 'fluxo'
 
 const ROTAS: Record<Tipo, string> = {
   completo: '/api/financeiro/sincronizar',
   receber: '/api/financeiro/sincronizar/contas-receber',
   pagar: '/api/financeiro/sincronizar/contas-pagar',
+  caixa: '/api/financeiro/sincronizar/caixa',
   fluxo: '/api/financeiro/sincronizar/fluxo-caixa',
 }
 
@@ -15,6 +16,7 @@ const LABELS: Record<Tipo, string> = {
   completo: 'Sincronizar com Tiny',
   receber: 'Sincronizar Receber',
   pagar: 'Sincronizar Pagar',
+  caixa: 'Sincronizar Caixa',
   fluxo: 'Sincronizar Fluxo',
 }
 

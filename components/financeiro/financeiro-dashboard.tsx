@@ -37,8 +37,6 @@ export default function FinanceiroDashboard() {
   const [ultimaSync, setUltimaSync] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
-  const [reparando, setReparando] = useState(false)
-  const [reparoMsg, setReparoMsg] = useState<string | null>(null)
 
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todos')
   const [filtroAno, setFiltroAno] = useState(ANO_ATUAL)
@@ -73,26 +71,34 @@ export default function FinanceiroDashboard() {
     const em7 = new Date(); em7.setDate(new Date().getDate() + 7)
     const em7Str = em7.toISOString().slice(0, 10)
 
-    const crP = contasReceber.filter(r => inR(r.data_vencimento))
-    const cpP = contasPagar.filter(r => inR(r.data_vencimento))
+    // A Receber / A Pagar: only open accounts, filtered by due date
+    const crP = contasReceber.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
+    const cpP = contasPagar.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
+
+    // Recebido / Pago: actual cash movements from fin_fluxo_caixa (caixa.pesquisa)
+    const recebido = fluxoRaw
+      .filter(f => f.tipo === 'entrada' && inR(f.data_lancamento))
+      .reduce((s, f) => s + f.valor, 0)
+    const pago = fluxoRaw
+      .filter(f => f.tipo === 'saida' && inR(f.data_lancamento))
+      .reduce((s, f) => s + f.valor, 0)
 
     return {
-      totalReceber: crP.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0),
-      totalPagar: cpP.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0),
-      recebido: contasReceber.filter(r => r.status === 'recebido' && inR(r.data_recebimento ?? r.data_vencimento)).reduce((s, r) => s + r.valor, 0),
-      pago: contasPagar.filter(r => r.status === 'pago' && inR(r.data_pagamento ?? r.data_vencimento)).reduce((s, r) => s + r.valor, 0),
+      totalReceber: crP.reduce((s, r) => s + r.valor, 0),
+      totalPagar: cpP.reduce((s, r) => s + r.valor, 0),
+      recebido,
+      pago,
       vencidosReceber: crP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
       vencidosPagar: cpP.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0),
-      vence7Receber: crP.filter(r => r.status === 'aberto' && r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
-      vence7Pagar: cpP.filter(r => r.status === 'aberto' && r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
+      vence7Receber: crP.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
+      vence7Pagar: cpP.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
     }
-  }, [contasReceber, contasPagar, range])
+  }, [contasReceber, contasPagar, fluxoRaw, range])
 
   const charts = useMemo(() => {
     const inR = (d: string | null) => !range || (!!d && d >= range.ini && d <= range.fim)
     const hoje = new Date()
 
-    // Meses a mostrar nos gráficos
     const meses: string[] = []
     if (filtroTipo === 'todos') {
       for (let i = 23; i >= 0; i--) {
@@ -116,7 +122,7 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Fluxo de caixa
+    // Fluxo real (from fin_fluxo_caixa / caixa.pesquisa)
     const fluxoMap: Record<string, { entradas: number; saidas: number }> = {}
     meses.forEach(m => { fluxoMap[m] = { entradas: 0, saidas: 0 } })
     for (const f of fluxoRaw) {
@@ -127,37 +133,35 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Evolução recebimentos vs pagamentos
-    const evolMap: Record<string, { recebido: number; pago: number }> = {}
-    meses.forEach(m => { evolMap[m] = { recebido: 0, pago: 0 } })
+    // Projeção por vencimento (open accounts)
+    const projecaoMap: Record<string, { receber: number; pagar: number }> = {}
+    meses.forEach(m => { projecaoMap[m] = { receber: 0, pagar: 0 } })
     for (const r of contasReceber) {
-      if (r.status === 'recebido') {
-        const k = (r.data_recebimento ?? r.data_vencimento ?? '').slice(0, 7)
-        if (evolMap[k]) evolMap[k].recebido += r.valor
+      if (r.status === 'aberto') {
+        const k = (r.data_vencimento ?? '').slice(0, 7)
+        if (projecaoMap[k]) projecaoMap[k].receber += r.valor
       }
     }
     for (const r of contasPagar) {
-      if (r.status === 'pago') {
-        const k = (r.data_pagamento ?? r.data_vencimento ?? '').slice(0, 7)
-        if (evolMap[k]) evolMap[k].pago += r.valor
+      if (r.status === 'aberto') {
+        const k = (r.data_vencimento ?? '').slice(0, 7)
+        if (projecaoMap[k]) projecaoMap[k].pagar += r.valor
       }
     }
 
-    // Pizza status filtrada por período
-    const crP = contasReceber.filter(r => inR(r.data_vencimento))
-    const stMap = { aberto: 0, recebido: 0, vencido: 0, cancelado: 0 }
+    // Pizza: open accounts by overdue vs upcoming
+    const crP = contasReceber.filter(r => r.status === 'aberto' && inR(r.data_vencimento))
+    const stMap = { aberto: 0, vencido: 0 }
     for (const r of crP) {
-      const st = isVencido(r.data_vencimento ?? '', r.status) ? 'vencido' : r.status as keyof typeof stMap
-      stMap[st as keyof typeof stMap] = (stMap[st as keyof typeof stMap] ?? 0) + r.valor
+      const st = isVencido(r.data_vencimento ?? '', r.status) ? 'vencido' : 'aberto'
+      stMap[st] += r.valor
     }
     const statusPizza = [
-      { name: 'Aberto', value: stMap.aberto, color: '#1b4fd6' },
-      { name: 'Recebido', value: stMap.recebido, color: '#16a34a' },
+      { name: 'Em dia', value: stMap.aberto, color: '#1b4fd6' },
       { name: 'Vencido', value: stMap.vencido, color: '#dc2626' },
-      { name: 'Cancelado', value: stMap.cancelado, color: '#94a3b8' },
     ].filter(s => s.value > 0)
 
-    // Vencimentos em aberto
+    // Upcoming due dates
     const em30 = new Date(); em30.setDate(em30.getDate() + 30)
     const em30Str = em30.toISOString().slice(0, 10)
     const crOpen = contasReceber.filter(r =>
@@ -173,7 +177,7 @@ export default function FinanceiroDashboard() {
 
     return {
       fluxoMensal: meses.map(k => ({ mes: mesAno(k + '-01'), ...fluxoMap[k] })),
-      evolucao: meses.map(k => ({ mes: mesAno(k + '-01'), ...evolMap[k] })),
+      projecao: meses.map(k => ({ mes: mesAno(k + '-01'), ...projecaoMap[k] })),
       statusPizza,
       vencimentos,
     }
@@ -202,30 +206,6 @@ export default function FinanceiroDashboard() {
     try { await fetch('/api/financeiro/sincronizar', { method: 'POST' }) } catch { /* silencia */ }
     finally { setSincronizando(false) }
     await carregar()
-  }, [carregar])
-
-  const repararDatas = useCallback(async () => {
-    setReparando(true)
-    setReparoMsg(null)
-    try {
-      const res = await fetch('/api/financeiro/reparar-datas', { method: 'POST' })
-      const json = await res.json()
-      if (json.ok) {
-        const cr = json.contas_receber ?? {}
-        const cp = json.contas_pagar ?? {}
-        setReparoMsg(
-          `Corrigidas: ${cr.atualizadas ?? 0} a receber (${cr.via_ocorrencia_tiny ?? 0} data real Tiny, ${cr.via_vencimento_fallback ?? 0} por vencimento) · ` +
-          `${cp.atualizadas ?? 0} a pagar (${cp.via_ocorrencia_tiny ?? 0} data real Tiny, ${cp.via_vencimento_fallback ?? 0} por vencimento)`
-        )
-        await carregar()
-      } else {
-        setReparoMsg(`Erro: ${json.error}`)
-      }
-    } catch {
-      setReparoMsg('Erro ao reparar datas.')
-    } finally {
-      setReparando(false)
-    }
   }, [carregar])
 
   useEffect(() => { carregar() }, [])
@@ -268,28 +248,13 @@ export default function FinanceiroDashboard() {
               : 'Nunca sincronizado'}
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2">
-            <button
-              onClick={repararDatas}
-              disabled={reparando || sincronizando}
-              title="Busca as datas reais de pagamento no Tiny para todas as contas históricas"
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-50"
-            >
-              {reparando ? '⟳ Reparando...' : 'Reparar Datas'}
-            </button>
-            <button
-              onClick={sincronizarERecarregar}
-              disabled={sincronizando || reparando}
-              className="rounded-2xl bg-[#0b1733] px-6 py-3 text-sm font-bold text-white shadow transition hover:bg-[#1b4fd6] disabled:opacity-50"
-            >
-              {sincronizando ? '⟳ Sincronizando...' : 'Sincronizar com Tiny'}
-            </button>
-          </div>
-          {reparoMsg && (
-            <p className="text-xs text-slate-500">{reparoMsg}</p>
-          )}
-        </div>
+        <button
+          onClick={sincronizarERecarregar}
+          disabled={sincronizando}
+          className="rounded-2xl bg-[#0b1733] px-6 py-3 text-sm font-bold text-white shadow transition hover:bg-[#1b4fd6] disabled:opacity-50"
+        >
+          {sincronizando ? '⟳ Sincronizando...' : 'Sincronizar com Tiny'}
+        </button>
       </div>
 
       {/* Filtros */}
@@ -357,7 +322,7 @@ export default function FinanceiroDashboard() {
         {filtroTipo !== 'todos' && (
           <p className="text-xs text-slate-400">
             Exibindo: <span className="font-semibold text-[#1b4fd6]">{filtroLabel}</span>
-            <span className="ml-1">· A Receber/Pagar por vencimento · Recebido/Pago por data real</span>
+            <span className="ml-1">· A Receber/Pagar por vencimento · Recebido/Pago por data do caixa Tiny</span>
           </p>
         )}
       </div>
@@ -374,15 +339,15 @@ export default function FinanceiroDashboard() {
       {/* KPIs principais */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {cardKpi('A Receber', kpis.totalReceber, 'text-[#1b4fd6]',
-          filtroTipo !== 'todos' ? `${filtroLabel} · em aberto` : undefined)}
+          filtroTipo !== 'todos' ? `${filtroLabel} · em aberto por vencimento` : 'em aberto')}
         {cardKpi('A Pagar', kpis.totalPagar, 'text-red-600',
-          filtroTipo !== 'todos' ? `${filtroLabel} · em aberto` : undefined)}
+          filtroTipo !== 'todos' ? `${filtroLabel} · em aberto por vencimento` : 'em aberto')}
 
         <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Recebido</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de recebimento</p>}
+              <p className="text-[10px] text-slate-400">lançado no caixa Tiny</p>
             </div>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">
               {filtroLabel}
@@ -395,7 +360,7 @@ export default function FinanceiroDashboard() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-500">Pago</p>
-              {filtroTipo !== 'todos' && <p className="text-[10px] text-slate-400">por data de pagamento</p>}
+              <p className="text-[10px] text-slate-400">lançado no caixa Tiny</p>
             </div>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
               {filtroLabel}
@@ -416,7 +381,8 @@ export default function FinanceiroDashboard() {
       {/* Gráficos */}
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-black text-[#0b1733]">Fluxo de Caixa por Vencimento</h3>
+          <h3 className="text-xl font-black text-[#0b1733]">Fluxo de Caixa Real</h3>
+          <p className="text-xs text-slate-400">Entradas e saídas do Caixa Tiny</p>
           <div className="mt-4">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={charts.fluxoMensal} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
@@ -425,7 +391,7 @@ export default function FinanceiroDashboard() {
                 <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} />
                 <Legend />
-                <Bar dataKey="entradas" name="Entradas" fill="#1b4fd6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="entradas" name="Entradas" fill="#16a34a" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="saidas" name="Saídas" fill="#dc2626" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -433,7 +399,8 @@ export default function FinanceiroDashboard() {
         </div>
 
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-black text-[#0b1733]">Contas a Receber por Status</h3>
+          <h3 className="text-xl font-black text-[#0b1733]">A Receber / A Pagar por Status</h3>
+          <p className="text-xs text-slate-400">Contas em aberto no período</p>
           <div className="mt-4">
             {charts.statusPizza.length === 0 ? (
               <div className="flex h-[260px] items-center justify-center text-sm text-slate-400">Sem dados no período</div>
@@ -453,19 +420,20 @@ export default function FinanceiroDashboard() {
         </div>
       </div>
 
-      {/* Evolução */}
+      {/* Projeção por vencimento */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-black text-[#0b1733]">Recebimentos vs Pagamentos</h3>
+        <h3 className="text-xl font-black text-[#0b1733]">Projeção por Vencimento</h3>
+        <p className="text-xs text-slate-400">Contas em aberto agrupadas por data de vencimento</p>
         <div className="mt-4">
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={charts.evolucao} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
+            <LineChart data={charts.projecao} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="mes" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
               <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
               <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} />
               <Legend />
-              <Line type="monotone" dataKey="recebido" name="Recebido" stroke="#1b4fd6" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="pago" name="Pago" stroke="#dc2626" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="receber" name="A Receber" stroke="#1b4fd6" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="pagar" name="A Pagar" stroke="#dc2626" strokeWidth={2} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
