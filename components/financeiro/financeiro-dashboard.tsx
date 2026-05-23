@@ -76,13 +76,18 @@ export default function FinanceiroDashboard() {
   const supabase = createClient()
 
   // Valores filtrados por período (recomputados quando período ou dados mudam)
+  // Filtra por data_vencimento: a API Tiny v2 não expõe data de recebimento/pagamento
+  // real, então o filtro por período usa a data de vencimento como referência.
+  // Para novos pagamentos detectados no sync, data_recebimento/data_pagamento passa
+  // a ter a data real — nesse caso ambos os campos ficam no mesmo período.
   const { recebidoFiltrado, pagoFiltrado } = useMemo(() => {
     const range = getPeriodoRange(periodo, customInicio, customFim)
-    // Usa data_vencimento como fallback pois a API Tiny não retorna data efetiva de recebimento/pagamento
     const recebidoFiltrado = contasReceber
       .filter(r => {
         if (r.status !== 'recebido') return false
         if (!range) return true
+        // Usa data_recebimento quando disponível (sync detectou pagamento real),
+        // senão usa data_vencimento como referência de competência
         const dataRef = r.data_recebimento ?? r.data_vencimento
         return dataRef && dataRef >= range.ini && dataRef <= range.fim
       })
@@ -135,9 +140,9 @@ export default function FinanceiroDashboard() {
 
       setKpis({ totalReceber, totalPagar, vencidosReceber, vencidosPagar, vence7Receber, vence7Pagar, ultimaSync: integ?.ultimo_sync_em ?? null })
 
-      // Fluxo mensal últimos 6 meses
+      // Fluxo mensal últimos 24 meses
       const map6: Record<string, { entradas: number; saidas: number }> = {}
-      for (let i = 5; i >= 0; i--) {
+      for (let i = 23; i >= 0; i--) {
         const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
         map6[d.toISOString().slice(0, 7)] = { entradas: 0, saidas: 0 }
       }
@@ -163,21 +168,21 @@ export default function FinanceiroDashboard() {
         { name: 'Cancelado', value: stMap.cancelado, color: '#94a3b8' },
       ].filter(s => s.value > 0))
 
-      // Evolução 12 meses
+      // Evolução 24 meses — usa data_vencimento para contas sem data de recebimento real
       const map12: Record<string, { recebido: number; pago: number }> = {}
-      for (let i = 11; i >= 0; i--) {
+      for (let i = 23; i >= 0; i--) {
         const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
         map12[d.toISOString().slice(0, 7)] = { recebido: 0, pago: 0 }
       }
       for (const r of cr) {
-        if (r.status === 'recebido' && r.data_recebimento) {
-          const k = r.data_recebimento.slice(0, 7)
+        if (r.status === 'recebido') {
+          const k = (r.data_recebimento ?? r.data_vencimento ?? '').slice(0, 7)
           if (map12[k]) map12[k].recebido += r.valor
         }
       }
       for (const r of cp) {
-        if (r.status === 'pago' && r.data_pagamento) {
-          const k = r.data_pagamento.slice(0, 7)
+        if (r.status === 'pago') {
+          const k = (r.data_pagamento ?? r.data_vencimento ?? '').slice(0, 7)
           if (map12[k]) map12[k].pago += r.valor
         }
       }
@@ -261,7 +266,10 @@ export default function FinanceiroDashboard() {
         {/* Card Recebido com filtro de período */}
         <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-500">Recebido</p>
+            <div>
+              <p className="text-sm font-semibold text-slate-500">Recebido</p>
+              {periodo !== 'tudo' && <p className="text-[10px] text-slate-400">por vencimento</p>}
+            </div>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">
               {periodoLabel(periodo, customInicio, customFim)}
             </span>
@@ -272,7 +280,10 @@ export default function FinanceiroDashboard() {
         {/* Card Pago com filtro de período */}
         <div className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-slate-500">Pago</p>
+            <div>
+              <p className="text-sm font-semibold text-slate-500">Pago</p>
+              {periodo !== 'tudo' && <p className="text-[10px] text-slate-400">por vencimento</p>}
+            </div>
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">
               {periodoLabel(periodo, customInicio, customFim)}
             </span>
@@ -333,7 +344,7 @@ export default function FinanceiroDashboard() {
       {/* Gráficos */}
       <div className="grid gap-6 xl:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="text-xl font-black text-[#0b1733]">Fluxo de Caixa — últimos 6 meses</h3>
+          <h3 className="text-xl font-black text-[#0b1733]">Fluxo por Vencimento — últimos 24 meses</h3>
           <div className="mt-4">
             <ResponsiveContainer width="100%" height={260}>
               <BarChart data={fluxoMensal} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
@@ -370,7 +381,7 @@ export default function FinanceiroDashboard() {
 
       {/* Evolução 12 meses */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-black text-[#0b1733]">Recebimentos vs Pagamentos — últimos 12 meses</h3>
+        <h3 className="text-xl font-black text-[#0b1733]">Recebimentos vs Pagamentos — últimos 24 meses</h3>
         <div className="mt-4">
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={evolucao} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
