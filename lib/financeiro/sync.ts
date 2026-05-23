@@ -1,4 +1,4 @@
-import { tinyPaginado, tinyRequest } from '@/lib/tiny/api'
+import { tinyPaginado } from '@/lib/tiny/api'
 import { SupabaseClient } from '@supabase/supabase-js'
 
 function parseDateBR(dataBR: string): string | null {
@@ -58,64 +58,6 @@ async function batchUpsert(
   return { sincronizados, erros }
 }
 
-// Extrai a data real de pagamento via endpoint de detalhe do Tiny.
-// Busca SOMENTE em estruturas de histórico aninhadas (data_ocorrencia),
-// nunca em campos raiz que podem conter data_vencimento disfarçada.
-async function fetchDataOcorrenciaReal(
-  token: string,
-  tinyId: string,
-  tipo: 'receber' | 'pagar'
-): Promise<string | null> {
-  try {
-    const endpoint = tipo === 'receber' ? 'contas.receber.obter' : 'contas.pagar.obter'
-    const retorno = await tinyRequest(token, endpoint, { id: tinyId })
-    const conta = (retorno.conta ?? retorno) as Record<string, unknown>
-
-    // Procura apenas em estruturas de histórico aninhadas — o campo raiz
-    // data_recebimento/data_pagamento pode ser a data de vencimento, não a real.
-    for (const key of ['historico_recebimentos', 'historico_pagamentos', 'historico', 'ocorrencias', 'parcelas']) {
-      const obj = conta[key]
-      if (!obj) continue
-      const arr: unknown[] = Array.isArray(obj)
-        ? obj
-        : Array.isArray((obj as Record<string, unknown>).historico)
-          ? (obj as Record<string, unknown[]>).historico
-          : []
-      if (arr.length === 0) continue
-      const first = arr[0] as Record<string, unknown>
-      for (const field of ['data_ocorrencia', 'data_pagamento', 'data']) {
-        const v = first[field]
-        if (v && typeof v === 'string' && v !== '0000-00-00') {
-          const parsed = parseDateBR(v)
-          if (parsed) return parsed
-        }
-      }
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
-// Busca datas reais concorrentemente, limitando a N chamadas paralelas.
-async function fetchDatasReais(
-  token: string,
-  ids: string[],
-  tipo: 'receber' | 'pagar',
-  concurrency = 5
-): Promise<Map<string, string | null>> {
-  const results = new Map<string, string | null>()
-  for (let i = 0; i < ids.length; i += concurrency) {
-    const batch = ids.slice(i, i + concurrency)
-    const batchResults = await Promise.all(
-      batch.map(async id => ({ id, date: await fetchDataOcorrenciaReal(token, id, tipo) }))
-    )
-    for (const { id, date } of batchResults) results.set(id, date)
-  }
-  return results
-}
-
 export async function syncContasReceber(supabase: SupabaseClient, token: string) {
   let itens: Record<string, unknown>[] = []
   try {
@@ -143,19 +85,6 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
 
   const hoje = new Date().toISOString().slice(0, 10)
 
-  // Busca data real apenas para novas transições aberto→recebido.
-  // Para contas já em DB como 'recebido', preserva a data existente.
-  const precisaObter = new Set<string>()
-  for (const item of itens) {
-    const tinyId = str(item.id)
-    if (!tinyId) continue
-    if (mapStatusReceber(str(item.situacao)) !== 'recebido') continue
-    const dbRow = dbMap.get(tinyId)
-    if (!dbRow || dbRow.status !== 'recebido') precisaObter.add(tinyId)
-  }
-
-  const datasReais = await fetchDatasReais(token, Array.from(precisaObter), 'receber', 5)
-
   const records = itens
     .filter(item => !!str(item.id))
     .map(item => {
@@ -163,15 +92,12 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
       const novoStatus = mapStatusReceber(str(item.situacao))
       const dbRow = dbMap.get(tinyId)
 
+      // Para contas recebidas: preserva data existente (corrigida pelo Reparar Datas)
+      // ou marca hoje para novas transições. A API Tiny v2 não expõe data_ocorrencia
+      // na pesquisa — use o botão "Reparar Datas" para corrigir datas históricas.
       let dataRecebimento: string | null
       if (novoStatus === 'recebido') {
-        if (datasReais.has(tinyId)) {
-          // Nova transição: usa data real do Tiny, cai para hoje se não retornou
-          dataRecebimento = datasReais.get(tinyId) ?? hoje
-        } else {
-          // Já estava recebido: preserva data existente
-          dataRecebimento = dbRow?.dataRecebimento ?? hoje
-        }
+        dataRecebimento = dbRow?.dataRecebimento ?? hoje
       } else {
         dataRecebimento = parseDateBR(str(item.data_vencimento ?? item.data_emissao))
       }
@@ -199,8 +125,8 @@ export async function syncContasReceber(supabase: SupabaseClient, token: string)
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'contas_receber',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-    mensagem: `${sincronizados} contas a receber sincronizadas (${precisaObter.size} novas transições com data real). ${erros} erros.`,
-    detalhes: { sincronizados, erros, total_tiny: itens.length, novas_transicoes: precisaObter.size },
+    mensagem: `${sincronizados} contas a receber sincronizadas. ${erros} erros.`,
+    detalhes: { sincronizados, erros, total_tiny: itens.length },
   })
 
   return { sincronizados, erros, total_tiny: itens.length }
@@ -233,17 +159,6 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
 
   const hoje = new Date().toISOString().slice(0, 10)
 
-  const precisaObter = new Set<string>()
-  for (const item of itens) {
-    const tinyId = str(item.id)
-    if (!tinyId) continue
-    if (mapStatusPagar(str(item.situacao)) !== 'pago') continue
-    const dbRow = dbMap.get(tinyId)
-    if (!dbRow || dbRow.status !== 'pago') precisaObter.add(tinyId)
-  }
-
-  const datasReais = await fetchDatasReais(token, Array.from(precisaObter), 'pagar', 5)
-
   const records = itens
     .filter(item => !!str(item.id))
     .map(item => {
@@ -253,11 +168,7 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
 
       let dataPagamento: string | null
       if (novoStatus === 'pago') {
-        if (datasReais.has(tinyId)) {
-          dataPagamento = datasReais.get(tinyId) ?? hoje
-        } else {
-          dataPagamento = dbRow?.dataPagamento ?? hoje
-        }
+        dataPagamento = dbRow?.dataPagamento ?? hoje
       } else {
         dataPagamento = parseDateBR(str(item.data_vencimento ?? item.data_emissao))
       }
@@ -285,8 +196,8 @@ export async function syncContasPagar(supabase: SupabaseClient, token: string) {
   await supabase.from('logs_integracao').insert({
     integracao: 'tiny', recurso: 'contas_pagar',
     status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-    mensagem: `${sincronizados} contas a pagar sincronizadas (${precisaObter.size} novas transições com data real). ${erros} erros.`,
-    detalhes: { sincronizados, erros, total_tiny: itens.length, novas_transicoes: precisaObter.size },
+    mensagem: `${sincronizados} contas a pagar sincronizadas. ${erros} erros.`,
+    detalhes: { sincronizados, erros, total_tiny: itens.length },
   })
 
   return { sincronizados, erros, total_tiny: itens.length }

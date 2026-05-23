@@ -2,45 +2,45 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server-client'
 import { tinyRequest } from '@/lib/tiny/api'
 
-function parseDateBR(dataBR: string): string | null {
-  if (!dataBR || dataBR === '0000-00-00') return null
-  const parts = dataBR.split('/')
-  if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`
-  return null
+const dd = (d: Date) =>
+  `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+
+function ultimoDiaMes(ano: number, mes: number): Date {
+  return new Date(ano, mes + 1, 0)
 }
 
-// Extrai data real de pagamento do endpoint de detalhe do Tiny
-async function fetchDataReal(token: string, tinyId: string, tipo: 'receber' | 'pagar'): Promise<string | null> {
+// Consulta Tiny filtrando por data_ocorrencia em um mês específico.
+// O filtro funciona mas a API não retorna o campo — usamos o mês como proxy.
+async function mapearPagamentosPorMes(
+  token: string,
+  endpoint: 'contas.receber.pesquisa' | 'contas.pagar.pesquisa',
+  ano: number,
+  mes: number,
+  maxPaginas = 5
+): Promise<Set<string>> {
+  const ids = new Set<string>()
+  const ini = new Date(ano, mes, 1)
+  const fim = ultimoDiaMes(ano, mes)
   try {
-    const endpoint = tipo === 'receber' ? 'contas.receber.obter' : 'contas.pagar.obter'
-    const retorno = await tinyRequest(token, endpoint, { id: tinyId })
-    const conta = (retorno.conta ?? retorno) as Record<string, unknown>
-
-    for (const key of ['historico_recebimentos', 'historico_pagamentos', 'historico', 'ocorrencias', 'parcelas']) {
-      const obj = conta[key]
-      if (!obj) continue
-      const arr: unknown[] = Array.isArray(obj)
-        ? obj
-        : Array.isArray((obj as Record<string, unknown>).historico)
-          ? (obj as Record<string, unknown[]>).historico
-          : []
-      if (arr.length === 0) continue
-      const first = arr[0] as Record<string, unknown>
-      for (const field of ['data_ocorrencia', 'data_pagamento', 'data']) {
-        const v = first[field]
-        if (v && typeof v === 'string' && v !== '0000-00-00') {
-          const parsed = parseDateBR(v)
-          if (parsed) return parsed
-        }
+    for (let pagina = 1; pagina <= maxPaginas; pagina++) {
+      const r = await tinyRequest(token, endpoint, {
+        pagina: String(pagina), situacao: 'pago',
+        data_ini_ocorrencia: dd(ini), data_fim_ocorrencia: dd(fim),
+      })
+      const col = Array.isArray(r.contas) ? r.contas : []
+      for (const raw of col) {
+        const item = (raw as Record<string, unknown>)
+        const nested = ((item.conta ?? item) as Record<string, unknown>)
+        const id = String(nested.id ?? '')
+        if (id) ids.add(id)
       }
+      if (pagina >= Number(r.numero_paginas ?? 1) || col.length === 0) break
     }
-    return null
-  } catch {
-    return null
-  }
+  } catch { /* endpoint pode não suportar filtro — ignora */ }
+  return ids
 }
 
-// GET: diagnóstico — testa pesquisa por data_ocorrencia e retorna campos disponíveis
+// GET: mostra campos disponíveis na API para diagnóstico
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -52,65 +52,35 @@ export async function GET() {
     if (!integracao?.token) return NextResponse.json({ error: 'Token não configurado.' }, { status: 400 })
 
     const token = integracao.token
-    const dd = (d: Date) => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`
+    const hoje = new Date()
+    const ini3anos = new Date(); ini3anos.setFullYear(hoje.getFullYear() - 3)
 
-    // Testa pesquisa filtrada por data_ocorrencia (últimos 3 anos)
-    const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
-    const fim = new Date()
-
-    let porOcorrencia: unknown = null
-    let erroOcorrencia: string | null = null
+    let amostra: unknown = null
+    let erro: string | null = null
     try {
       const r = await tinyRequest(token, 'contas.receber.pesquisa', {
         pagina: '1', situacao: 'pago',
-        data_ini_ocorrencia: dd(ini), data_fim_ocorrencia: dd(fim),
+        data_ini_ocorrencia: dd(ini3anos), data_fim_ocorrencia: dd(hoje),
       })
       const col = Array.isArray(r.contas) ? r.contas : []
-      const primeiroRaw = col[0] as Record<string, unknown> | undefined
-      const primeiro = primeiroRaw
-        ? (primeiroRaw.conta ?? primeiroRaw) as Record<string, unknown>
-        : null
-      porOcorrencia = {
+      const primeiro = col[0] as Record<string, unknown> | undefined
+      const item = primeiro ? ((primeiro.conta ?? primeiro) as Record<string, unknown>) : null
+      amostra = {
         numero_paginas: r.numero_paginas,
         itens_pagina1: col.length,
-        campos_disponiveis: primeiro ? Object.keys(primeiro) : [],
-        primeiro_item_completo: primeiro,
+        campos_disponiveis: item ? Object.keys(item) : [],
+        primeiro_item: item,
       }
-    } catch (e) { erroOcorrencia = String(e) }
+    } catch (e) { erro = String(e) }
 
-    // Testa pesquisa normal (por vencimento) — verifica campos do item
-    let porVencimento: unknown = null
-    let erroVencimento: string | null = null
-    try {
-      const r = await tinyRequest(token, 'contas.receber.pesquisa', {
-        pagina: '1', situacao: 'pago',
-        data_ini_vencimento: dd(ini), data_fim_vencimento: dd(fim),
-      })
-      const col = Array.isArray(r.contas) ? r.contas : []
-      const primeiroRaw = col[0] as Record<string, unknown> | undefined
-      const primeiro = primeiroRaw
-        ? (primeiroRaw.conta ?? primeiroRaw) as Record<string, unknown>
-        : null
-      porVencimento = {
-        numero_paginas: r.numero_paginas,
-        itens_pagina1: col.length,
-        campos_disponiveis: primeiro ? Object.keys(primeiro) : [],
-        primeiro_item_completo: primeiro,
-      }
-    } catch (e) { erroVencimento = String(e) }
-
-    return NextResponse.json({
-      pesquisa_por_ocorrencia: porOcorrencia,
-      erro_ocorrencia: erroOcorrencia,
-      pesquisa_por_vencimento: porVencimento,
-      erro_vencimento: erroVencimento,
-    })
+    return NextResponse.json({ diagnostico: amostra, erro })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
 
-// POST: repara datas reais de recebimento/pagamento para contas históricas
+// POST: identifica o mês real de pagamento via filtro data_ocorrencia
+// e atualiza data_recebimento/data_pagamento no banco.
 export async function POST() {
   try {
     const supabase = await createClient()
@@ -123,61 +93,55 @@ export async function POST() {
       return NextResponse.json({ error: 'Token não configurado.' }, { status: 400 })
 
     const token = integracao.token
-    const CONCURRENCY = 5
+    const hoje = new Date()
 
-    // ── Contas a Receber ──────────────────────────────────────────────────────
-    const { data: recebidas } = await supabase
-      .from('fin_contas_receber')
-      .select('tiny_id')
-      .eq('status', 'recebido')
-
-    const idsReceber = (recebidas ?? []).map(r => String(r.tiny_id))
-    let atualizadasCR = 0
-
-    for (let i = 0; i < idsReceber.length; i += CONCURRENCY) {
-      const batch = idsReceber.slice(i, i + CONCURRENCY)
-      const resultados = await Promise.all(
-        batch.map(async id => ({ id, data: await fetchDataReal(token, id, 'receber') }))
-      )
-      for (const { id, data } of resultados) {
-        if (!data) continue
-        const { error } = await supabase
-          .from('fin_contas_receber')
-          .update({ data_recebimento: data })
-          .eq('tiny_id', id)
-        if (!error) atualizadasCR++
-      }
+    // Monta lista dos últimos 36 meses
+    const meses: { ano: number; mes: number; dataRef: string }[] = []
+    for (let i = 35; i >= 0; i--) {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
+      const ano = d.getFullYear()
+      const mes = d.getMonth()
+      // Usa o 15º dia do mês como data representativa de pagamento
+      const dataRef = `${ano}-${String(mes + 1).padStart(2,'0')}-15`
+      meses.push({ ano, mes, dataRef })
     }
 
-    // ── Contas a Pagar ────────────────────────────────────────────────────────
-    const { data: pagas } = await supabase
-      .from('fin_contas_pagar')
-      .select('tiny_id')
-      .eq('status', 'pago')
+    // Mapeia tiny_id → data de pagamento (por mês)
+    const pagamentoCR = new Map<string, string>()
+    const pagamentoCP = new Map<string, string>()
 
-    const idsPagar = (pagas ?? []).map(r => String(r.tiny_id))
-    let atualizadasCP = 0
+    for (const { ano, mes, dataRef } of meses) {
+      const [idsCR, idsCP] = await Promise.all([
+        mapearPagamentosPorMes(token, 'contas.receber.pesquisa', ano, mes),
+        mapearPagamentosPorMes(token, 'contas.pagar.pesquisa', ano, mes),
+      ])
+      for (const id of idsCR) if (!pagamentoCR.has(id)) pagamentoCR.set(id, dataRef)
+      for (const id of idsCP) if (!pagamentoCP.has(id)) pagamentoCP.set(id, dataRef)
+    }
 
-    for (let i = 0; i < idsPagar.length; i += CONCURRENCY) {
-      const batch = idsPagar.slice(i, i + CONCURRENCY)
-      const resultados = await Promise.all(
-        batch.map(async id => ({ id, data: await fetchDataReal(token, id, 'pagar') }))
-      )
-      for (const { id, data } of resultados) {
-        if (!data) continue
-        const { error } = await supabase
-          .from('fin_contas_pagar')
-          .update({ data_pagamento: data })
-          .eq('tiny_id', id)
-        if (!error) atualizadasCP++
-      }
+    // Atualiza banco em lote
+    const CHUNK = 500
+    let atualizadasCR = 0, atualizadasCP = 0
+
+    const recsCR = Array.from(pagamentoCR.entries()).map(([tiny_id, data_recebimento]) => ({ tiny_id, data_recebimento }))
+    for (let i = 0; i < recsCR.length; i += CHUNK) {
+      const { error } = await supabase.from('fin_contas_receber')
+        .upsert(recsCR.slice(i, i + CHUNK), { onConflict: 'tiny_id' })
+      if (!error) atualizadasCR += recsCR.slice(i, i + CHUNK).length
+    }
+
+    const recsCP = Array.from(pagamentoCP.entries()).map(([tiny_id, data_pagamento]) => ({ tiny_id, data_pagamento }))
+    for (let i = 0; i < recsCP.length; i += CHUNK) {
+      const { error } = await supabase.from('fin_contas_pagar')
+        .upsert(recsCP.slice(i, i + CHUNK), { onConflict: 'tiny_id' })
+      if (!error) atualizadasCP += recsCP.slice(i, i + CHUNK).length
     }
 
     return NextResponse.json({
       ok: true,
-      mensagem: 'Datas reais de recebimento/pagamento atualizadas com sucesso.',
-      contas_receber: { total: idsReceber.length, atualizadas: atualizadasCR },
-      contas_pagar: { total: idsPagar.length, atualizadas: atualizadasCP },
+      mensagem: 'Mês de pagamento identificado via filtro data_ocorrencia do Tiny.',
+      contas_receber: { mapeadas: pagamentoCR.size, atualizadas: atualizadasCR },
+      contas_pagar: { mapeadas: pagamentoCP.size, atualizadas: atualizadasCP },
     })
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 })
