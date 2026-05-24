@@ -104,7 +104,7 @@ export default function FinanceiroDashboard() {
       ticketMedio,
       numVendas,
     }
-  }, [contasReceber, contasPagar, caixaRaw, vendasRaw, range])
+  }, [contasReceber, contasPagar, vendasRaw, range])
 
   const charts = useMemo(() => {
     const hoje = new Date()
@@ -194,7 +194,7 @@ export default function FinanceiroDashboard() {
       statusPizza,
       vencimentos,
     }
-  }, [contasReceber, contasPagar, caixaRaw, vendasRaw, filtroTipo, filtroAno, filtroMes, customInicio, customFim, range])
+  }, [contasReceber, contasPagar, vendasRaw, filtroTipo, filtroAno, filtroMes, customInicio, customFim, range])
 
   const carregar = useCallback(async () => {
     setLoading(true)
