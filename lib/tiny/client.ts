@@ -86,10 +86,14 @@ export async function tinyFetchTodas(
 
     totalPaginas = Number(retorno?.numero_paginas ?? 1)
 
-    const registros = retorno?.registros?.registro
-    if (!registros) break
+    // Auto-detecta o array na resposta (Tiny v2 retorna retorno.contas[], retorno.lancamentos[], etc.)
+    const arrayKey = retorno
+      ? Object.keys(retorno).find(k => Array.isArray(retorno[k]) && k !== 'erros')
+      : null
+    if (!arrayKey) break
 
-    const lista = Array.isArray(registros) ? registros : [registros]
+    const lista = retorno[arrayKey] as any[]
+    if (lista.length === 0) break
 
     for (const item of lista) {
       const nested = item[chaveRegistros] ?? item

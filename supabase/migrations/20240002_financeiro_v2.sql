@@ -49,6 +49,7 @@ CREATE TABLE fin_contas_pagar (
 );
 
 -- CAIXA — baixas reais (fonte primária de recebimentos/pagamentos)
+DROP TABLE IF EXISTS fin_caixa CASCADE;
 CREATE TABLE fin_caixa (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tiny_id text UNIQUE NOT NULL,
@@ -66,6 +67,7 @@ CREATE TABLE fin_caixa (
 );
 
 -- VENDAS (pedidos de venda + NFs emitidas)
+DROP TABLE IF EXISTS fin_vendas CASCADE;
 CREATE TABLE fin_vendas (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tiny_id text UNIQUE NOT NULL,
@@ -87,6 +89,7 @@ CREATE TABLE fin_vendas (
 );
 
 -- ITENS DE VENDA (para CMV e margem por pedido)
+DROP TABLE IF EXISTS fin_itens_venda CASCADE;
 CREATE TABLE fin_itens_venda (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   venda_id uuid REFERENCES fin_vendas(id) ON DELETE CASCADE,
@@ -106,16 +109,16 @@ CREATE TABLE fin_itens_venda (
 );
 
 -- ÍNDICES
-CREATE INDEX idx_cr_vencimento ON fin_contas_receber(data_vencimento);
-CREATE INDEX idx_cr_status ON fin_contas_receber(status);
-CREATE INDEX idx_cr_categoria ON fin_contas_receber(categoria);
-CREATE INDEX idx_cp_vencimento ON fin_contas_pagar(data_vencimento);
-CREATE INDEX idx_cp_status ON fin_contas_pagar(status);
-CREATE INDEX idx_cp_categoria ON fin_contas_pagar(categoria);
-CREATE INDEX idx_caixa_data ON fin_caixa(data_lancamento);
-CREATE INDEX idx_caixa_tipo ON fin_caixa(tipo);
-CREATE INDEX idx_caixa_categoria ON fin_caixa(categoria);
-CREATE INDEX idx_vendas_data ON fin_vendas(data_venda);
-CREATE INDEX idx_vendas_tipo ON fin_vendas(tipo_origem);
-CREATE INDEX idx_itens_venda ON fin_itens_venda(venda_id);
-CREATE INDEX idx_itens_segmento ON fin_itens_venda(segmento);
+CREATE INDEX IF NOT EXISTS idx_cr_vencimento ON fin_contas_receber(data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_cr_status ON fin_contas_receber(status);
+CREATE INDEX IF NOT EXISTS idx_cr_categoria ON fin_contas_receber(categoria);
+CREATE INDEX IF NOT EXISTS idx_cp_vencimento ON fin_contas_pagar(data_vencimento);
+CREATE INDEX IF NOT EXISTS idx_cp_status ON fin_contas_pagar(status);
+CREATE INDEX IF NOT EXISTS idx_cp_categoria ON fin_contas_pagar(categoria);
+CREATE INDEX IF NOT EXISTS idx_caixa_data ON fin_caixa(data_lancamento);
+CREATE INDEX IF NOT EXISTS idx_caixa_tipo ON fin_caixa(tipo);
+CREATE INDEX IF NOT EXISTS idx_caixa_categoria ON fin_caixa(categoria);
+CREATE INDEX IF NOT EXISTS idx_vendas_data ON fin_vendas(data_venda);
+CREATE INDEX IF NOT EXISTS idx_vendas_tipo ON fin_vendas(tipo_origem);
+CREATE INDEX IF NOT EXISTS idx_itens_venda ON fin_itens_venda(venda_id);
+CREATE INDEX IF NOT EXISTS idx_itens_segmento ON fin_itens_venda(segmento);
