@@ -42,7 +42,7 @@ export async function GET() {
     const [{ count: countCR }, { count: countCP }, { count: countFC }] = await Promise.all([
       supabase.from('fin_contas_receber').select('*', { count: 'exact', head: true }),
       supabase.from('fin_contas_pagar').select('*', { count: 'exact', head: true }),
-      supabase.from('fin_fluxo_caixa').select('*', { count: 'exact', head: true }),
+      supabase.from('fin_caixa').select('*', { count: 'exact', head: true }),
     ])
 
     // Verificar últimos logs (com detalhes para ver total_tiny)
@@ -129,7 +129,7 @@ export async function GET() {
     }
 
     return NextResponse.json({
-      tabelas: { fin_contas_receber: countCR, fin_contas_pagar: countCP, fin_fluxo_caixa: countFC },
+      tabelas: { fin_contas_receber: countCR, fin_contas_pagar: countCP, fin_caixa: countFC },
       ultimos_logs: logs,
       token_ativo: integracao.ativo,
       tinyRequest_chave_auto: chaveAutoDetectada,

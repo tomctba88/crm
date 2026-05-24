@@ -10,20 +10,20 @@ type Conta = {
   id: string
   numero_documento: string
   fornecedor: string
-  descricao: string
+  historico: string
   valor: number
-  valor_pago: number
   data_vencimento: string | null
-  data_pagamento: string | null
+  data_emissao: string | null
   status: string
   categoria: string
   conta_bancaria: string
-  observacoes: string
+  numero_parcela: number | null
+  numero_parcelas: number | null
   origem: string
 }
 
-const STATUS_OPTS = ['todos', 'aberto', 'pago', 'vencido', 'cancelado']
-const POR_PAGINA = 20
+const STATUS_OPTS = ['todos', 'aberto', 'vencido']
+const POR_PAGINA = 25
 
 export default function ContasPagarManager() {
   const supabase = createClient()
@@ -35,28 +35,41 @@ export default function ContasPagarManager() {
   const [filtroFornecedor, setFiltroFornecedor] = useState('')
   const [filtroInicio, setFiltroInicio] = useState('')
   const [filtroFim, setFiltroFim] = useState('')
+  const [filtroCategoria, setFiltroCategoria] = useState('')
   const [ordenarPor, setOrdenarPor] = useState<'data_vencimento' | 'valor' | 'fornecedor'>('data_vencimento')
   const [asc, setAsc] = useState(true)
-  const [modalPagar, setModalPagar] = useState<Conta | null>(null)
-  const [modalDetalhe, setModalDetalhe] = useState<Conta | null>(null)
-  const [formPagar, setFormPagar] = useState({ data_pagamento: '', valor_pago: '' })
-  const [salvando, setSalvando] = useState(false)
+  const [viewMode, setViewMode] = useState<'tabela' | 'categoria'>('tabela')
+  const [ultimaSync, setUltimaSync] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('fin_contas_pagar').select('*', { count: 'exact' })
-    if (filtroStatus !== 'todos' && filtroStatus !== 'vencido') q = q.eq('status', filtroStatus)
+    if (filtroStatus === 'vencido') {
+      q = q.eq('status', 'aberto').lt('data_vencimento', new Date().toISOString().slice(0, 10))
+    } else if (filtroStatus !== 'todos') {
+      q = q.eq('status', filtroStatus)
+    }
     if (filtroFornecedor) q = q.ilike('fornecedor', `%${filtroFornecedor}%`)
     if (filtroInicio) q = q.gte('data_vencimento', filtroInicio)
     if (filtroFim) q = q.lte('data_vencimento', filtroFim)
-    q = q.order(ordenarPor, { ascending: asc }).range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
-    const { data, count } = await q
-    let rows = (data ?? []) as Conta[]
-    if (filtroStatus === 'vencido') rows = rows.filter(r => isVencido(r.data_vencimento ?? '', r.status))
-    setContas(rows)
+    if (filtroCategoria) q = q.ilike('categoria', `%${filtroCategoria}%`)
+
+    if (viewMode === 'tabela') {
+      q = q.order(ordenarPor, { ascending: asc }).range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
+    } else {
+      q = q.order('categoria').order('data_vencimento')
+    }
+
+    const [{ data, count }, { data: integ }] = await Promise.all([
+      q,
+      supabase.from('integracoes_olist').select('ultimo_sync_em').eq('nome', 'olist_tiny').maybeSingle(),
+    ])
+
+    setContas((data ?? []) as Conta[])
     setTotal(count ?? 0)
+    setUltimaSync(integ?.ultimo_sync_em ?? null)
     setLoading(false)
-  }, [filtroStatus, filtroFornecedor, filtroInicio, filtroFim, ordenarPor, asc, pagina])
+  }, [filtroStatus, filtroFornecedor, filtroInicio, filtroFim, filtroCategoria, ordenarPor, asc, pagina, viewMode])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -66,200 +79,189 @@ export default function ContasPagarManager() {
     setPagina(0)
   }
 
-  async function marcarPago() {
-    if (!modalPagar) return
-    setSalvando(true)
-    await supabase.from('fin_contas_pagar').update({
-      status: 'pago',
-      data_pagamento: formPagar.data_pagamento || null,
-      valor_pago: Number(formPagar.valor_pago) || modalPagar.valor,
-      updated_at: new Date().toISOString(),
-    }).eq('id', modalPagar.id)
-    setSalvando(false)
-    setModalPagar(null)
-    carregar()
-  }
+  const hoje = new Date().toISOString().slice(0, 10)
+  const em7 = new Date(); em7.setDate(em7.getDate() + 7)
+  const em7Str = em7.toISOString().slice(0, 10)
+  const em30 = new Date(); em30.setDate(em30.getDate() + 30)
+  const em30Str = em30.toISOString().slice(0, 10)
 
-  const totalFiltrado = contas.reduce((s, r) => s + r.valor, 0)
-  const totalPago = contas.filter(r => r.status === 'pago').reduce((s, r) => s + r.valor_pago, 0)
-  const totalAberto = contas.filter(r => r.status === 'aberto').reduce((s, r) => s + r.valor, 0)
-  const totalVencido = contas.filter(r => isVencido(r.data_vencimento ?? '', r.status)).reduce((s, r) => s + r.valor, 0)
+  const totalAberto = contas.filter(c => c.status === 'aberto').reduce((s, c) => s + c.valor, 0)
+  const totalVencido = contas.filter(c => isVencido(c.data_vencimento, c.status)).reduce((s, c) => s + c.valor, 0)
+  const vence7 = contas.filter(c => c.status === 'aberto' && c.data_vencimento && c.data_vencimento >= hoje && c.data_vencimento <= em7Str).reduce((s, c) => s + c.valor, 0)
+  const vence30 = contas.filter(c => c.status === 'aberto' && c.data_vencimento && c.data_vencimento >= hoje && c.data_vencimento <= em30Str).reduce((s, c) => s + c.valor, 0)
+
+  // Agrupamento por categoria (view categoria)
+  const porCategoria = contas.reduce<Record<string, { total: number; contas: Conta[] }>>((acc, c) => {
+    const cat = c.categoria || 'Sem categoria'
+    if (!acc[cat]) acc[cat] = { total: 0, contas: [] }
+    acc[cat].total += c.valor
+    acc[cat].contas.push(c)
+    return acc
+  }, {})
+  const catOrdenadas = Object.entries(porCategoria).sort((a, b) => b[1].total - a[1].total)
+
   const totalPaginas = Math.ceil(total / POR_PAGINA)
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-black text-[#0b1733]">Contas a Pagar</h1>
-        <SincronizarButton tipo="pagar" onSucesso={carregar} />
+        <SincronizarButton escopo="contas" ultimaSync={ultimaSync} onSucesso={carregar} />
       </div>
 
-      {/* Filtros */}
-      <div className="flex flex-wrap gap-3 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
-        <input type="date" value={filtroInicio} onChange={e => { setFiltroInicio(e.target.value); setPagina(0) }}
-          className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
-        <input type="date" value={filtroFim} onChange={e => { setFiltroFim(e.target.value); setPagina(0) }}
-          className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
-        <select value={filtroStatus} onChange={e => { setFiltroStatus(e.target.value); setPagina(0) }}
-          className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]">
-          {STATUS_OPTS.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
-        </select>
-        <input value={filtroFornecedor} onChange={e => { setFiltroFornecedor(e.target.value); setPagina(0) }}
-          placeholder="Buscar fornecedor..."
-          className="flex-1 rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
-        <button onClick={() => { setFiltroStatus('todos'); setFiltroFornecedor(''); setFiltroInicio(''); setFiltroFim(''); setPagina(0) }}
-          className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50">
-          Limpar
-        </button>
-      </div>
-
-      {/* Mini KPIs */}
-      <div className="grid gap-3 md:grid-cols-4">
+      {/* KPIs */}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Total filtrado', valor: totalFiltrado },
-          { label: 'Pago', valor: totalPago, cor: 'text-green-600' },
-          { label: 'Em aberto', valor: totalAberto, cor: 'text-red-600' },
+          { label: 'Total em Aberto', valor: totalAberto, cor: 'text-red-600' },
           { label: 'Vencido', valor: totalVencido, cor: 'text-red-700' },
+          { label: 'Vence em 7 dias', valor: vence7, cor: 'text-orange-600' },
+          { label: 'Vence em 30 dias', valor: vence30, cor: 'text-slate-700' },
         ].map(k => (
           <div key={k.label} className="rounded-2xl bg-[#eef3fb] p-4">
             <p className="text-xs font-semibold text-slate-500">{k.label}</p>
-            <p className={`mt-1 text-lg font-black ${k.cor ?? 'text-[#0b1733]'}`}>{formatBRL(k.valor)}</p>
+            <p className={`mt-1 text-lg font-black ${k.cor}`}>{formatBRL(k.valor)}</p>
           </div>
         ))}
       </div>
 
-      {/* Tabela */}
-      <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
-        {loading ? (
-          <div className="p-8 text-center text-sm text-slate-400">Carregando...</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-100 bg-[#f8fafc]">
-              <tr>
-                {[
-                  { key: 'numero_documento', label: 'Nº Doc' },
-                  { key: 'fornecedor', label: 'Fornecedor' },
-                  { key: null, label: 'Descrição' },
-                  { key: 'data_vencimento', label: 'Vencimento' },
-                  { key: 'valor', label: 'Valor' },
-                  { key: null, label: 'Pago' },
-                  { key: null, label: 'Status' },
-                  { key: null, label: 'Origem' },
-                  { key: null, label: 'Ações' },
-                ].map(col => (
-                  <th key={col.label} onClick={() => col.key && toggleOrdem(col.key as typeof ordenarPor)}
-                    className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 ${col.key ? 'cursor-pointer hover:text-[#1b4fd6]' : ''}`}>
-                    {col.label} {col.key === ordenarPor ? (asc ? '↑' : '↓') : ''}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {contas.length === 0 ? (
-                <tr><td colSpan={9} className="p-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>
-              ) : contas.map(c => (
-                <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.numero_documento || '—'}</td>
-                  <td className="px-4 py-3 font-medium text-[#0b1733]">{c.fornecedor || '—'}</td>
-                  <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate">{c.descricao || '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    {c.data_vencimento ? formatData(c.data_vencimento) : '—'}
-                    {isVencido(c.data_vencimento ?? '', c.status) && <span className="ml-1 text-xs text-red-500">vencido</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-[#0b1733]">{formatBRL(c.valor)}</td>
-                  <td className="px-4 py-3 text-right text-green-600">{c.valor_pago > 0 ? formatBRL(c.valor_pago) : '—'}</td>
-                  <td className="px-4 py-3"><StatusBadge status={isVencido(c.data_vencimento ?? '', c.status) ? 'vencido' : c.status} tipo="pagar" /></td>
-                  <td className="px-4 py-3 text-xs text-slate-400">{c.origem}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-2">
-                      {c.status === 'aberto' && (
-                        <button onClick={() => { setModalPagar(c); setFormPagar({ data_pagamento: '', valor_pago: String(c.valor) }) }}
-                          className="rounded-lg bg-green-50 px-2 py-1 text-xs font-semibold text-green-700 hover:bg-green-100">
-                          Pagar
-                        </button>
-                      )}
-                      <button onClick={() => setModalDetalhe(c)}
-                        className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200">
-                        Detalhes
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      {/* Filtros + modo de visualização */}
+      <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
+        <div className="flex flex-wrap gap-3">
+          <input type="date" value={filtroInicio} onChange={e => { setFiltroInicio(e.target.value); setPagina(0) }}
+            className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
+          <input type="date" value={filtroFim} onChange={e => { setFiltroFim(e.target.value); setPagina(0) }}
+            className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
+          <select value={filtroStatus} onChange={e => { setFiltroStatus(e.target.value); setPagina(0) }}
+            className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]">
+            {STATUS_OPTS.map(s => <option key={s} value={s}>{s === 'todos' ? 'Todos' : s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          </select>
+          <input value={filtroFornecedor} onChange={e => { setFiltroFornecedor(e.target.value); setPagina(0) }}
+            placeholder="Buscar fornecedor..."
+            className="flex-1 min-w-36 rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
+          <input value={filtroCategoria} onChange={e => { setFiltroCategoria(e.target.value); setPagina(0) }}
+            placeholder="Categoria..."
+            className="flex-1 min-w-36 rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]" />
+          <button onClick={() => { setFiltroStatus('todos'); setFiltroFornecedor(''); setFiltroInicio(''); setFiltroFim(''); setFiltroCategoria(''); setPagina(0) }}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-50">
+            Limpar
+          </button>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setViewMode('tabela')}
+            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${viewMode === 'tabela' ? 'bg-[#0b1733] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            Lista
+          </button>
+          <button onClick={() => setViewMode('categoria')}
+            className={`rounded-xl px-4 py-2 text-xs font-semibold transition ${viewMode === 'categoria' ? 'bg-[#0b1733] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            Por Categoria
+          </button>
+        </div>
       </div>
 
-      {/* Paginação */}
-      {totalPaginas > 1 && (
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-slate-500">{total} registros</span>
-          <div className="flex gap-2">
-            <button disabled={pagina === 0} onClick={() => setPagina(p => p - 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40">Anterior</button>
-            <span className="rounded-xl bg-[#eef3fb] px-4 py-2 text-sm font-semibold">{pagina + 1} / {totalPaginas}</span>
-            <button disabled={pagina >= totalPaginas - 1} onClick={() => setPagina(p => p + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40">Próxima</button>
+      {loading ? (
+        <div className="h-48 animate-pulse rounded-3xl bg-slate-200" />
+      ) : viewMode === 'tabela' ? (
+        <>
+          <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-100 bg-[#f8fafc]">
+                <tr>
+                  {[
+                    { key: 'numero_documento', label: 'Nº Doc' },
+                    { key: 'fornecedor', label: 'Fornecedor' },
+                    { key: null, label: 'Histórico' },
+                    { key: null, label: 'Categoria' },
+                    { key: null, label: 'Emissão' },
+                    { key: 'data_vencimento', label: 'Vencimento' },
+                    { key: null, label: 'Parcela' },
+                    { key: 'valor', label: 'Valor' },
+                    { key: null, label: 'Status' },
+                  ].map(col => (
+                    <th key={col.label} onClick={() => col.key && toggleOrdem(col.key as typeof ordenarPor)}
+                      className={`px-4 py-3 text-left text-xs font-semibold text-slate-500 ${col.key ? 'cursor-pointer hover:text-[#1b4fd6]' : ''}`}>
+                      {col.label} {col.key === ordenarPor ? (asc ? '↑' : '↓') : ''}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {contas.length === 0 ? (
+                  <tr><td colSpan={9} className="p-8 text-center text-slate-400">Nenhum registro encontrado.</td></tr>
+                ) : contas.map(c => {
+                  const vencido = isVencido(c.data_vencimento, c.status)
+                  return (
+                    <tr key={c.id} className={`border-b border-slate-50 hover:bg-slate-50 ${vencido ? 'bg-red-50/40' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-xs text-slate-500">{c.numero_documento || '—'}</td>
+                      <td className="px-4 py-3 font-medium text-[#0b1733] max-w-[160px] truncate">{c.fornecedor || '—'}</td>
+                      <td className="px-4 py-3 text-slate-500 max-w-[180px] truncate text-xs">{c.historico || '—'}</td>
+                      <td className="px-4 py-3 text-slate-500 text-xs">{c.categoria || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{formatData(c.data_emissao)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        {c.data_vencimento ? formatData(c.data_vencimento) : '—'}
+                        {vencido && <span className="ml-1 text-xs text-red-500 font-semibold">vencido</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-400">
+                        {c.numero_parcela ? `${c.numero_parcela}/${c.numero_parcelas ?? '?'}` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-red-700">{formatBRL(c.valor)}</td>
+                      <td className="px-4 py-3"><StatusBadge status={vencido ? 'vencido' : c.status} /></td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
 
-      {/* Modal Marcar Pago */}
-      {modalPagar && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-            <h3 className="text-xl font-black text-[#0b1733]">Marcar como Pago</h3>
-            <p className="mt-1 text-sm text-slate-500">{modalPagar.fornecedor} — {formatBRL(modalPagar.valor)}</p>
-            <div className="mt-4 space-y-4">
-              <div>
-                <label className="text-sm font-semibold text-[#0b1733]">Data de pagamento</label>
-                <input type="date" value={formPagar.data_pagamento} onChange={e => setFormPagar(f => ({ ...f, data_pagamento: e.target.value }))}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-[#eef3fb] px-4 py-3 text-sm outline-none focus:border-[#1b4fd6]" />
-              </div>
-              <div>
-                <label className="text-sm font-semibold text-[#0b1733]">Valor pago</label>
-                <input type="number" step="0.01" value={formPagar.valor_pago} onChange={e => setFormPagar(f => ({ ...f, valor_pago: e.target.value }))}
-                  className="mt-1 w-full rounded-2xl border border-slate-200 bg-[#eef3fb] px-4 py-3 text-sm outline-none focus:border-[#1b4fd6]" />
-              </div>
-            </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={marcarPago} disabled={salvando} className="flex-1 h-12 rounded-2xl bg-[linear-gradient(90deg,#08142d_0%,#1e4ca1_100%)] font-extrabold text-white disabled:opacity-70">
-                {salvando ? 'Salvando...' : 'Confirmar'}
-              </button>
-              <button onClick={() => setModalPagar(null)} className="flex-1 h-12 rounded-2xl border border-slate-200 font-semibold text-slate-600">Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal Detalhes */}
-      {modalDetalhe && (
-        <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/40">
-          <div className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-2xl">
+          {totalPaginas > 1 && (
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black text-[#0b1733]">Detalhes da Conta</h3>
-              <button onClick={() => setModalDetalhe(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <span className="text-sm text-slate-500">{total} registros</span>
+              <div className="flex gap-2">
+                <button disabled={pagina === 0} onClick={() => setPagina(p => p - 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40 hover:bg-slate-50">Anterior</button>
+                <span className="rounded-xl bg-[#eef3fb] px-4 py-2 text-sm font-semibold">{pagina + 1} / {totalPaginas}</span>
+                <button disabled={pagina >= totalPaginas - 1} onClick={() => setPagina(p => p + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40 hover:bg-slate-50">Próxima</button>
+              </div>
             </div>
-            <div className="mt-6 space-y-4">
-              {[
-                ['Nº Documento', modalDetalhe.numero_documento],
-                ['Fornecedor', modalDetalhe.fornecedor],
-                ['Descrição', modalDetalhe.descricao],
-                ['Valor', formatBRL(modalDetalhe.valor)],
-                ['Valor Pago', formatBRL(modalDetalhe.valor_pago)],
-                ['Vencimento', modalDetalhe.data_vencimento ? formatData(modalDetalhe.data_vencimento) : '—'],
-                ['Pagamento', modalDetalhe.data_pagamento ? formatData(modalDetalhe.data_pagamento) : '—'],
-                ['Status', modalDetalhe.status],
-                ['Categoria', modalDetalhe.categoria || '—'],
-                ['Conta Bancária', modalDetalhe.conta_bancaria || '—'],
-                ['Origem', modalDetalhe.origem],
-                ['Observações', modalDetalhe.observacoes || '—'],
-              ].map(([label, val]) => (
-                <div key={label} className="rounded-2xl bg-[#eef3fb] p-3">
-                  <p className="text-xs font-semibold text-slate-500">{label}</p>
-                  <p className="mt-0.5 font-bold text-[#0b1733]">{val}</p>
+          )}
+        </>
+      ) : (
+        <div className="space-y-4">
+          {catOrdenadas.map(([cat, { total: catTotal, contas: catContas }]) => (
+            <div key={cat} className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between bg-[#eef3fb] px-6 py-4">
+                <h3 className="font-black text-[#0b1733] text-sm">{cat}</h3>
+                <div className="text-right">
+                  <span className="text-lg font-black text-red-700">{formatBRL(catTotal)}</span>
+                  <span className="ml-2 text-xs text-slate-500">{catContas.length} título(s)</span>
                 </div>
-              ))}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {catContas.map(c => {
+                      const vencido = isVencido(c.data_vencimento, c.status)
+                      return (
+                        <tr key={c.id} className={`border-b border-slate-50 hover:bg-slate-50 ${vencido ? 'bg-red-50/30' : ''}`}>
+                          <td className="px-4 py-3 font-medium text-[#0b1733] max-w-[200px] truncate">{c.fornecedor || '—'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate">{c.historico || '—'}</td>
+                          <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
+                            {c.data_vencimento ? formatData(c.data_vencimento) : '—'}
+                            {vencido && <span className="ml-1 text-red-500 font-semibold">vencido</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-red-700">{formatBRL(c.valor)}</td>
+                          <td className="px-4 py-3"><StatusBadge status={vencido ? 'vencido' : c.status} /></td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          ))}
+          {catOrdenadas.length === 0 && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400">
+              Nenhum registro encontrado.
+            </div>
+          )}
         </div>
       )}
     </div>

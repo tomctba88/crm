@@ -11,7 +11,7 @@ import SincronizarButton from './sincronizar-button'
 type Lancamento = {
   id: string
   tipo: string
-  descricao: string
+  historico: string
   valor: number
   data_lancamento: string
   categoria: string
@@ -21,7 +21,7 @@ type Lancamento = {
 
 type ContaAberta = {
   id: string
-  descricao: string
+  historico: string
   valor: number
   data_vencimento: string | null
 }
@@ -74,42 +74,52 @@ export default function FluxoCaixaManager() {
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(0)
   const [total, setTotal] = useState(0)
+  const [filtroTipo, setFiltroTipo] = useState<string>('todos')
+  const [ultimaSync, setUltimaSync] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setLoading(true)
-    const [{ data: items, count }, { data: cr }, { data: cp }] = await Promise.all([
-      supabase.from('fin_fluxo_caixa').select('*', { count: 'exact' })
+    try {
+      let query = supabase.from('fin_caixa').select('*', { count: 'exact' })
         .gte('data_lancamento', ini).lte('data_lancamento', fim)
         .order('data_lancamento', { ascending: false })
-        .range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1),
-      supabase.from('fin_contas_receber').select('id,descricao,valor,data_vencimento')
-        .eq('status', 'aberto').gte('data_vencimento', ini).lte('data_vencimento', fim),
-      supabase.from('fin_contas_pagar').select('id,descricao,valor,data_vencimento')
-        .eq('status', 'aberto').gte('data_vencimento', ini).lte('data_vencimento', fim),
-    ])
+        .range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
+      if (filtroTipo !== 'todos') query = query.eq('tipo', filtroTipo)
 
-    setLancamentos((items ?? []) as Lancamento[])
-    setTotal(count ?? 0)
-    setProjecaoReceber((cr ?? []) as ContaAberta[])
-    setProjecaoPagar((cp ?? []) as ContaAberta[])
+      const [{ data: items, count }, { data: cr }, { data: cp }, { data: integ }] = await Promise.all([
+        query,
+        supabase.from('fin_contas_receber').select('id,historico,valor,data_vencimento')
+          .eq('status', 'aberto').gte('data_vencimento', ini).lte('data_vencimento', fim),
+        supabase.from('fin_contas_pagar').select('id,historico,valor,data_vencimento')
+          .eq('status', 'aberto').gte('data_vencimento', ini).lte('data_vencimento', fim),
+        supabase.from('integracoes_olist').select('ultimo_sync_em').eq('nome', 'olist_tiny').maybeSingle(),
+      ])
 
-    // Calcular gráfico (todos os lançamentos do período, sem paginação)
-    const { data: todos } = await supabase.from('fin_fluxo_caixa').select('data_lancamento,tipo,valor')
-      .gte('data_lancamento', ini).lte('data_lancamento', fim).order('data_lancamento')
+      setLancamentos((items ?? []) as Lancamento[])
+      setTotal(count ?? 0)
+      setProjecaoReceber((cr ?? []) as ContaAberta[])
+      setProjecaoPagar((cp ?? []) as ContaAberta[])
+      setUltimaSync(integ?.ultimo_sync_em ?? null)
 
-    const diasPeriodo = (new Date(fim).getTime() - new Date(ini).getTime()) / (1000 * 60 * 60 * 24)
-    const usarSemana = diasPeriodo <= 62
+      // Gráfico — todos os lançamentos do período sem paginação
+      const { data: todos } = await supabase.from('fin_caixa').select('data_lancamento,tipo,valor')
+        .gte('data_lancamento', ini).lte('data_lancamento', fim).order('data_lancamento')
 
-    const map: Record<string, { entradas: number; saidas: number }> = {}
-    for (const f of (todos ?? []) as { data_lancamento: string; tipo: string; valor: number }[]) {
-      const key = usarSemana ? semana(f.data_lancamento) : mesAno(f.data_lancamento)
-      if (!map[key]) map[key] = { entradas: 0, saidas: 0 }
-      if (f.tipo === 'entrada') map[key].entradas += f.valor
-      else map[key].saidas += f.valor
+      const diasPeriodo = (new Date(fim).getTime() - new Date(ini).getTime()) / (1000 * 60 * 60 * 24)
+      const usarSemana = diasPeriodo <= 62
+
+      const map: Record<string, { entradas: number; saidas: number }> = {}
+      for (const f of (todos ?? []) as { data_lancamento: string; tipo: string; valor: number }[]) {
+        const key = usarSemana ? semana(f.data_lancamento) : mesAno(f.data_lancamento)
+        if (!map[key]) map[key] = { entradas: 0, saidas: 0 }
+        if (f.tipo === 'entrada') map[key].entradas += f.valor
+        else map[key].saidas += f.valor
+      }
+      setGrafico(Object.entries(map).map(([k, v]) => ({ periodo: k, ...v })))
+    } finally {
+      setLoading(false)
     }
-    setGrafico(Object.entries(map).map(([k, v]) => ({ periodo: k, ...v })))
-    setLoading(false)
-  }, [ini, fim, pagina])
+  }, [ini, fim, pagina, filtroTipo])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -123,9 +133,9 @@ export default function FluxoCaixaManager() {
     }
   }
 
-  const entradas = lancamentos.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0)
-  const saidas = lancamentos.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0)
-  const saldo = entradas - saidas
+  const totalEntradas = lancamentos.filter(l => l.tipo === 'entrada').reduce((s, l) => s + l.valor, 0)
+  const totalSaidas = lancamentos.filter(l => l.tipo === 'saida').reduce((s, l) => s + l.valor, 0)
+  const saldo = totalEntradas - totalSaidas
   const projReceber = projecaoReceber.reduce((s, r) => s + r.valor, 0)
   const projPagar = projecaoPagar.reduce((s, r) => s + r.valor, 0)
   const saldoProj = saldo + projReceber - projPagar
@@ -143,7 +153,7 @@ export default function FluxoCaixaManager() {
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-3xl font-black text-[#0b1733]">Fluxo de Caixa</h1>
-        <SincronizarButton tipo="fluxo" onSucesso={carregar} />
+        <SincronizarButton escopo="caixa" ultimaSync={ultimaSync} onSucesso={carregar} />
       </div>
 
       {/* Seletor de período */}
@@ -168,10 +178,10 @@ export default function FluxoCaixaManager() {
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Entradas no período', valor: entradas, cor: 'text-green-600' },
-          { label: 'Saídas no período', valor: saidas, cor: 'text-red-600' },
-          { label: 'Saldo do período', valor: saldo, cor: saldo >= 0 ? 'text-green-600' : 'text-red-600' },
-          { label: 'Saldo projetado', valor: saldoProj, cor: saldoProj >= 0 ? 'text-green-600' : 'text-red-600' },
+          { label: 'Total Entradas', valor: totalEntradas, cor: 'text-green-600' },
+          { label: 'Total Saídas', valor: totalSaidas, cor: 'text-red-600' },
+          { label: 'Saldo Realizado', valor: saldo, cor: saldo >= 0 ? 'text-green-600' : 'text-red-600' },
+          { label: 'Saldo Projetado', valor: saldoProj, cor: saldoProj >= 0 ? 'text-[#1b4fd6]' : 'text-orange-600' },
         ].map(k => (
           <div key={k.label} className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
             <p className="text-sm font-semibold text-slate-500">{k.label}</p>
@@ -183,6 +193,7 @@ export default function FluxoCaixaManager() {
       {/* Gráfico */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <h3 className="text-xl font-black text-[#0b1733]">Entradas vs Saídas</h3>
+        <p className="text-xs text-slate-400">Lançamentos reais do Caixa Tiny</p>
         <div className="mt-4">
           {grafico.length === 0 ? (
             <div className="flex h-[260px] items-center justify-center text-sm text-slate-400">
@@ -193,7 +204,7 @@ export default function FluxoCaixaManager() {
               <BarChart data={grafico} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                 <XAxis dataKey="periodo" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} />
                 <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} />
                 <Legend />
                 <Bar dataKey="entradas" name="Entradas" fill="#1b4fd6" radius={[4, 4, 0, 0]} />
@@ -206,8 +217,16 @@ export default function FluxoCaixaManager() {
 
       {/* Tabela de lançamentos */}
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="p-6">
+        <div className="flex items-center justify-between p-6">
           <h3 className="text-xl font-black text-[#0b1733]">Lançamentos</h3>
+          <div className="flex gap-2">
+            {['todos', 'entrada', 'saida'].map(t => (
+              <button key={t} onClick={() => { setFiltroTipo(t); setPagina(0) }}
+                className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${filtroTipo === t ? 'bg-[#0b1733] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {t === 'todos' ? 'Todos' : t === 'entrada' ? 'Entradas' : 'Saídas'}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="overflow-x-auto">
           {loading ? (
@@ -216,7 +235,7 @@ export default function FluxoCaixaManager() {
             <table className="w-full text-sm">
               <thead className="border-b border-slate-100 bg-[#f8fafc]">
                 <tr>
-                  {['Data', 'Tipo', 'Descrição', 'Categoria', 'Conta Bancária', 'Valor'].map(h => (
+                  {['Data', 'Tipo', 'Histórico', 'Categoria', 'Conta Bancária', 'Valor'].map(h => (
                     <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500">{h}</th>
                   ))}
                 </tr>
@@ -232,7 +251,7 @@ export default function FluxoCaixaManager() {
                         {l.tipo === 'entrada' ? 'Entrada' : 'Saída'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{l.descricao || '—'}</td>
+                    <td className="px-4 py-3 text-slate-600 max-w-[200px] truncate">{l.historico || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{l.categoria || '—'}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{l.conta_bancaria || '—'}</td>
                     <td className={`px-4 py-3 text-right font-bold ${l.tipo === 'entrada' ? 'text-green-600' : 'text-red-600'}`}>
@@ -248,17 +267,17 @@ export default function FluxoCaixaManager() {
           <div className="flex items-center justify-between p-4">
             <span className="text-sm text-slate-500">{total} lançamentos</span>
             <div className="flex gap-2">
-              <button disabled={pagina === 0} onClick={() => setPagina(p => p - 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40">Anterior</button>
+              <button disabled={pagina === 0} onClick={() => setPagina(p => p - 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40 hover:bg-slate-50">Anterior</button>
               <span className="rounded-xl bg-[#eef3fb] px-4 py-2 text-sm font-semibold">{pagina + 1} / {totalPaginas}</span>
-              <button disabled={pagina >= totalPaginas - 1} onClick={() => setPagina(p => p + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40">Próxima</button>
+              <button disabled={pagina >= totalPaginas - 1} onClick={() => setPagina(p => p + 1)} className="rounded-xl border px-4 py-2 text-sm disabled:opacity-40 hover:bg-slate-50">Próxima</button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Projeção futura */}
+      {/* Projeção */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h3 className="text-xl font-black text-[#0b1733]">Projeção — entradas e saídas previstas no período</h3>
+        <h3 className="text-xl font-black text-[#0b1733]">Projeção — Títulos em aberto no período</h3>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl bg-green-50 p-4">
             <p className="text-sm font-semibold text-green-700">A receber (em aberto)</p>
@@ -275,54 +294,6 @@ export default function FluxoCaixaManager() {
             <p className={`mt-2 text-xl font-black ${saldoProj >= 0 ? 'text-[#1b4fd6]' : 'text-orange-700'}`}>{formatBRL(saldoProj)}</p>
           </div>
         </div>
-
-        {projecaoReceber.length > 0 && (
-          <div className="mt-6">
-            <p className="text-sm font-semibold text-slate-500 mb-3">Entradas previstas</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-100 text-xs font-semibold text-slate-400">
-                  <th className="pb-2 pr-4 text-left">Descrição</th>
-                  <th className="pb-2 pr-4 text-left">Vencimento</th>
-                  <th className="pb-2 text-right">Valor</th>
-                </tr></thead>
-                <tbody>
-                  {projecaoReceber.slice(0, 10).map(r => (
-                    <tr key={r.id} className="border-b border-slate-50">
-                      <td className="py-2 pr-4 text-slate-600">{r.descricao || '—'}</td>
-                      <td className="py-2 pr-4">{r.data_vencimento ? formatData(r.data_vencimento) : '—'}</td>
-                      <td className="py-2 text-right font-bold text-green-600">{formatBRL(r.valor)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {projecaoPagar.length > 0 && (
-          <div className="mt-6">
-            <p className="text-sm font-semibold text-slate-500 mb-3">Saídas previstas</p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-slate-100 text-xs font-semibold text-slate-400">
-                  <th className="pb-2 pr-4 text-left">Descrição</th>
-                  <th className="pb-2 pr-4 text-left">Vencimento</th>
-                  <th className="pb-2 text-right">Valor</th>
-                </tr></thead>
-                <tbody>
-                  {projecaoPagar.slice(0, 10).map(r => (
-                    <tr key={r.id} className="border-b border-slate-50">
-                      <td className="py-2 pr-4 text-slate-600">{r.descricao || '—'}</td>
-                      <td className="py-2 pr-4">{r.data_vencimento ? formatData(r.data_vencimento) : '—'}</td>
-                      <td className="py-2 text-right font-bold text-red-600">{formatBRL(r.valor)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

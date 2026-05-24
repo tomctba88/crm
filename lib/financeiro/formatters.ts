@@ -1,13 +1,18 @@
-export function formatBRL(valor: number): string {
-  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+export function formatBRL(valor: number | null | undefined): string {
+  return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export function formatData(data: string | Date): string {
+export function formatData(data: string | Date | null | undefined): string {
+  if (!data) return '-'
   return new Date(data).toLocaleDateString('pt-BR')
 }
 
-export function isVencido(dataVencimento: string, status: string): boolean {
-  if (status !== 'aberto') return false
+export function formatPct(valor: number | null | undefined, casas = 1): string {
+  return `${Number(valor || 0).toFixed(casas)}%`
+}
+
+export function isVencido(dataVencimento: string | null | undefined, status: string): boolean {
+  if (status !== 'aberto' || !dataVencimento) return false
   return new Date(dataVencimento) < new Date()
 }
 
