@@ -9,15 +9,40 @@ function str(v: unknown): string {
   return v ? String(v) : ''
 }
 
+function fmtBR(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
 function mapStatusCR(s: string): string {
-  const m: Record<string, string> = { 'aberto': 'aberto', 'em aberto': 'aberto', 'vencido': 'vencido', 'cancelado': 'cancelado' }
-  return m[s?.toLowerCase()] ?? 'aberto'
+  const lower = s?.toLowerCase() ?? ''
+  if (lower.includes('aberto') || lower === 'a receber') return 'aberto'
+  if (lower.includes('vencido')) return 'vencido'
+  if (lower.includes('recebido') || lower.includes('pago')) return 'recebido'
+  if (lower.includes('cancelado')) return 'cancelado'
+  return 'aberto'
+}
+
+function mapStatusCP(s: string): string {
+  const lower = s?.toLowerCase() ?? ''
+  if (lower.includes('aberto') || lower === 'a pagar') return 'aberto'
+  if (lower.includes('vencido')) return 'vencido'
+  if (lower.includes('pago') || lower.includes('recebido')) return 'pago'
+  if (lower.includes('cancelado')) return 'cancelado'
+  return 'aberto'
 }
 
 async function sincronizarContasReceber(supabase: any, token: string) {
-  const itens = await tinyFetchTodas(token, 'contas.receber.pesquisa', { situacao: 'aberto' }, 'conta')
-  const tinyIds = itens.filter(i => !!str(i.id)).map(i => str(i.id))
-  const records = itens.filter(i => !!str(i.id)).map(i => {
+  const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
+  const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
+  const itens = await tinyFetchTodas(token, 'contas.receber.pesquisa',
+    { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }, 'conta')
+  const abertos = itens.filter(i => {
+    if (!str(i.id)) return false
+    const st = mapStatusCR(str(i.situacao))
+    return st === 'aberto' || st === 'vencido'
+  })
+  const tinyIds = abertos.map(i => str(i.id))
+  const records = abertos.map(i => {
     const catObj = i.categoria as any
     return {
       tiny_id: str(i.id),
@@ -47,13 +72,21 @@ async function sincronizarContasReceber(supabase: any, token: string) {
     await supabase.from('fin_contas_receber').delete().eq('origem', 'tiny')
       .not('tiny_id', 'in', `(${tinyIds.map(id => `"${id}"`).join(',')})`)
   }
-  return { sincronizados, erros, total: itens.length }
+  return { sincronizados, erros, total: itens.length, total_abertos: abertos.length }
 }
 
 async function sincronizarContasPagar(supabase: any, token: string) {
-  const itens = await tinyFetchTodas(token, 'contas.pagar.pesquisa', { situacao: 'aberto' }, 'conta')
-  const tinyIds = itens.filter(i => !!str(i.id)).map(i => str(i.id))
-  const records = itens.filter(i => !!str(i.id)).map(i => {
+  const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
+  const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
+  const itens = await tinyFetchTodas(token, 'contas.pagar.pesquisa',
+    { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }, 'conta')
+  const abertos = itens.filter(i => {
+    if (!str(i.id)) return false
+    const st = mapStatusCP(str(i.situacao))
+    return st === 'aberto' || st === 'vencido'
+  })
+  const tinyIds = abertos.map(i => str(i.id))
+  const records = abertos.map(i => {
     const catObj = i.categoria as any
     return {
       tiny_id: str(i.id),
@@ -63,7 +96,7 @@ async function sincronizarContasPagar(supabase: any, token: string) {
       valor: Math.abs(Number(i.valor ?? 0)),
       data_vencimento: dataTinyParaISO(str(i.data_vencimento ?? i.dataVencimento)),
       data_emissao: dataTinyParaISO(str(i.data_emissao ?? i.dataEmissao)),
-      status: mapStatusCR(str(i.situacao)),
+      status: mapStatusCP(str(i.situacao)),
       categoria: str(catObj?.nome ?? i.categoria),
       categoria_id: str(catObj?.id ?? i.categoria_id),
       conta_bancaria: str(i.conta_bancaria ?? i.contaBancaria),
@@ -83,7 +116,7 @@ async function sincronizarContasPagar(supabase: any, token: string) {
     await supabase.from('fin_contas_pagar').delete().eq('origem', 'tiny')
       .not('tiny_id', 'in', `(${tinyIds.map(id => `"${id}"`).join(',')})`)
   }
-  return { sincronizados, erros, total: itens.length }
+  return { sincronizados, erros, total: itens.length, total_abertos: abertos.length }
 }
 
 async function sincronizarCaixa(supabase: any, token: string) {

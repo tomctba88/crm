@@ -26,17 +26,22 @@ export async function getTinyToken(supabase: any): Promise<string> {
   return data.token
 }
 
+// POST com application/x-www-form-urlencoded — único método aceito pela API Tiny v2
 export async function tinyFetch(
   token: string,
   endpoint: string,
   params: Record<string, string | number> = {},
   tentativa = 1
 ): Promise<any> {
-  const sp = new URLSearchParams({ token, formato: 'json' })
-  Object.entries(params).forEach(([k, v]) => sp.set(k, String(v)))
+  const body = new URLSearchParams({ token, formato: 'json' })
+  Object.entries(params).forEach(([k, v]) => body.set(k, String(v)))
 
-  const url = `${TINY_BASE}/${endpoint}.php?${sp.toString()}`
-  const res = await fetch(url, { cache: 'no-store' })
+  const res = await fetch(`${TINY_BASE}/${endpoint}.php`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+    cache: 'no-store',
+  })
 
   if (res.status === 429 && tentativa < 4) {
     await new Promise(r => setTimeout(r, tentativa * 2000))
@@ -50,12 +55,9 @@ export async function tinyFetch(
 
   if (!retorno) throw new Error(`Sem retorno da API Tiny: ${endpoint}`)
 
-  // status_processamento 3 = sucesso; alguns endpoints retornam status='OK'
-  const statusProc = Number(retorno.status_processamento)
-  if (statusProc !== 3 && retorno.status !== 'OK') {
+  if (Number(retorno.status_processamento) !== 3) {
     const erros = retorno.erros as any
     const msg = (Array.isArray(erros) ? erros[0]?.erro : erros?.erro)
-      || retorno?.registros?.registro?.erros?.erro
       || `Erro na API Tiny: ${endpoint}`
     throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg))
   }

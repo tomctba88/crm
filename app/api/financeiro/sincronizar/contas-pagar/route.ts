@@ -8,14 +8,17 @@ function str(v: unknown): string {
   return v ? String(v) : ''
 }
 
+function fmtBR(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+}
+
 function mapStatus(s: string): string {
-  const m: Record<string, string> = {
-    'aberto': 'aberto',
-    'em aberto': 'aberto',
-    'vencido': 'vencido',
-    'cancelado': 'cancelado',
-  }
-  return m[s?.toLowerCase()] ?? 'aberto'
+  const lower = s?.toLowerCase() ?? ''
+  if (lower.includes('aberto') || lower === 'a pagar') return 'aberto'
+  if (lower.includes('vencido')) return 'vencido'
+  if (lower.includes('pago') || lower.includes('recebido')) return 'pago'
+  if (lower.includes('cancelado')) return 'cancelado'
+  return 'aberto'
 }
 
 export async function POST() {
@@ -26,18 +29,25 @@ export async function POST() {
 
     const token = await getTinyToken(supabase)
 
+    const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
+    const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
+
     const itens = await tinyFetchTodas(
       token,
       'contas.pagar.pesquisa',
-      { situacao: 'aberto' },
+      { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) },
       'conta'
     )
 
-    const tinyIds = itens.filter(i => !!str(i.id)).map(i => str(i.id))
+    const abertos = itens.filter(i => {
+      if (!str(i.id)) return false
+      const st = mapStatus(str(i.situacao))
+      return st === 'aberto' || st === 'vencido'
+    })
 
-    const records = itens
-      .filter(i => !!str(i.id))
-      .map(i => {
+    const tinyIds = abertos.map(i => str(i.id))
+
+    const records = abertos.map(i => {
         const catObj = i.categoria as any
         const categoria = str(catObj?.nome ?? i.categoria)
         const categoriaId = str(catObj?.id ?? i.categoria_id)
@@ -85,11 +95,11 @@ export async function POST() {
       integracao: 'tiny',
       recurso: 'contas_pagar',
       status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-      mensagem: `${sincronizados} contas a pagar sincronizadas. ${erros} erros.`,
-      detalhes: { sincronizados, deletados, erros, total_tiny: itens.length },
+      mensagem: `${sincronizados}/${itens.length} contas a pagar sincronizadas (${itens.length - abertos.length} pagas/canceladas ignoradas). ${erros} erros.`,
+      detalhes: { sincronizados, deletados, erros, total_tiny: itens.length, total_abertos: abertos.length },
     })
 
-    return NextResponse.json({ sincronizados, deletados, erros, total_tiny: itens.length })
+    return NextResponse.json({ sincronizados, deletados, erros, total_tiny: itens.length, total_abertos: abertos.length })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erro inesperado.' },
