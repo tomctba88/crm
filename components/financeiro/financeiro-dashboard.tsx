@@ -12,13 +12,14 @@ import SincronizarButton from './sincronizar-button'
 
 type ContaReceber = {
   id: string; cliente: string; historico: string; valor: number
-  data_vencimento: string | null; status: string; categoria: string
+  valor_recebido: number; data_vencimento: string | null
+  data_recebimento: string | null; status: string; categoria: string
 }
 type ContaPagar = {
   id: string; fornecedor: string; historico: string; valor: number
-  data_vencimento: string | null; status: string; categoria: string
+  valor_pago: number; data_vencimento: string | null
+  data_pagamento: string | null; status: string; categoria: string
 }
-type CaixaItem = { data_lancamento: string; tipo: string; valor: number; categoria: string }
 type VendaItem = { data_venda: string | null; valor_liquido: number; valor_estofaria: number; valor_marcenaria: number }
 type FiltroTipo = 'todos' | 'mes' | 'ano' | 'custom'
 
@@ -34,7 +35,6 @@ function mesLabel(iso: string) {
 export default function FinanceiroDashboard() {
   const [contasReceber, setContasReceber] = useState<ContaReceber[]>([])
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
-  const [caixaRaw, setCaixaRaw] = useState<CaixaItem[]>([])
   const [vendasRaw, setVendasRaw] = useState<VendaItem[]>([])
   const [ultimaSync, setUltimaSync] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -73,15 +73,15 @@ export default function FinanceiroDashboard() {
     const em7 = new Date(); em7.setDate(new Date().getDate() + 7)
     const em7Str = em7.toISOString().slice(0, 10)
 
-    const crAberto = contasReceber.filter(r => r.status === 'aberto' && inVenc(r.data_vencimento))
-    const cpAberto = contasPagar.filter(r => r.status === 'aberto' && inVenc(r.data_vencimento))
+    const crAberto = contasReceber.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
+    const cpAberto = contasPagar.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
 
-    const recebido = caixaRaw
-      .filter(c => c.tipo === 'entrada' && inCaixa(c.data_lancamento))
-      .reduce((s, c) => s + c.valor, 0)
-    const pago = caixaRaw
-      .filter(c => c.tipo === 'saida' && inCaixa(c.data_lancamento))
-      .reduce((s, c) => s + c.valor, 0)
+    const recebido = contasReceber
+      .filter(r => r.status === 'recebido' && inCaixa(r.data_recebimento ?? ''))
+      .reduce((s, r) => s + (r.valor_recebido > 0 ? r.valor_recebido : r.valor), 0)
+    const pago = contasPagar
+      .filter(r => r.status === 'pago' && inCaixa(r.data_pagamento ?? ''))
+      .reduce((s, r) => s + (r.valor_pago > 0 ? r.valor_pago : r.valor), 0)
 
     const inVenda = (d: string | null) => !range || (!!d && d >= range.ini && d <= range.fim)
     const faturamento = vendasRaw
@@ -130,15 +130,18 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Fluxo de caixa real
+    // Fluxo de caixa real — agrupa por data_recebimento / data_pagamento
     const fluxoMap: Record<string, { entradas: number; saidas: number }> = {}
     meses.forEach(m => { fluxoMap[m] = { entradas: 0, saidas: 0 } })
-    for (const c of caixaRaw) {
-      const k = c.data_lancamento.slice(0, 7)
-      if (fluxoMap[k]) {
-        if (c.tipo === 'entrada') fluxoMap[k].entradas += c.valor
-        else fluxoMap[k].saidas += c.valor
-      }
+    for (const r of contasReceber) {
+      if (r.status !== 'recebido' || !r.data_recebimento) continue
+      const k = r.data_recebimento.slice(0, 7)
+      if (fluxoMap[k]) fluxoMap[k].entradas += r.valor_recebido > 0 ? r.valor_recebido : r.valor
+    }
+    for (const r of contasPagar) {
+      if (r.status !== 'pago' || !r.data_pagamento) continue
+      const k = r.data_pagamento.slice(0, 7)
+      if (fluxoMap[k]) fluxoMap[k].saidas += r.valor_pago > 0 ? r.valor_pago : r.valor
     }
 
     // Faturamento por segmento
@@ -196,16 +199,14 @@ export default function FinanceiroDashboard() {
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: receber }, { data: pagar }, { data: caixa }, { data: vendas }, { data: integ }] = await Promise.all([
-        supabase.from('fin_contas_receber').select('id,cliente,historico,valor,data_vencimento,status,categoria'),
-        supabase.from('fin_contas_pagar').select('id,fornecedor,historico,valor,data_vencimento,status,categoria'),
-        supabase.from('fin_caixa').select('data_lancamento,tipo,valor,categoria').order('data_lancamento'),
+      const [{ data: receber }, { data: pagar }, { data: vendas }, { data: integ }] = await Promise.all([
+        supabase.from('fin_contas_receber').select('id,cliente,historico,valor,valor_recebido,data_vencimento,data_recebimento,status,categoria'),
+        supabase.from('fin_contas_pagar').select('id,fornecedor,historico,valor,valor_pago,data_vencimento,data_pagamento,status,categoria'),
         supabase.from('fin_vendas').select('data_venda,valor_liquido,valor_estofaria,valor_marcenaria'),
         supabase.from('integracoes_olist').select('ultimo_sync_em').eq('nome', 'olist_tiny').maybeSingle(),
       ])
       setContasReceber((receber ?? []) as ContaReceber[])
       setContasPagar((pagar ?? []) as ContaPagar[])
-      setCaixaRaw((caixa ?? []) as CaixaItem[])
       setVendasRaw((vendas ?? []) as VendaItem[])
       setUltimaSync(integ?.ultimo_sync_em ?? null)
     } finally {

@@ -36,13 +36,9 @@ async function sincronizarContasReceber(supabase: any, token: string) {
   const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
   const itens = await tinyFetchTodas(token, 'contas.receber.pesquisa',
     { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }, 'conta')
-  const abertos = itens.filter(i => {
-    if (!str(i.id)) return false
-    const st = mapStatusCR(str(i.situacao))
-    return st === 'aberto' || st === 'vencido'
-  })
-  const tinyIds = abertos.map(i => str(i.id))
-  const records = abertos.map(i => {
+  const validos = itens.filter(i => !!str(i.id))
+  const tinyIds = validos.map(i => str(i.id))
+  const records = validos.map(i => {
     const catObj = i.categoria as any
     return {
       tiny_id: str(i.id),
@@ -52,6 +48,8 @@ async function sincronizarContasReceber(supabase: any, token: string) {
       valor: Math.abs(Number(i.valor ?? 0)),
       data_vencimento: dataTinyParaISO(str(i.data_vencimento ?? i.dataVencimento)),
       data_emissao: dataTinyParaISO(str(i.data_emissao ?? i.dataEmissao)),
+      data_recebimento: dataTinyParaISO(str(i.data_pagamento ?? i.dataPagamento ?? i.data_baixa ?? i.dataBaixa)),
+      valor_recebido: Math.abs(Number(i.valor_pago ?? i.valorPago ?? i.valor_recebido ?? 0)),
       status: mapStatusCR(str(i.situacao)),
       categoria: str(catObj?.nome ?? i.categoria),
       categoria_id: str(catObj?.id ?? i.categoria_id),
@@ -72,7 +70,7 @@ async function sincronizarContasReceber(supabase: any, token: string) {
     await supabase.from('fin_contas_receber').delete().eq('origem', 'tiny')
       .not('tiny_id', 'in', `(${tinyIds.map(id => `"${id}"`).join(',')})`)
   }
-  return { sincronizados, erros, total: itens.length, total_abertos: abertos.length }
+  return { sincronizados, erros, total: itens.length }
 }
 
 async function sincronizarContasPagar(supabase: any, token: string) {
@@ -80,13 +78,9 @@ async function sincronizarContasPagar(supabase: any, token: string) {
   const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
   const itens = await tinyFetchTodas(token, 'contas.pagar.pesquisa',
     { data_ini_vencimento: fmtBR(ini), data_fim_vencimento: fmtBR(fim) }, 'conta')
-  const abertos = itens.filter(i => {
-    if (!str(i.id)) return false
-    const st = mapStatusCP(str(i.situacao))
-    return st === 'aberto' || st === 'vencido'
-  })
-  const tinyIds = abertos.map(i => str(i.id))
-  const records = abertos.map(i => {
+  const validos = itens.filter(i => !!str(i.id))
+  const tinyIds = validos.map(i => str(i.id))
+  const records = validos.map(i => {
     const catObj = i.categoria as any
     return {
       tiny_id: str(i.id),
@@ -96,6 +90,8 @@ async function sincronizarContasPagar(supabase: any, token: string) {
       valor: Math.abs(Number(i.valor ?? 0)),
       data_vencimento: dataTinyParaISO(str(i.data_vencimento ?? i.dataVencimento)),
       data_emissao: dataTinyParaISO(str(i.data_emissao ?? i.dataEmissao)),
+      data_pagamento: dataTinyParaISO(str(i.data_pagamento ?? i.dataPagamento ?? i.data_baixa ?? i.dataBaixa)),
+      valor_pago: Math.abs(Number(i.valor_pago ?? i.valorPago ?? 0)),
       status: mapStatusCP(str(i.situacao)),
       categoria: str(catObj?.nome ?? i.categoria),
       categoria_id: str(catObj?.id ?? i.categoria_id),
@@ -116,7 +112,7 @@ async function sincronizarContasPagar(supabase: any, token: string) {
     await supabase.from('fin_contas_pagar').delete().eq('origem', 'tiny')
       .not('tiny_id', 'in', `(${tinyIds.map(id => `"${id}"`).join(',')})`)
   }
-  return { sincronizados, erros, total: itens.length, total_abertos: abertos.length }
+  return { sincronizados, erros, total: itens.length }
 }
 
 async function sincronizarCaixa(supabase: any, token: string) {

@@ -29,7 +29,6 @@ export async function POST() {
 
     const token = await getTinyToken(supabase)
 
-    // Usar intervalo de datas (abordagem que funciona no Tiny v2)
     const ini = new Date(); ini.setFullYear(ini.getFullYear() - 3)
     const fim = new Date(); fim.setFullYear(fim.getFullYear() + 2)
 
@@ -40,16 +39,10 @@ export async function POST() {
       'conta'
     )
 
-    // Guardar apenas os títulos em aberto/vencido (não recebidos/cancelados)
-    const abertos = itens.filter(i => {
-      if (!str(i.id)) return false
-      const st = mapStatus(str(i.situacao))
-      return st === 'aberto' || st === 'vencido'
-    })
+    const validos = itens.filter(i => !!str(i.id))
+    const tinyIds = validos.map(i => str(i.id))
 
-    const tinyIds = abertos.map(i => str(i.id))
-
-    const records = abertos.map(i => {
+    const records = validos.map(i => {
       const catObj = i.categoria as any
       return {
         tiny_id: str(i.id),
@@ -59,6 +52,8 @@ export async function POST() {
         valor: Math.abs(Number(i.valor ?? 0)),
         data_vencimento: dataTinyParaISO(str(i.data_vencimento ?? i.dataVencimento)),
         data_emissao: dataTinyParaISO(str(i.data_emissao ?? i.dataEmissao)),
+        data_recebimento: dataTinyParaISO(str(i.data_pagamento ?? i.dataPagamento ?? i.data_baixa ?? i.dataBaixa)),
+        valor_recebido: Math.abs(Number(i.valor_pago ?? i.valorPago ?? i.valor_recebido ?? 0)),
         status: mapStatus(str(i.situacao)),
         categoria: str(catObj?.nome ?? i.categoria),
         categoria_id: str(catObj?.id ?? i.categoria_id),
@@ -81,7 +76,6 @@ export async function POST() {
       else sincronizados += chunk.length
     }
 
-    // Remover títulos que foram pagos/cancelados no Tiny
     if (tinyIds.length > 0) {
       await supabase
         .from('fin_contas_receber')
@@ -94,11 +88,11 @@ export async function POST() {
       integracao: 'tiny',
       recurso: 'contas_receber',
       status: erros > 0 ? (sincronizados > 0 ? 'parcial' : 'erro') : 'sucesso',
-      mensagem: `${sincronizados}/${itens.length} contas a receber sincronizadas (${itens.length - abertos.length} pagas/canceladas ignoradas). ${erros} erros.`,
-      detalhes: { sincronizados, erros, total_tiny: itens.length, total_abertos: abertos.length },
+      mensagem: `${sincronizados}/${itens.length} contas a receber sincronizadas. ${erros} erros.`,
+      detalhes: { sincronizados, erros, total_tiny: itens.length },
     })
 
-    return NextResponse.json({ sincronizados, erros, total_tiny: itens.length, total_abertos: abertos.length })
+    return NextResponse.json({ sincronizados, erros, total_tiny: itens.length })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erro inesperado.' },
