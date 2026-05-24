@@ -1,0 +1,320 @@
+'use client'
+
+import { useState, useRef, useCallback, useEffect } from 'react'
+import * as XLSX from 'xlsx'
+import { createClient } from '@/lib/supabase/browser-client'
+
+type Tipo = 'balancete' | 'fluxo_caixa' | 'vendas' | 'contas_receber' | 'contas_pagar'
+
+type CardEstado = {
+  arquivo: File | null
+  linhas: number
+  estado: 'idle' | 'preview' | 'loading' | 'sucesso' | 'erro'
+  mensagem: string
+}
+
+type Upload = {
+  tipo: Tipo
+  mes: number
+  ano: number
+  nome_arquivo: string | null
+  total_linhas: number
+  importado_em: string
+}
+
+const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string }[] = [
+  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE e resultado por categoria do mês', colunaValidacao: 'tipo' },
+  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Entradas e saídas semana a semana', colunaValidacao: 'tipo' },
+  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento, custo e margem por cliente', colunaValidacao: 'cliente' },
+  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos e recebimentos do mês', colunaValidacao: 'vencimento' },
+  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Contas e pagamentos do mês', colunaValidacao: 'vencimento' },
+]
+
+const MESES_NOME = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+]
+
+const TIPO_LABEL: Record<Tipo, string> = {
+  balancete: 'Balancete',
+  fluxo_caixa: 'Fluxo de Caixa',
+  vendas: 'Vendas',
+  contas_receber: 'Contas a Receber',
+  contas_pagar: 'Contas a Pagar',
+}
+
+async function lerXLS(file: File): Promise<unknown[][]> {
+  const buffer = await file.arrayBuffer()
+  const wb = XLSX.read(buffer, { type: 'array', cellDates: false })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][]
+}
+
+function validarColunas(rows: unknown[][], coluna: string): boolean {
+  if (!rows.length) return false
+  const header = (rows[0] as unknown[]).map(h => String(h || '').toLowerCase())
+  return header.some(h => h.includes(coluna.toLowerCase()))
+}
+
+const ESTADO_VAZIO: CardEstado = { arquivo: null, linhas: 0, estado: 'idle', mensagem: '' }
+
+export default function ImportadorRelatorios() {
+  const hoje = new Date()
+  const [mesSel, setMesSel] = useState(hoje.getMonth() + 1)
+  const [anoSel, setAnoSel] = useState(hoje.getFullYear())
+  const [uploads, setUploads] = useState<Upload[]>([])
+  const [carregandoUploads, setCarregandoUploads] = useState(true)
+
+  const [cards, setCards] = useState<Record<Tipo, CardEstado>>({
+    balancete: { ...ESTADO_VAZIO },
+    fluxo_caixa: { ...ESTADO_VAZIO },
+    vendas: { ...ESTADO_VAZIO },
+    contas_receber: { ...ESTADO_VAZIO },
+    contas_pagar: { ...ESTADO_VAZIO },
+  })
+
+  const fileInputRefs = useRef<Partial<Record<Tipo, HTMLInputElement | null>>>({})
+  const supabase = createClient()
+
+  const carregarUploads = useCallback(async () => {
+    setCarregandoUploads(true)
+    const { data } = await supabase
+      .from('fin_uploads')
+      .select('tipo,mes,ano,nome_arquivo,total_linhas,importado_em')
+      .order('importado_em', { ascending: false })
+      .limit(20)
+    setUploads((data ?? []) as Upload[])
+    setCarregandoUploads(false)
+  }, [])
+
+  useEffect(() => { carregarUploads() }, [carregarUploads])
+
+  function ultimaImport(tipo: Tipo) {
+    return uploads.find(u => u.tipo === tipo && u.mes === mesSel && u.ano === anoSel) ?? null
+  }
+
+  function setCard(tipo: Tipo, patch: Partial<CardEstado>) {
+    setCards(prev => ({ ...prev, [tipo]: { ...prev[tipo], ...patch } }))
+  }
+
+  async function handleFile(tipo: Tipo, file: File, colunaValidacao: string) {
+    setCard(tipo, { arquivo: file, estado: 'loading', mensagem: 'Lendo arquivo...' })
+    try {
+      const rows = await lerXLS(file)
+      if (!validarColunas(rows, colunaValidacao)) {
+        setCard(tipo, {
+          arquivo: null, estado: 'erro',
+          mensagem: `Este arquivo não parece ser o relatório de ${TIPO_LABEL[tipo]}. Verifique se exportou o relatório correto do Tiny.`,
+        })
+        return
+      }
+      const linhas = Math.max(0, rows.length - 1)
+      setCard(tipo, { arquivo: file, linhas, estado: 'preview', mensagem: '' })
+    } catch {
+      setCard(tipo, { arquivo: null, estado: 'erro', mensagem: 'Erro ao ler o arquivo. Verifique se é um XLS/XLSX válido.' })
+    }
+  }
+
+  async function importar(tipo: Tipo) {
+    const est = cards[tipo]
+    if (!est.arquivo) return
+    setCard(tipo, { estado: 'loading', mensagem: 'Importando...' })
+    try {
+      const rows = await lerXLS(est.arquivo)
+      const form = new FormData()
+      form.append('tipo', tipo)
+      form.append('mes', String(mesSel))
+      form.append('ano', String(anoSel))
+      form.append('nome_arquivo', est.arquivo.name)
+      form.append('rows', JSON.stringify(rows))
+
+      const res = await fetch('/api/financeiro/importar', { method: 'POST', body: form })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setCard(tipo, { estado: 'erro', mensagem: data.error ?? 'Erro ao importar.' })
+        return
+      }
+
+      setCard(tipo, { arquivo: null, linhas: data.importados, estado: 'sucesso', mensagem: `${data.importados} linhas importadas com sucesso.` })
+      await carregarUploads()
+      setTimeout(() => setCard(tipo, { ...ESTADO_VAZIO }), 6000)
+    } catch {
+      setCard(tipo, { estado: 'erro', mensagem: 'Erro de conexão.' })
+    }
+  }
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-black text-[#0b1733]">Importar Relatórios do Tiny</h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Exporte os relatórios diretamente do Tiny ERP e importe aqui.
+          Os dados do mês selecionado serão substituídos a cada reimportação.
+        </p>
+      </div>
+
+      {/* Seletor de período */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <p className="text-xs font-semibold text-slate-500 mb-3">Mês de referência dos relatórios</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            value={mesSel}
+            onChange={e => setMesSel(Number(e.target.value))}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+          >
+            {MESES_NOME.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+          </select>
+          <select
+            value={anoSel}
+            onChange={e => setAnoSel(Number(e.target.value))}
+            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+          >
+            {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <span className="text-xs text-slate-400">
+            Vinculado a{' '}
+            <span className="font-semibold text-[#1b4fd6]">
+              {MESES_NOME[mesSel - 1]}/{anoSel}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      {/* Cards de upload */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {CARDS.map(card => {
+          const est = cards[card.tipo]
+          const ultima = ultimaImport(card.tipo)
+
+          return (
+            <div key={card.tipo} className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200 flex flex-col gap-4">
+              {/* Header do card */}
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-[#0b1733]">{card.titulo}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{card.descricao}</p>
+                </div>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${
+                  ultima ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {ultima ? 'Importado' : 'Não importado'}
+                </span>
+              </div>
+
+              {ultima && (
+                <p className="text-[10px] text-slate-400 -mt-2">
+                  {ultima.total_linhas} linhas · {new Date(ultima.importado_em).toLocaleString('pt-BR')}
+                </p>
+              )}
+
+              {/* Input de arquivo */}
+              <input
+                type="file"
+                accept=".xls,.xlsx"
+                ref={el => { fileInputRefs.current[card.tipo] = el }}
+                className="hidden"
+                onChange={async e => {
+                  const file = e.target.files?.[0]
+                  if (file) await handleFile(card.tipo, file, card.colunaValidacao)
+                  e.target.value = ''
+                }}
+              />
+
+              {/* Estado: idle ou erro */}
+              {(est.estado === 'idle' || est.estado === 'erro') && (
+                <button
+                  onClick={() => fileInputRefs.current[card.tipo]?.click()}
+                  className="rounded-xl border-2 border-dashed border-slate-200 px-4 py-4 text-sm text-slate-400 hover:border-[#1b4fd6] hover:text-[#1b4fd6] transition text-center"
+                >
+                  Selecionar arquivo XLS
+                </button>
+              )}
+              {est.estado === 'erro' && (
+                <p className="text-xs text-red-500">{est.mensagem}</p>
+              )}
+
+              {/* Estado: preview */}
+              {est.estado === 'preview' && est.arquivo && (
+                <div className="space-y-3">
+                  <div className="rounded-xl bg-[#eef3fb] px-4 py-3">
+                    <p className="text-xs text-slate-500 truncate">📄 {est.arquivo.name}</p>
+                    <p className="text-sm font-bold text-[#1b4fd6] mt-1">{est.linhas} linhas encontradas</p>
+                    <p className="text-[10px] text-slate-400">Confirmar para importar em {MESES_NOME[mesSel - 1]}/{anoSel}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => importar(card.tipo)}
+                      className="flex-1 rounded-xl bg-[#0b1733] px-4 py-2 text-xs font-bold text-white hover:bg-[#1b4fd6] transition"
+                    >
+                      Importar
+                    </button>
+                    <button
+                      onClick={() => setCard(card.tipo, { ...ESTADO_VAZIO })}
+                      className="rounded-xl border border-slate-200 px-3 py-2 text-xs text-slate-500 hover:bg-slate-50"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Estado: loading */}
+              {est.estado === 'loading' && (
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <svg className="h-4 w-4 animate-spin text-[#1b4fd6]" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  {est.mensagem}
+                </div>
+              )}
+
+              {/* Estado: sucesso */}
+              {est.estado === 'sucesso' && (
+                <p className="text-sm font-semibold text-green-600">✓ {est.mensagem}</p>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Histórico de importações */}
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-black text-[#0b1733]">Histórico de Importações</h2>
+        <div className="mt-4 overflow-x-auto">
+          {carregandoUploads ? (
+            <div className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+          ) : uploads.length === 0 ? (
+            <p className="text-sm text-slate-400">Nenhuma importação realizada ainda.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-500">
+                  <th className="pb-2 pr-4">Tipo</th>
+                  <th className="pb-2 pr-4">Mês/Ano</th>
+                  <th className="pb-2 pr-4">Arquivo</th>
+                  <th className="pb-2 pr-4 text-right">Linhas</th>
+                  <th className="pb-2 text-right">Importado em</th>
+                </tr>
+              </thead>
+              <tbody>
+                {uploads.map((u, i) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-2 pr-4 font-medium">{TIPO_LABEL[u.tipo] ?? u.tipo}</td>
+                    <td className="py-2 pr-4">{MESES_NOME[u.mes - 1]}/{u.ano}</td>
+                    <td className="py-2 pr-4 text-slate-400 text-xs truncate max-w-[180px]">{u.nome_arquivo ?? '—'}</td>
+                    <td className="py-2 pr-4 text-right">{u.total_linhas}</td>
+                    <td className="py-2 text-right text-xs text-slate-400">
+                      {new Date(u.importado_em).toLocaleString('pt-BR')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
