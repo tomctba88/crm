@@ -284,6 +284,10 @@ const [filtroAno, setFiltroAno] = useState('Todos')
 const [filtroMes, setFiltroMes] = useState('Todos')
 const [periodoInicial, setPeriodoInicial] = useState('')
 const [periodoFinal, setPeriodoFinal] = useState('')
+const [filtroOrigem, setFiltroOrigem] = useState('Todos')
+const [filtroProduto, setFiltroProduto] = useState('Todos')
+const [sortColuna, setSortColuna] = useState<string | null>(null)
+const [sortDirecao, setSortDirecao] = useState<'asc' | 'desc'>('asc')
 const [selecionados, setSelecionados] = useState<number[]>([])
 const [exportDropdownAberto, setExportDropdownAberto] = useState(false)
 const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
@@ -906,6 +910,12 @@ const mesesDisponiveis = [
   const bateVendedor =
     filtroVendedor === 'Todos' ? true : lead.vendedor === filtroVendedor
 
+  const bateOrigem =
+    filtroOrigem === 'Todos' ? true : lead.tipo_contato === filtroOrigem
+
+  const bateProduto =
+    filtroProduto === 'Todos' ? true : lead.produto_interesse === filtroProduto
+
   const bateAno =
     filtroAno === 'Todos' ? true : getLeadYear(lead) === filtroAno
 
@@ -921,19 +931,58 @@ const mesesDisponiveis = [
     bateBusca &&
     bateStatus &&
     bateVendedor &&
+    bateOrigem &&
+    bateProduto &&
     bateAno &&
     bateMes &&
     batePeriodo
   )
 })
 .sort((a, b) => {
-  const dateA = getLeadBaseDate(a)
-  const dateB = getLeadBaseDate(b)
-  if (!dateA && !dateB) return 0
-  if (!dateA) return 1
-  if (!dateB) return -1
-  return dateB.getTime() - dateA.getTime()
+  if (!sortColuna) {
+    const dateA = getLeadBaseDate(a)
+    const dateB = getLeadBaseDate(b)
+    if (!dateA && !dateB) return 0
+    if (!dateA) return 1
+    if (!dateB) return -1
+    return dateB.getTime() - dateA.getTime()
+  }
+
+  if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
+    const valA = (a[sortColuna as keyof Lead] as number | null) ?? 0
+    const valB = (b[sortColuna as keyof Lead] as number | null) ?? 0
+    return sortDirecao === 'asc' ? valA - valB : valB - valA
+  }
+
+  if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
+    const dateA = parseDateSafe(a[sortColuna as keyof Lead] as string | null)
+    const dateB = parseDateSafe(b[sortColuna as keyof Lead] as string | null)
+    const timeA = dateA ? dateA.getTime() : 0
+    const timeB = dateB ? dateB.getTime() : 0
+    return sortDirecao === 'asc' ? timeA - timeB : timeB - timeA
+  }
+
+  const strA = ((a[sortColuna as keyof Lead] ?? '') as string).toString().toLowerCase()
+  const strB = ((b[sortColuna as keyof Lead] ?? '') as string).toString().toLowerCase()
+  const cmp = strA.localeCompare(strB, 'pt-BR')
+  return sortDirecao === 'asc' ? cmp : -cmp
 })
+
+  function handleSort(coluna: string) {
+    if (sortColuna === coluna) {
+      setSortDirecao((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortColuna(coluna)
+      setSortDirecao('asc')
+    }
+  }
+
+  function sortIcon(coluna: string) {
+    if (sortColuna !== coluna) return <span className="ml-1 text-slate-400">↕</span>
+    return sortDirecao === 'asc'
+      ? <span className="ml-1 text-blue-600">↑</span>
+      : <span className="ml-1 text-blue-600">↓</span>
+  }
 
   const mapaCoresStatus = new Map(statusLead.map((item) => [item.nome, item.cor || null]))
 
@@ -1445,6 +1494,20 @@ useEffect(() => {
     ))}
   </select>
 
+  <select value={filtroOrigem} onChange={(e) => setFiltroOrigem(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Tipo de Origem</option>
+    {tiposContato.map((item) => (
+      <option key={item.id} value={item.nome}>{item.nome}</option>
+    ))}
+  </select>
+
+  <select value={filtroProduto} onChange={(e) => setFiltroProduto(e.target.value)} className="h-12 rounded-xl border px-4">
+    <option value="Todos">Tipo de Produto</option>
+    {produtosInteresse.map((item) => (
+      <option key={item.id} value={item.nome}>{item.nome}</option>
+    ))}
+  </select>
+
   <select value={filtroAno} onChange={(e) => setFiltroAno(e.target.value)} className="h-12 rounded-xl border px-4">
     <option value="Todos">Ano</option>
     {anosDisponiveis.map((ano) => (
@@ -1463,14 +1526,19 @@ useEffect(() => {
   <input type="date" value={periodoFinal} onChange={(e) => setPeriodoFinal(e.target.value)} className="h-12 rounded-xl border px-4" />
 
   <button
+    type="button"
     onClick={() => {
       setBusca('')
       setFiltroStatus('Todos')
       setFiltroVendedor('Todos')
+      setFiltroOrigem('Todos')
+      setFiltroProduto('Todos')
       setFiltroAno('Todos')
       setFiltroMes('Todos')
       setPeriodoInicial('')
       setPeriodoFinal('')
+      setSortColuna(null)
+      setSortDirecao('asc')
     }}
     className="h-12 rounded-xl border font-bold"
   >
@@ -1575,36 +1643,78 @@ useEffect(() => {
               <thead className="bg-slate-50 text-left text-slate-600">
                 <tr>
                   <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 font-bold shadow-[4px_0_6px_-4px_rgba(0,0,0,0.08)]">
-  <input
-    type="checkbox"
-    checked={todosSelecionados}
-    onChange={(e) => {
-      if (e.target.checked) {
-        setSelecionados(leadsFiltrados.map((lead) => lead.id))
-      } else {
-        setSelecionados([])
-      }
-    }}
-  />
-</th>
-                  <th className="px-4 py-3 font-bold">Data Contato</th>
-                  <th className="px-4 py-3 font-bold">Tipo</th>
-                  <th className="px-4 py-3 font-bold">Vendedor</th>
-                  <th className="sticky left-[56px] z-20 bg-slate-50 px-4 py-3 font-bold shadow-[4px_0_6px_-4px_rgba(0,0,0,0.08)]">
-                  Cliente
+                    <input
+                      type="checkbox"
+                      checked={todosSelecionados}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelecionados(leadsFiltrados.map((lead) => lead.id))
+                        } else {
+                          setSelecionados([])
+                        }
+                      }}
+                    />
                   </th>
-                  <th className="px-4 py-3 font-bold">Empresa</th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('data_contato')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Data Contato{sortIcon('data_contato')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('tipo_contato')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Tipo{sortIcon('tipo_contato')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('vendedor')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Vendedor{sortIcon('vendedor')}
+                    </button>
+                  </th>
+                  <th className="sticky left-[56px] z-20 bg-slate-50 px-4 py-3 font-bold shadow-[4px_0_6px_-4px_rgba(0,0,0,0.08)]">
+                    <button type="button" onClick={() => handleSort('nome_cliente')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Cliente{sortIcon('nome_cliente')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('nome_empresa')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Empresa{sortIcon('nome_empresa')}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 font-bold">Telefone</th>
-                  <th className="px-4 py-3 font-bold">UF</th>
-                  <th className="px-4 py-3 font-bold">Produto</th>
-                  <th className="px-4 py-3 font-bold">Orçamento</th>
-                  <th className="px-4 py-3 font-bold">Frete</th>
-                  <th className="px-4 py-3 font-bold">Status</th>
-                  <th className="px-4 py-3 font-bold">Data</th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('uf')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      UF{sortIcon('uf')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('produto_interesse')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Produto{sortIcon('produto_interesse')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('valor_orcamento')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Orçamento{sortIcon('valor_orcamento')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('valor_frete')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Frete{sortIcon('valor_frete')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('status')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Status{sortIcon('status')}
+                    </button>
+                  </th>
+                  <th className="px-4 py-3 font-bold">
+                    <button type="button" onClick={() => handleSort('data_retorno')} className="flex items-center whitespace-nowrap hover:text-blue-600">
+                      Data Retorno{sortIcon('data_retorno')}
+                    </button>
+                  </th>
                   <th className="px-4 py-3 font-bold">OBS</th>
                   <th className="sticky right-0 z-20 bg-slate-50 px-4 py-3 font-bold shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]">
-  Ações
-</th>
+                    Ações
+                  </th>
                 </tr>
               </thead>
 
