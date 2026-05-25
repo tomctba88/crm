@@ -12,6 +12,8 @@ type Lead = {
   tipo_contato?: string | null
   data_contato: string | null
   data_fechamento?: string | null
+  data_cancelamento?: string | null
+  data_finalizacao?: string | null
   data_retorno?: string | null
   created_at?: string | null
 }
@@ -136,11 +138,25 @@ function getMonthKey(dateString: string | null | undefined) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
-function getLeadMonthKey(lead: Lead) {
+function getContatoMonthKey(lead: Lead) {
+  return (
+    getMonthKey(lead.data_contato) ||
+    getMonthKey(lead.created_at)
+  )
+}
+
+function getVendaMonthKey(lead: Lead) {
   return (
     getMonthKey(lead.data_fechamento) ||
     getMonthKey(lead.data_contato) ||
     getMonthKey(lead.created_at)
+  )
+}
+
+function getCancelamentoMonthKey(lead: Lead) {
+  return (
+    getMonthKey(lead.data_finalizacao) ||
+    getMonthKey(lead.data_cancelamento)
   )
 }
 
@@ -206,39 +222,52 @@ export default function RelatorioVendedoresPage() {
 
       setVendedores(vendedoresUnicos)
 
-      const leadsFiltrados = leadsData.filter((lead) => {
+      const metaBase = META_MENSAL_VENDEDOR * (mesFiltro === 0 ? 12 : 1)
+
+      function bateMesFn(mesKey: string) {
+        if (!mesKey) return false
+        return mesFiltro === 0
+          ? mesKey.startsWith(`${anoFiltro}-`)
+          : mesKey === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
+      }
+
+      function bateVendedorFn(lead: Lead) {
         const vendedorAtual = (lead.vendedor || '').trim()
-        const mesLead = getLeadMonthKey(lead)
+        return vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+      }
 
-        const bateVendedor =
-          vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+      // leads e orcamentos: filtrados pela data de contato
+      const leadsFiltrados = leadsData.filter(
+        (lead) => bateVendedorFn(lead) && bateMesFn(getContatoMonthKey(lead))
+      )
 
-        const bateMes =
-          mesFiltro === 0
-            ? mesLead
-              ? mesLead.startsWith(`${anoFiltro}-`)
-              : false
-            : mesLead
-              ? mesLead === `${anoFiltro}-${String(mesFiltro).padStart(2, '0')}`
-              : false
+      // vendas fechadas: filtradas pela data de fechamento
+      const pedidosFiltrados = leadsData.filter(
+        (lead) =>
+          bateVendedorFn(lead) &&
+          bateMesFn(getVendaMonthKey(lead)) &&
+          temValorOrcamento(lead.valor_orcamento) &&
+          isPedido(lead.status)
+      )
 
-        return bateVendedor && bateMes
-      })
+      // perdidos/cancelados: filtrados pela data de encerramento
+      const canceladosFiltrados = leadsData.filter(
+        (lead) =>
+          bateVendedorFn(lead) &&
+          bateMesFn(getCancelamentoMonthKey(lead)) &&
+          isCancelado(lead.status)
+      )
 
-      const totalVendidoGeral = leadsFiltrados
-        .filter((lead) => temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status))
-        .reduce(
-          (acc, lead) =>
-            acc + parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete),
-          0
-        )
+      const totalVendidoGeral = pedidosFiltrados.reduce(
+        (acc, lead) =>
+          acc + parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete),
+        0
+      )
 
       const rankingMap = new Map<string, VendedorItem>()
 
-      leadsFiltrados.forEach((lead) => {
-        const vendedor = (lead.vendedor || 'Não informado').trim() || 'Não informado'
-
-        const atual = rankingMap.get(vendedor) || {
+      function getOrInit(vendedor: string): VendedorItem {
+        return rankingMap.get(vendedor) || {
           vendedor,
           leads: 0,
           orcamentos: 0,
@@ -251,13 +280,18 @@ export default function RelatorioVendedoresPage() {
           conversao: 0,
           perdidos: 0,
           valorPerdido: 0,
-          meta: META_MENSAL_VENDEDOR * (mesFiltro === 0 ? 12 : 1),
+          meta: metaBase,
           faltaMeta: 0,
           atingimentoMeta: 0,
           participacao: 0,
           percentualComissao: 0,
           valorComissao: 0,
         }
+      }
+
+      leadsFiltrados.forEach((lead) => {
+        const vendedor = (lead.vendedor || 'Não informado').trim() || 'Não informado'
+        const atual = getOrInit(vendedor)
 
         atual.leads += 1
 
@@ -266,18 +300,28 @@ export default function RelatorioVendedoresPage() {
           atual.valorOrcado += parseMoney(lead.valor_orcamento)
         }
 
-        if (temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)) {
-          atual.vendas += 1
-          atual.valorVendido +=
-            parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete)
-          atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
-          atual.valorFrete += parseMoney(lead.valor_frete)
-        }
+        rankingMap.set(vendedor, atual)
+      })
 
-        if (isCancelado(lead.status)) {
-          atual.perdidos += 1
-          atual.valorPerdido += parseMoney(lead.valor_orcamento)
-        }
+      pedidosFiltrados.forEach((lead) => {
+        const vendedor = (lead.vendedor || 'Não informado').trim() || 'Não informado'
+        const atual = getOrInit(vendedor)
+
+        atual.vendas += 1
+        atual.valorVendido +=
+          parseMoney(lead.valor_orcamento) - parseMoney(lead.valor_frete)
+        atual.valorVendidoSemFrete += parseMoney(lead.valor_orcamento)
+        atual.valorFrete += parseMoney(lead.valor_frete)
+
+        rankingMap.set(vendedor, atual)
+      })
+
+      canceladosFiltrados.forEach((lead) => {
+        const vendedor = (lead.vendedor || 'Não informado').trim() || 'Não informado'
+        const atual = getOrInit(vendedor)
+
+        atual.perdidos += 1
+        atual.valorPerdido += parseMoney(lead.valor_orcamento)
 
         rankingMap.set(vendedor, atual)
       })

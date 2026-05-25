@@ -642,16 +642,14 @@ taxaDesqualificado,
       const valor = leadsData
         .filter((lead) => {
           const vendedorAtual = (lead.vendedor || '').trim()
-          const mesLead = getLeadMonthKey(lead)
+          const mesVenda = getVendaMonthKey(lead)
 
           const bateVendedor =
             vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
 
-          const bateMes = mesLead ? mesLead === mesKey : true
-
           return (
             bateVendedor &&
-            bateMes &&
+            mesVenda === mesKey &&
             temValorOrcamento(lead.valor_orcamento) &&
             isPedido(lead.status)
           )
@@ -808,26 +806,38 @@ setGraficoStatusValor([
       MESES.map((_, index) => {
         const mesKey = `${anoFiltro}-${String(index + 1).padStart(2, '0')}`
 
-        const baseMes = leadsData.filter((lead) => {
+        const bateVendedorFn = (lead: Lead) => {
           const vendedorAtual = (lead.vendedor || '').trim()
-          const mesLead = getLeadMonthKey(lead)
+          return vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+        }
 
-          const bateVendedor =
-            vendedorFiltro === 'TODOS' || vendedorAtual === vendedorFiltro
+        const fechadosMes = leadsData.filter(
+          (lead) =>
+            bateVendedorFn(lead) &&
+            getVendaMonthKey(lead) === mesKey &&
+            temValorOrcamento(lead.valor_orcamento) &&
+            isPedido(lead.status)
+        ).length
 
-          const bateMes = mesLead ? mesLead === mesKey : true
+        const canceladosMes = leadsData.filter(
+          (lead) =>
+            bateVendedorFn(lead) &&
+            getFinalizacaoMonthKey(lead) === mesKey &&
+            isCancelado(lead.status)
+        ).length
 
-          return bateVendedor && bateMes
-        })
+        const aguardandoMes = leadsData.filter(
+          (lead) =>
+            bateVendedorFn(lead) &&
+            getLeadMonthKey(lead) === mesKey &&
+            isAguardando(lead.status)
+        ).length
 
         return {
           mes: getMonthShortLabel(index),
-          fechados: baseMes.filter(
-            (lead) =>
-              temValorOrcamento(lead.valor_orcamento) && isPedido(lead.status)
-          ).length,
-          cancelados: baseMes.filter((lead) => isCancelado(lead.status)).length,
-          aguardando: baseMes.filter((lead) => isAguardando(lead.status)).length,
+          fechados: fechadosMes,
+          cancelados: canceladosMes,
+          aguardando: aguardandoMes,
         }
       })
     )
