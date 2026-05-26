@@ -935,22 +935,22 @@ const mesesDisponiveis = [
 
   const leadsFiltrados = useMemo(() => {
     // Sem coluna ativa: ordem padrão por data mais recente
-    if (sortState.coluna === null) {
+    if (!sortColuna) {
       return [...leadsFiltered].sort((a, b) => {
-        const ta = getLeadBaseDate(a)?.getTime() ?? -Infinity
-        const tb = getLeadBaseDate(b)?.getTime() ?? -Infinity
+        const ta = getLeadBaseDate(a)?.getTime() ?? 0
+        const tb = getLeadBaseDate(b)?.getTime() ?? 0
         return tb - ta
       })
     }
 
-    const { coluna, direcao } = sortState
-    const mult = direcao === 'asc' ? 1 : -1
+    const col = sortColuna
+    const mult = sortDirecao === 'asc' ? 1 : -1
 
     return [...leadsFiltered].sort((a, b) => {
-      const va = a[coluna as keyof Lead]
-      const vb = b[coluna as keyof Lead]
+      const va = a[col as keyof Lead]
+      const vb = b[col as keyof Lead]
 
-      // Nulos/vazios sempre no final (como Excel)
+      // Nulos/vazios sempre no final (como Excel), independente da direção
       const aVazio = va === null || va === undefined || va === ''
       const bVazio = vb === null || vb === undefined || vb === ''
       if (aVazio && bVazio) return 0
@@ -958,23 +958,21 @@ const mesesDisponiveis = [
       if (bVazio) return -1
 
       // Colunas numéricas
-      if (coluna === 'valor_orcamento' || coluna === 'valor_frete') {
+      if (col === 'valor_orcamento' || col === 'valor_frete') {
         return ((va as number) - (vb as number)) * mult
       }
 
       // Colunas de data
-      if (coluna === 'data_contato' || coluna === 'data_retorno') {
-        const ta = parseDateSafe(va as string)?.getTime() ?? null
-        const tb = parseDateSafe(vb as string)?.getTime() ?? null
-        if (ta === null) return 1
-        if (tb === null) return -1
+      if (col === 'data_contato' || col === 'data_retorno') {
+        const ta = parseDateSafe(String(va))?.getTime() ?? 0
+        const tb = parseDateSafe(String(vb))?.getTime() ?? 0
         return (ta - tb) * mult
       }
 
       // Colunas de texto
-      return (va as string).localeCompare(vb as string, 'pt-BR', { sensitivity: 'base' }) * mult
+      return String(va).localeCompare(String(vb), 'pt-BR', { sensitivity: 'base' }) * mult
     })
-  }, [leadsFiltered, sortState])
+  }, [leadsFiltered, sortColuna, sortDirecao])
 
   function handleSort(coluna: string) {
     setSortState(prev =>
