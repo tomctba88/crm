@@ -298,8 +298,9 @@ const [periodoInicial, setPeriodoInicial] = useState('')
 const [periodoFinal, setPeriodoFinal] = useState('')
 const [filtroOrigem, setFiltroOrigem] = useState('Todos')
 const [filtroProduto, setFiltroProduto] = useState('Todos')
-const [sortColuna, setSortColuna] = useState<string | null>(null)
-const [sortDirecao, setSortDirecao] = useState<'asc' | 'desc'>('asc')
+const [sortState, setSortState] = useState<{ coluna: string | null; direcao: 'asc' | 'desc' }>({ coluna: null, direcao: 'asc' })
+const sortColuna = sortState.coluna
+const sortDirecao = sortState.direcao
 const [selecionados, setSelecionados] = useState<number[]>([])
 const [exportDropdownAberto, setExportDropdownAberto] = useState(false)
 const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
@@ -961,12 +962,11 @@ const mesesDisponiveis = [
   }, [leadsFiltered, sortColuna, sortDirecao])
 
   function handleSort(coluna: string) {
-    if (sortColuna === coluna) {
-      setSortDirecao((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortColuna(coluna)
-      setSortDirecao('asc')
-    }
+    setSortState(prev =>
+      prev.coluna === coluna
+        ? { coluna, direcao: prev.direcao === 'asc' ? 'desc' : 'asc' }
+        : { coluna, direcao: 'asc' }
+    )
   }
 
   function sortIcon(coluna: string) {
@@ -1544,8 +1544,7 @@ useEffect(() => {
       setFiltroMes('Todos')
       setPeriodoInicial('')
       setPeriodoFinal('')
-      setSortColuna(null)
-      setSortDirecao('asc')
+      setSortState({ coluna: null, direcao: 'asc' })
     }}
     className="h-12 rounded-xl border font-bold"
   >
