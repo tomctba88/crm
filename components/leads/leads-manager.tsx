@@ -887,78 +887,73 @@ const mesesDisponiveis = [
   { value: '12', label: 'Dezembro' },
 ]
 
-  const leadsBase = useMemo(() => leads.filter((lead) => {
+  const leadsFiltrados = useMemo(() => {
     const termo = normalizeText(busca)
-    const leadDate = getLeadBaseDate(lead)
     const valorBuscaNumero = parseFlexibleMoney(busca)
 
-    const bateBusca =
-      !termo ||
-      normalizeText(lead.nome_cliente).includes(termo) ||
-      normalizeText(lead.nome_empresa).includes(termo) ||
-      normalizeText(lead.telefone).includes(termo) ||
-      normalizeText(lead.vendedor).includes(termo) ||
-      normalizeText(lead.produto_interesse).includes(termo) ||
-      (valorBuscaNumero !== null &&
-        (lead.valor_orcamento === valorBuscaNumero ||
-          lead.valor_frete === valorBuscaNumero))
+    const filtered = leads.filter((lead) => {
+      const leadDate = getLeadBaseDate(lead)
 
-    const bateStatus =
-      filtroStatus === 'Todos' ? true : lead.status === filtroStatus
-    const bateVendedor =
-      filtroVendedor === 'Todos' ? true : lead.vendedor === filtroVendedor
-    const bateOrigem =
-      filtroOrigem === 'Todos' ? true : lead.tipo_contato === filtroOrigem
-    const bateProduto =
-      filtroProduto === 'Todos' ? true : lead.produto_interesse === filtroProduto
-    const bateAno =
-      filtroAno === 'Todos' ? true : getLeadYear(lead) === filtroAno
-    const bateMes =
-      filtroMes === 'Todos' ? true : getLeadMonth(lead) === filtroMes
-    const batePeriodo =
-      !periodoInicial && !periodoFinal
-        ? true
-        : isWithinCustomPeriod(leadDate, periodoInicial, periodoFinal)
+      const bateBusca =
+        !termo ||
+        normalizeText(lead.nome_cliente).includes(termo) ||
+        normalizeText(lead.nome_empresa).includes(termo) ||
+        normalizeText(lead.telefone).includes(termo) ||
+        normalizeText(lead.vendedor).includes(termo) ||
+        normalizeText(lead.produto_interesse).includes(termo) ||
+        (valorBuscaNumero !== null &&
+          (lead.valor_orcamento === valorBuscaNumero ||
+            lead.valor_frete === valorBuscaNumero))
 
-    return bateBusca && bateStatus && bateVendedor && bateOrigem && bateProduto && bateAno && bateMes && batePeriodo
-  }), [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal])
+      const bateStatus   = filtroStatus   === 'Todos' || lead.status           === filtroStatus
+      const bateVendedor = filtroVendedor === 'Todos' || lead.vendedor         === filtroVendedor
+      const bateOrigem   = filtroOrigem   === 'Todos' || lead.tipo_contato     === filtroOrigem
+      const bateProduto  = filtroProduto  === 'Todos' || lead.produto_interesse === filtroProduto
+      const bateAno      = filtroAno      === 'Todos' || getLeadYear(lead)     === filtroAno
+      const bateMes      = filtroMes      === 'Todos' || getLeadMonth(lead)    === filtroMes
+      const batePeriodo  =
+        !periodoInicial && !periodoFinal
+          ? true
+          : isWithinCustomPeriod(leadDate, periodoInicial, periodoFinal)
 
-  const leadsFiltrados = useMemo(() => {
-    const arr = [...leadsBase]
+      return bateBusca && bateStatus && bateVendedor && bateOrigem && bateProduto && bateAno && bateMes && batePeriodo
+    })
 
-    if (!sortColuna) {
-      return arr.sort((a, b) => {
-        const dateA = getLeadBaseDate(a)
-        const dateB = getLeadBaseDate(b)
-        if (!dateA && !dateB) return 0
-        if (!dateA) return 1
-        if (!dateB) return -1
-        return dateB.getTime() - dateA.getTime()
+    // — ordenação —
+    const col = sortColuna
+    const dir = sortDirecao
+    const mult = dir === 'asc' ? 1 : -1
+
+    if (!col) {
+      return [...filtered].sort((a, b) => {
+        const ta = getLeadBaseDate(a)?.getTime() ?? -Infinity
+        const tb = getLeadBaseDate(b)?.getTime() ?? -Infinity
+        return tb - ta // padrão: mais recente primeiro
       })
     }
 
-    return arr.sort((a, b) => {
-      const mult = sortDirecao === 'asc' ? 1 : -1
-
-      if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
-        const valA = (a[sortColuna as keyof Lead] as number | null) ?? 0
-        const valB = (b[sortColuna as keyof Lead] as number | null) ?? 0
-        return (valA - valB) * mult
+    return [...filtered].sort((a, b) => {
+      // colunas numéricas
+      if (col === 'valor_orcamento' || col === 'valor_frete') {
+        const na = (a[col as keyof Lead] as number | null) ?? 0
+        const nb = (b[col as keyof Lead] as number | null) ?? 0
+        return (na - nb) * mult
       }
 
-      if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
-        const dateA = parseDateSafe(a[sortColuna as keyof Lead] as string | null)
-        const dateB = parseDateSafe(b[sortColuna as keyof Lead] as string | null)
-        const timeA = dateA ? dateA.getTime() : -Infinity
-        const timeB = dateB ? dateB.getTime() : -Infinity
-        return (timeA - timeB) * mult
+      // colunas de data
+      if (col === 'data_contato' || col === 'data_retorno') {
+        const ta = parseDateSafe(a[col as keyof Lead] as string | null)?.getTime() ?? -Infinity
+        const tb = parseDateSafe(b[col as keyof Lead] as string | null)?.getTime() ?? -Infinity
+        return (ta - tb) * mult
       }
 
-      const strA = ((a[sortColuna as keyof Lead] ?? '') as string).toString()
-      const strB = ((b[sortColuna as keyof Lead] ?? '') as string).toString()
-      return strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' }) * mult
+      // colunas de texto
+      const sa = ((a[col as keyof Lead] ?? '') as string).toString()
+      const sb = ((b[col as keyof Lead] ?? '') as string).toString()
+      return sa.localeCompare(sb, 'pt-BR', { sensitivity: 'base' }) * mult
     })
-  }, [leadsBase, sortColuna, sortDirecao])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal, sortColuna, sortDirecao])
 
   function handleSort(coluna: string) {
     if (sortColuna === coluna) {
@@ -1013,7 +1008,7 @@ useEffect(() => {
     bottomEl.removeEventListener('scroll', onBottomScroll)
     window.removeEventListener('resize', syncWidth)
   }
-}, [leadsBase])
+}, [leadsFiltrados])
 
   return (
     <div className="space-y-6">
