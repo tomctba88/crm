@@ -887,86 +887,78 @@ const mesesDisponiveis = [
   { value: '12', label: 'Dezembro' },
 ]
 
-  const leadsFiltrados = leads.filter((lead) => {
-  const termo = normalizeText(busca)
-  const leadDate = getLeadBaseDate(lead)
+  const leadsBase = useMemo(() => leads.filter((lead) => {
+    const termo = normalizeText(busca)
+    const leadDate = getLeadBaseDate(lead)
+    const valorBuscaNumero = parseFlexibleMoney(busca)
 
-  const valorBuscaNumero = parseFlexibleMoney(busca)
+    const bateBusca =
+      !termo ||
+      normalizeText(lead.nome_cliente).includes(termo) ||
+      normalizeText(lead.nome_empresa).includes(termo) ||
+      normalizeText(lead.telefone).includes(termo) ||
+      normalizeText(lead.vendedor).includes(termo) ||
+      normalizeText(lead.produto_interesse).includes(termo) ||
+      (valorBuscaNumero !== null &&
+        (lead.valor_orcamento === valorBuscaNumero ||
+          lead.valor_frete === valorBuscaNumero))
 
-  const bateBusca =
-    !termo ||
-    normalizeText(lead.nome_cliente).includes(termo) ||
-    normalizeText(lead.nome_empresa).includes(termo) ||
-    normalizeText(lead.telefone).includes(termo) ||
-    normalizeText(lead.vendedor).includes(termo) ||
-    normalizeText(lead.produto_interesse).includes(termo) ||
-    (valorBuscaNumero !== null &&
-      (lead.valor_orcamento === valorBuscaNumero ||
-        lead.valor_frete === valorBuscaNumero))
+    const bateStatus =
+      filtroStatus === 'Todos' ? true : lead.status === filtroStatus
+    const bateVendedor =
+      filtroVendedor === 'Todos' ? true : lead.vendedor === filtroVendedor
+    const bateOrigem =
+      filtroOrigem === 'Todos' ? true : lead.tipo_contato === filtroOrigem
+    const bateProduto =
+      filtroProduto === 'Todos' ? true : lead.produto_interesse === filtroProduto
+    const bateAno =
+      filtroAno === 'Todos' ? true : getLeadYear(lead) === filtroAno
+    const bateMes =
+      filtroMes === 'Todos' ? true : getLeadMonth(lead) === filtroMes
+    const batePeriodo =
+      !periodoInicial && !periodoFinal
+        ? true
+        : isWithinCustomPeriod(leadDate, periodoInicial, periodoFinal)
 
-  const bateStatus =
-    filtroStatus === 'Todos' ? true : lead.status === filtroStatus
+    return bateBusca && bateStatus && bateVendedor && bateOrigem && bateProduto && bateAno && bateMes && batePeriodo
+  }), [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal])
 
-  const bateVendedor =
-    filtroVendedor === 'Todos' ? true : lead.vendedor === filtroVendedor
+  const leadsFiltrados = useMemo(() => {
+    const arr = [...leadsBase]
 
-  const bateOrigem =
-    filtroOrigem === 'Todos' ? true : lead.tipo_contato === filtroOrigem
+    if (!sortColuna) {
+      return arr.sort((a, b) => {
+        const dateA = getLeadBaseDate(a)
+        const dateB = getLeadBaseDate(b)
+        if (!dateA && !dateB) return 0
+        if (!dateA) return 1
+        if (!dateB) return -1
+        return dateB.getTime() - dateA.getTime()
+      })
+    }
 
-  const bateProduto =
-    filtroProduto === 'Todos' ? true : lead.produto_interesse === filtroProduto
+    return arr.sort((a, b) => {
+      const mult = sortDirecao === 'asc' ? 1 : -1
 
-  const bateAno =
-    filtroAno === 'Todos' ? true : getLeadYear(lead) === filtroAno
+      if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
+        const valA = (a[sortColuna as keyof Lead] as number | null) ?? 0
+        const valB = (b[sortColuna as keyof Lead] as number | null) ?? 0
+        return (valA - valB) * mult
+      }
 
-  const bateMes =
-    filtroMes === 'Todos' ? true : getLeadMonth(lead) === filtroMes
+      if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
+        const dateA = parseDateSafe(a[sortColuna as keyof Lead] as string | null)
+        const dateB = parseDateSafe(b[sortColuna as keyof Lead] as string | null)
+        const timeA = dateA ? dateA.getTime() : -Infinity
+        const timeB = dateB ? dateB.getTime() : -Infinity
+        return (timeA - timeB) * mult
+      }
 
-  const batePeriodo =
-    !periodoInicial && !periodoFinal
-      ? true
-      : isWithinCustomPeriod(leadDate, periodoInicial, periodoFinal)
-
-  return (
-    bateBusca &&
-    bateStatus &&
-    bateVendedor &&
-    bateOrigem &&
-    bateProduto &&
-    bateAno &&
-    bateMes &&
-    batePeriodo
-  )
-})
-.sort((a, b) => {
-  if (!sortColuna) {
-    const dateA = getLeadBaseDate(a)
-    const dateB = getLeadBaseDate(b)
-    if (!dateA && !dateB) return 0
-    if (!dateA) return 1
-    if (!dateB) return -1
-    return dateB.getTime() - dateA.getTime()
-  }
-
-  if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
-    const valA = (a[sortColuna as keyof Lead] as number | null) ?? 0
-    const valB = (b[sortColuna as keyof Lead] as number | null) ?? 0
-    return sortDirecao === 'asc' ? valA - valB : valB - valA
-  }
-
-  if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
-    const dateA = parseDateSafe(a[sortColuna as keyof Lead] as string | null)
-    const dateB = parseDateSafe(b[sortColuna as keyof Lead] as string | null)
-    const timeA = dateA ? dateA.getTime() : 0
-    const timeB = dateB ? dateB.getTime() : 0
-    return sortDirecao === 'asc' ? timeA - timeB : timeB - timeA
-  }
-
-  const strA = ((a[sortColuna as keyof Lead] ?? '') as string).toString().toLowerCase()
-  const strB = ((b[sortColuna as keyof Lead] ?? '') as string).toString().toLowerCase()
-  const cmp = strA.localeCompare(strB, 'pt-BR')
-  return sortDirecao === 'asc' ? cmp : -cmp
-})
+      const strA = ((a[sortColuna as keyof Lead] ?? '') as string).toString()
+      const strB = ((b[sortColuna as keyof Lead] ?? '') as string).toString()
+      return strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' }) * mult
+    })
+  }, [leadsBase, sortColuna, sortDirecao])
 
   function handleSort(coluna: string) {
     if (sortColuna === coluna) {
@@ -1021,7 +1013,7 @@ useEffect(() => {
     bottomEl.removeEventListener('scroll', onBottomScroll)
     window.removeEventListener('resize', syncWidth)
   }
-}, [leadsFiltrados])
+}, [leadsBase])
 
   return (
     <div className="space-y-6">
