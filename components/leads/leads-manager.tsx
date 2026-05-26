@@ -887,11 +887,11 @@ const mesesDisponiveis = [
   { value: '12', label: 'Dezembro' },
 ]
 
-  const leadsFiltrados = useMemo(() => {
+  const leadsFiltered = useMemo(() => {
     const termo = normalizeText(busca)
     const valorBuscaNumero = parseFlexibleMoney(busca)
 
-    const filtered = leads.filter((lead) => {
+    return leads.filter((lead) => {
       const leadDate = getLeadBaseDate(lead)
 
       const bateBusca =
@@ -905,12 +905,12 @@ const mesesDisponiveis = [
           (lead.valor_orcamento === valorBuscaNumero ||
             lead.valor_frete === valorBuscaNumero))
 
-      const bateStatus   = filtroStatus   === 'Todos' || lead.status           === filtroStatus
-      const bateVendedor = filtroVendedor === 'Todos' || lead.vendedor         === filtroVendedor
-      const bateOrigem   = filtroOrigem   === 'Todos' || lead.tipo_contato     === filtroOrigem
+      const bateStatus   = filtroStatus   === 'Todos' || lead.status            === filtroStatus
+      const bateVendedor = filtroVendedor === 'Todos' || lead.vendedor          === filtroVendedor
+      const bateOrigem   = filtroOrigem   === 'Todos' || lead.tipo_contato      === filtroOrigem
       const bateProduto  = filtroProduto  === 'Todos' || lead.produto_interesse === filtroProduto
-      const bateAno      = filtroAno      === 'Todos' || getLeadYear(lead)     === filtroAno
-      const bateMes      = filtroMes      === 'Todos' || getLeadMonth(lead)    === filtroMes
+      const bateAno      = filtroAno      === 'Todos' || getLeadYear(lead)      === filtroAno
+      const bateMes      = filtroMes      === 'Todos' || getLeadMonth(lead)     === filtroMes
       const batePeriodo  =
         !periodoInicial && !periodoFinal
           ? true
@@ -918,42 +918,32 @@ const mesesDisponiveis = [
 
       return bateBusca && bateStatus && bateVendedor && bateOrigem && bateProduto && bateAno && bateMes && batePeriodo
     })
+  }, [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal])
 
-    // — ordenação —
-    const col = sortColuna
-    const dir = sortDirecao
-    const mult = dir === 'asc' ? 1 : -1
+  // Ordenação sempre recalculada (não memoizada) para garantir reatividade ao clique
+  const mult = sortDirecao === 'asc' ? 1 : -1
 
-    if (!col) {
-      return [...filtered].sort((a, b) => {
+  const leadsFiltrados = sortColuna === null
+    ? [...leadsFiltered].sort((a, b) => {
         const ta = getLeadBaseDate(a)?.getTime() ?? -Infinity
         const tb = getLeadBaseDate(b)?.getTime() ?? -Infinity
-        return tb - ta // padrão: mais recente primeiro
+        return tb - ta
       })
-    }
-
-    return [...filtered].sort((a, b) => {
-      // colunas numéricas
-      if (col === 'valor_orcamento' || col === 'valor_frete') {
-        const na = (a[col as keyof Lead] as number | null) ?? 0
-        const nb = (b[col as keyof Lead] as number | null) ?? 0
-        return (na - nb) * mult
-      }
-
-      // colunas de data
-      if (col === 'data_contato' || col === 'data_retorno') {
-        const ta = parseDateSafe(a[col as keyof Lead] as string | null)?.getTime() ?? -Infinity
-        const tb = parseDateSafe(b[col as keyof Lead] as string | null)?.getTime() ?? -Infinity
-        return (ta - tb) * mult
-      }
-
-      // colunas de texto
-      const sa = ((a[col as keyof Lead] ?? '') as string).toString()
-      const sb = ((b[col as keyof Lead] ?? '') as string).toString()
-      return sa.localeCompare(sb, 'pt-BR', { sensitivity: 'base' }) * mult
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal, sortColuna, sortDirecao])
+    : [...leadsFiltered].sort((a, b) => {
+        if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
+          const na = (a[sortColuna as keyof Lead] as number | null) ?? 0
+          const nb = (b[sortColuna as keyof Lead] as number | null) ?? 0
+          return (na - nb) * mult
+        }
+        if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
+          const ta = parseDateSafe(a[sortColuna as keyof Lead] as string | null)?.getTime() ?? -Infinity
+          const tb = parseDateSafe(b[sortColuna as keyof Lead] as string | null)?.getTime() ?? -Infinity
+          return (ta - tb) * mult
+        }
+        const sa = ((a[sortColuna as keyof Lead] ?? '') as string).toString()
+        const sb = ((b[sortColuna as keyof Lead] ?? '') as string).toString()
+        return sa.localeCompare(sb, 'pt-BR', { sensitivity: 'base' }) * mult
+      })
 
   function handleSort(coluna: string) {
     if (sortColuna === coluna) {
@@ -1008,7 +998,7 @@ useEffect(() => {
     bottomEl.removeEventListener('scroll', onBottomScroll)
     window.removeEventListener('resize', syncWidth)
   }
-}, [leadsFiltrados])
+}, [leadsFiltered])
 
   return (
     <div className="space-y-6">
