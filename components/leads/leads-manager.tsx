@@ -955,10 +955,25 @@ const mesesDisponiveis = [
   }
 
   function sortIcon(coluna: string) {
-    if (sortColuna !== coluna) return <span className="ml-1 text-slate-400">↕</span>
-    return sortDirecao === 'asc'
-      ? <span className="ml-1 text-blue-600">↑</span>
-      : <span className="ml-1 text-blue-600">↓</span>
+    const ativo = sortColuna === coluna
+    const asc = sortDirecao === 'asc'
+
+    return (
+      <span className="ml-1 inline-flex flex-col gap-[2px]">
+        <svg
+          width="8" height="5" viewBox="0 0 8 5" fill="none"
+          className={ativo && asc ? 'text-blue-600' : 'text-slate-300'}
+        >
+          <path d="M4 0L7.46 4.5H0.54L4 0Z" fill="currentColor" />
+        </svg>
+        <svg
+          width="8" height="5" viewBox="0 0 8 5" fill="none"
+          className={ativo && !asc ? 'text-blue-600' : 'text-slate-300'}
+        >
+          <path d="M4 5L0.54 0.5H7.46L4 5Z" fill="currentColor" />
+        </svg>
+      </span>
+    )
   }
 
   const mapaCoresStatus = new Map(statusLead.map((item) => [item.nome, item.cor || null]))
