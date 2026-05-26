@@ -934,9 +934,8 @@ const mesesDisponiveis = [
   }, [leads, busca, filtroStatus, filtroVendedor, filtroOrigem, filtroProduto, filtroAno, filtroMes, periodoInicial, periodoFinal])
 
   const leadsFiltrados = useMemo(() => {
-    const mult = sortDirecao === 'asc' ? 1 : -1
-
-    if (sortColuna === null) {
+    // Sem coluna ativa: ordem padrão por data mais recente
+    if (sortState.coluna === null) {
       return [...leadsFiltered].sort((a, b) => {
         const ta = getLeadBaseDate(a)?.getTime() ?? -Infinity
         const tb = getLeadBaseDate(b)?.getTime() ?? -Infinity
@@ -944,22 +943,38 @@ const mesesDisponiveis = [
       })
     }
 
+    const { coluna, direcao } = sortState
+    const mult = direcao === 'asc' ? 1 : -1
+
     return [...leadsFiltered].sort((a, b) => {
-      if (sortColuna === 'valor_orcamento' || sortColuna === 'valor_frete') {
-        const na = (a[sortColuna as keyof Lead] as number | null) ?? 0
-        const nb = (b[sortColuna as keyof Lead] as number | null) ?? 0
-        return (na - nb) * mult
+      const va = a[coluna as keyof Lead]
+      const vb = b[coluna as keyof Lead]
+
+      // Nulos/vazios sempre no final (como Excel)
+      const aVazio = va === null || va === undefined || va === ''
+      const bVazio = vb === null || vb === undefined || vb === ''
+      if (aVazio && bVazio) return 0
+      if (aVazio) return 1
+      if (bVazio) return -1
+
+      // Colunas numéricas
+      if (coluna === 'valor_orcamento' || coluna === 'valor_frete') {
+        return ((va as number) - (vb as number)) * mult
       }
-      if (sortColuna === 'data_contato' || sortColuna === 'data_retorno') {
-        const ta = parseDateSafe(a[sortColuna as keyof Lead] as string | null)?.getTime() ?? -Infinity
-        const tb = parseDateSafe(b[sortColuna as keyof Lead] as string | null)?.getTime() ?? -Infinity
+
+      // Colunas de data
+      if (coluna === 'data_contato' || coluna === 'data_retorno') {
+        const ta = parseDateSafe(va as string)?.getTime() ?? null
+        const tb = parseDateSafe(vb as string)?.getTime() ?? null
+        if (ta === null) return 1
+        if (tb === null) return -1
         return (ta - tb) * mult
       }
-      const sa = ((a[sortColuna as keyof Lead] ?? '') as string).toString()
-      const sb = ((b[sortColuna as keyof Lead] ?? '') as string).toString()
-      return sa.localeCompare(sb, 'pt-BR', { sensitivity: 'base' }) * mult
+
+      // Colunas de texto
+      return (va as string).localeCompare(vb as string, 'pt-BR', { sensitivity: 'base' }) * mult
     })
-  }, [leadsFiltered, sortColuna, sortDirecao])
+  }, [leadsFiltered, sortState])
 
   function handleSort(coluna: string) {
     setSortState(prev =>
