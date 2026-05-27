@@ -174,6 +174,7 @@ function parseDateSafe(val: string | null | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d
 }
 
+// Data usada para ORDENAÇÃO — usa data mais relevante por status
 function getLeadBaseDate(lead: Lead) {
   if (lead.status === 'FECHADO') {
     return parseDateSafe(
@@ -191,13 +192,18 @@ function getLeadBaseDate(lead: Lead) {
   return parseDateSafe(lead.data_contato || lead.created_at)
 }
 
+// Data usada para FILTROS de mês/ano/período — sempre data do contato
+function getLeadContactDate(lead: Lead) {
+  return parseDateSafe(lead.data_contato || lead.created_at)
+}
+
 function getLeadYear(lead: Lead) {
-  const date = getLeadBaseDate(lead)
+  const date = getLeadContactDate(lead)
   return date ? String(date.getFullYear()) : ''
 }
 
 function getLeadMonth(lead: Lead) {
-  const date = getLeadBaseDate(lead)
+  const date = getLeadContactDate(lead)
   return date ? String(date.getMonth() + 1).padStart(2, '0') : ''
 }
 
@@ -356,6 +362,7 @@ const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
       .from('leads')
       .select('*')
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(from, from + pageSize - 1)
 
     if (error) {
@@ -372,7 +379,15 @@ const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     from += pageSize
   }
 
-  setLeads(todosLeads)
+  // Remove duplicatas por ID (podem ocorrer na paginação quando leads têm created_at igual)
+  const seenIds = new Set<number>()
+  const semDuplicatas = todosLeads.filter((lead) => {
+    if (seenIds.has(lead.id)) return false
+    seenIds.add(lead.id)
+    return true
+  })
+
+  setLeads(semDuplicatas)
   setCarregandoLista(false)
 }
 
@@ -917,7 +932,7 @@ const mesesDisponiveis = [
     const valorBuscaNumero = parseFlexibleMoney(busca)
 
     return leads.filter((lead) => {
-      const leadDate = getLeadBaseDate(lead)
+      const leadDate = getLeadContactDate(lead)
 
       const bateBusca =
         !termo ||
