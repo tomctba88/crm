@@ -885,6 +885,18 @@ async function excluirSelecionados() {
   return Array.from(anos).sort((a, b) => Number(b) - Number(a))
 }, [leads])
 
+  // Opções de status derivadas dos leads reais no banco (evita mismatch com cadastro)
+  const statusesNosLeads = useMemo(() => {
+    const map = new Map<string, string>()
+    leads.forEach((l) => {
+      if (l.status) {
+        const norm = normalizeText(l.status)
+        if (!map.has(norm)) map.set(norm, l.status.toUpperCase().trim())
+      }
+    })
+    return Array.from(map.values()).sort()
+  }, [leads])
+
 const mesesDisponiveis = [
   { value: '01', label: 'Janeiro' },
   { value: '02', label: 'Fevereiro' },
@@ -1494,6 +1506,9 @@ useEffect(() => {
             <p className="mt-1 text-sm text-slate-500">
               Consulte, edite e acompanhe os registros lançados no sistema.
             </p>
+            <p className="mt-1 text-sm font-semibold text-blue-600">
+              Exibindo {leadsFiltrados.length} de {leads.length} leads
+            </p>
           </div>
 
           <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1502,8 +1517,8 @@ useEffect(() => {
 
   <select value={filtroStatus} onChange={(e) => setFiltroStatus(e.target.value)} className="h-12 rounded-xl border px-4">
     <option value="Todos">Status</option>
-    {statusLead.map((item) => (
-      <option key={item.id} value={item.nome}>{item.nome}</option>
+    {statusesNosLeads.map((status) => (
+      <option key={status} value={status}>{status}</option>
     ))}
   </select>
 
