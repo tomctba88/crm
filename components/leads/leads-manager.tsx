@@ -918,10 +918,10 @@ const mesesDisponiveis = [
           (lead.valor_orcamento === valorBuscaNumero ||
             lead.valor_frete === valorBuscaNumero))
 
-      const bateStatus   = filtroStatus   === 'Todos' || lead.status            === filtroStatus
-      const bateVendedor = filtroVendedor === 'Todos' || lead.vendedor          === filtroVendedor
-      const bateOrigem   = filtroOrigem   === 'Todos' || lead.tipo_contato      === filtroOrigem
-      const bateProduto  = filtroProduto  === 'Todos' || lead.produto_interesse === filtroProduto
+      const bateStatus   = filtroStatus   === 'Todos' || normalizeText(lead.status)            === normalizeText(filtroStatus)
+      const bateVendedor = filtroVendedor === 'Todos' || normalizeText(lead.vendedor)           === normalizeText(filtroVendedor)
+      const bateOrigem   = filtroOrigem   === 'Todos' || normalizeText(lead.tipo_contato)      === normalizeText(filtroOrigem)
+      const bateProduto  = filtroProduto  === 'Todos' || normalizeText(lead.produto_interesse) === normalizeText(filtroProduto)
       const bateAno      = filtroAno      === 'Todos' || getLeadYear(lead)      === filtroAno
       const bateMes      = filtroMes      === 'Todos' || getLeadMonth(lead)     === filtroMes
       const batePeriodo  =
