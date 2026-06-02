@@ -316,11 +316,7 @@ export default function MarketingGooglePage() {
   const [loading, setLoading] = useState(true)
 const [mes, setMes] = useState('Todos')
 const [ano, setAno] = useState(hoje.getFullYear())
-const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>([
-  'GOOGLE',
-  'EMAIL',
-  'SITE',
-])
+const [origensSelecionadas, setOrigensSelecionadas] = useState<string[]>(ORIGENS_MARKETING)
 const [menuOrigensAberto, setMenuOrigensAberto] = useState(false)
 const [dados, setDados] = useState<KpiMarketing | null>(null)
 const [graficoQtdProduto, setGraficoQtdProduto] = useState<
