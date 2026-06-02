@@ -192,8 +192,18 @@ function getLeadBaseDate(lead: Lead) {
   return parseDateSafe(lead.data_contato || lead.created_at)
 }
 
-// Data usada para FILTROS de mês/ano/período — sempre data do contato
+// Data usada para FILTROS de mês/ano/período — usa data de finalização para leads concluídos
 function getLeadContactDate(lead: Lead) {
+  const status = (lead.status || '').toUpperCase().trim()
+  if (status === 'FECHADO' || status === 'PEDIDO') {
+    return parseDateSafe(lead.data_fechamento || lead.data_contato || lead.created_at)
+  }
+  if (status === 'CANCELADO') {
+    return parseDateSafe(lead.data_cancelamento || lead.data_finalizacao || lead.data_contato || lead.created_at)
+  }
+  if (status === 'DESQUALIFICADO') {
+    return parseDateSafe(lead.data_finalizacao || lead.data_cancelamento || lead.data_contato || lead.created_at)
+  }
   return parseDateSafe(lead.data_contato || lead.created_at)
 }
 
