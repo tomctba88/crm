@@ -77,6 +77,7 @@ type RankingVendedorItem = {
 
 type StatusMesItem = {
   mes: string
+  leads: number
   fechados: number
   cancelados: number
   aguardando: number
@@ -833,8 +834,15 @@ setGraficoStatusValor([
             isAguardando(lead.status)
         ).length
 
+        const leadsMes = leadsData.filter(
+          (lead) =>
+            bateVendedorFn(lead) &&
+            getLeadMonthKey(lead) === mesKey
+        ).length
+
         return {
           mes: getMonthShortLabel(index),
+          leads: leadsMes,
           fechados: fechadosMes,
           cancelados: canceladosMes,
           aguardando: aguardandoMes,
@@ -977,7 +985,11 @@ setPedidosPorLocalizacao(pedidosLocalizacaoFinal)
           </div>
         </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Card titulo="Total de Leads" valor={String(dados.leads)} cor="bg-blue-50" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Card titulo="Qtd. Vendas" valor={String(dados.pedidos)} cor="bg-emerald-50" />
           <Card titulo="Total de Vendas" valor={formatCurrency(dados.totalPedidos)} cor="bg-emerald-50" />
           <Card
@@ -1849,6 +1861,7 @@ function LineChartComercial({
 }) {
   const max = Math.max(
     ...items.flatMap((item) => [
+      item.leads,
       item.fechados,
       item.cancelados,
       item.aguardando,
@@ -1874,7 +1887,7 @@ function LineChartComercial({
     return topPad + usableHeight - (value / max) * usableHeight
   }
 
-  function buildPoints(key: 'fechados' | 'cancelados' | 'aguardando') {
+  function buildPoints(key: 'leads' | 'fechados' | 'cancelados' | 'aguardando') {
     return items
       .map((item, i) => `${getX(i)},${getY(item[key])}`)
       .join(' ')
@@ -1883,21 +1896,28 @@ function LineChartComercial({
   return (
     <div className="w-full">
       <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[360px]">
+        <polyline fill="none" stroke="#3b82f6" strokeWidth="2" strokeDasharray="6 3" points={buildPoints('leads')} />
         <polyline fill="none" stroke="#22c55e" strokeWidth="3" points={buildPoints('fechados')} />
         <polyline fill="none" stroke="#f43f5e" strokeWidth="3" points={buildPoints('cancelados')} />
         <polyline fill="none" stroke="#f59e0b" strokeWidth="3" points={buildPoints('aguardando')} />
 
         {items.map((item, i) => {
           const x = getX(i)
+          const yLeads = getY(item.leads)
           const yFechados = getY(item.fechados)
           const yCancelados = getY(item.cancelados)
           const yAguardando = getY(item.aguardando)
 
           return (
             <g key={item.mes}>
+              <circle cx={x} cy={yLeads} r="4" fill="#3b82f6" />
               <circle cx={x} cy={yFechados} r="4" fill="#22c55e" />
               <circle cx={x} cy={yCancelados} r="4" fill="#f43f5e" />
               <circle cx={x} cy={yAguardando} r="4" fill="#f59e0b" />
+
+              <text x={x} y={yLeads - 8} textAnchor="middle" fontSize="11" fontWeight="700" fill="#2563eb">
+                {item.leads}
+              </text>
 
               <text x={x} y={yFechados - 14} textAnchor="middle" fontSize="12" fontWeight="700" fill="#16a34a">
                 {item.fechados}
@@ -1920,6 +1940,7 @@ function LineChartComercial({
       </svg>
 
       <div className="mt-4 flex items-center justify-center gap-8 text-sm font-semibold">
+        <span className="text-blue-600">● Total de Leads</span>
         <span className="text-green-600">● Fechados</span>
         <span className="text-rose-500">● Perdidos</span>
         <span className="text-amber-500">● Oportunidades</span>
