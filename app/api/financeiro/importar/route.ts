@@ -87,6 +87,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Falha ao inserir os registros. Os dados anteriores foram removidos. Tente reimportar.' }, { status: 500 })
     }
 
+    // Para vendas por produto: listar produtos sem custo cadastrado
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const semCusto: string[] = tipo === 'vendas_produtos'
+      ? (parsed as any[])
+          .filter(r => r.tem_custo === false && r.valor > 0)
+          .map(r => r.sku ? `${r.produto} (SKU: ${r.sku})` : r.produto)
+      : []
+
     // Upsert log de upload
     await supabase.from('fin_uploads').upsert({
       tipo, mes, ano,
@@ -96,7 +104,7 @@ export async function POST(request: Request) {
       importado_em: new Date().toISOString(),
     }, { onConflict: 'tipo,mes,ano' })
 
-    return NextResponse.json({ importados, erros, tipo, mes, ano })
+    return NextResponse.json({ importados, erros, tipo, mes, ano, sem_custo: semCusto })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erro inesperado.' },

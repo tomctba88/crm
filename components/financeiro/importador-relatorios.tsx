@@ -11,6 +11,7 @@ type CardEstado = {
   linhas: number
   estado: 'idle' | 'preview' | 'loading' | 'sucesso' | 'erro'
   mensagem: string
+  alertas?: string[] // produtos/itens que precisam de atenção (ex: sem custo cadastrado)
 }
 
 type Upload = {
@@ -145,9 +146,18 @@ export default function ImportadorRelatorios() {
         return
       }
 
-      setCard(tipo, { arquivo: null, linhas: data.importados, estado: 'sucesso', mensagem: `${data.importados} linhas importadas com sucesso.` })
+      const alertas: string[] = data.sem_custo?.length > 0 ? data.sem_custo : []
+      const temAlerta = alertas.length > 0
+      setCard(tipo, {
+        arquivo: null,
+        linhas: data.importados,
+        estado: 'sucesso',
+        mensagem: `${data.importados} linhas importadas com sucesso.`,
+        alertas,
+      })
       await carregarUploads()
-      setTimeout(() => setCard(tipo, { ...ESTADO_VAZIO }), 6000)
+      // Cards com alerta ficam visíveis por mais tempo para o usuário ler
+      setTimeout(() => setCard(tipo, { ...ESTADO_VAZIO }), temAlerta ? 30000 : 6000)
     } catch {
       setCard(tipo, { estado: 'erro', mensagem: 'Erro de conexão.' })
     }
@@ -286,7 +296,24 @@ export default function ImportadorRelatorios() {
 
               {/* Estado: sucesso */}
               {est.estado === 'sucesso' && (
-                <p className="text-sm font-semibold text-green-600">✓ {est.mensagem}</p>
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-green-600">✓ {est.mensagem}</p>
+                  {est.alertas && est.alertas.length > 0 && (
+                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
+                      <p className="text-xs font-black text-orange-700">
+                        ⚠️ {est.alertas.length} produto(s) sem custo cadastrado no Tiny:
+                      </p>
+                      <ul className="mt-1.5 space-y-0.5">
+                        {est.alertas.map((a, i) => (
+                          <li key={i} className="text-xs text-orange-600 font-medium">• {a}</li>
+                        ))}
+                      </ul>
+                      <p className="mt-2 text-[10px] text-orange-500">
+                        Cadastre o custo desses produtos no Tiny ERP e reimporte para obter margens precisas.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )
