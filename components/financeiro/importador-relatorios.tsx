@@ -22,12 +22,12 @@ type Upload = {
   importado_em: string
 }
 
-const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string }[] = [
-  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE e resultado por categoria do mês', colunaValidacao: 'tipo' },
-  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Entradas e saídas semana a semana', colunaValidacao: 'tipo' },
-  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento, custo e margem por cliente', colunaValidacao: 'cliente' },
-  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos e recebimentos do mês', colunaValidacao: 'vencimento' },
-  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Contas e pagamentos do mês', colunaValidacao: 'vencimento' },
+const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string; dica: string }[] = [
+  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE e resultado por categoria do mês', colunaValidacao: 'tipo', dica: 'Tiny → Relatórios → Financeiro → Balancete' },
+  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato', colunaValidacao: 'histórico', dica: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato' },
+  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento, custo e margem por cliente', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas' },
+  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebimentos do mês', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Receber' },
+  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagamentos do mês', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
 ]
 
 const MESES_NOME = [
@@ -194,6 +194,7 @@ export default function ImportadorRelatorios() {
                 <div>
                   <p className="font-black text-[#0b1733]">{card.titulo}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{card.descricao}</p>
+                  <p className="text-[10px] text-slate-300 mt-1 italic">{card.dica}</p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${
                   ultima ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'

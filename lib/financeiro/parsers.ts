@@ -54,37 +54,38 @@ export function parseBalancete(rows: unknown[][]): Array<{
 }
 
 // ─── FLUXO DE CAIXA ──────────────────────────────────────────────────────────
-// Colunas: Tipo | Grupo | Categoria | [períodos "dd/mm/yyyy a dd/mm/yyyy"...] | Total
+// Formato Tiny "Entradas e Saídas por Contato":
+// Colunas: Contato | Data | Histórico | Categoria | Valor
+// Transferências internas são excluídas automaticamente.
 export function parseFluxoCaixa(rows: unknown[][]): Array<{
   tipo: string; grupo: string; categoria: string
   periodo_label: string; data_inicio: string | null; data_fim: string | null; valor: number
 }> {
   if (!rows.length) return []
-  const header = rows[0] as unknown[]
-  const periodos: Array<{ idx: number; label: string; inicio: string | null; fim: string | null }> = []
-  for (let c = 3; c < header.length - 1; c++) {
-    const h = String(header[c] || '').trim()
-    const match = h.match(/(\d{2}\/\d{2}\/\d{4})\s+a\s+(\d{2}\/\d{2}\/\d{4})/)
-    if (match) periodos.push({ idx: c, label: h, inicio: parseDateBR(match[1]), fim: parseDateBR(match[2]) })
-  }
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || row.length < 4) continue
-    const tipo = String(row[0] || '').trim().toLowerCase()
-    if (!tipo || tipo === 'tipo') continue
-    const grupo = String(row[1] || '').trim()
-    const categoria = String(row[2] || '').trim()
-    if (!categoria) continue
-    for (const p of periodos) {
-      const valor = parseNum(row[p.idx])
-      if (valor === 0) continue
-      results.push({
-        tipo: tipo === 'receita' ? 'receita' : 'despesa',
-        grupo, categoria,
-        periodo_label: p.label, data_inicio: p.inicio, data_fim: p.fim, valor,
-      })
-    }
+    if (!row || row.length < 5) continue
+    const historico = String(row[2] || '').trim()
+    if (!historico) continue
+    // Ignora transferências internas entre contas (cancelam entre si)
+    const histLower = historico.toLowerCase()
+    if (histLower.startsWith('transferência entre contas') || histLower.startsWith('transferencia entre contas')) continue
+    const valorRaw = parseNum(row[4])
+    if (valorRaw === 0) continue
+    const data = parseDateBR(row[1])
+    if (!data) continue
+    const grupo = String(row[0] || '').trim()
+    const categoria = String(row[3] || '').trim() || 'Sem categoria'
+    results.push({
+      tipo: valorRaw > 0 ? 'receita' : 'despesa',
+      grupo,
+      categoria,
+      periodo_label: historico.slice(0, 80),
+      data_inicio: data,
+      data_fim: data,
+      valor: Math.abs(valorRaw),
+    })
   }
   return results
 }

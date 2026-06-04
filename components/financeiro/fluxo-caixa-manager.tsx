@@ -75,15 +75,31 @@ export default function FluxoCaixaManager() {
     const totalDespesas = itens.filter(i => i.tipo === 'despesa').reduce((s, i) => s + i.valor, 0)
     const resultado = totalReceitas - totalDespesas
 
-    // Gráfico semanal: agrupar por periodo_label
-    const periodoMap: Record<string, { entradas: number; saidas: number }> = {}
+    // Gráfico semanal: agrupa por semana (segunda-feira da semana)
+    const getSegunda = (dateStr: string) => {
+      const d = new Date(dateStr + 'T00:00:00')
+      const dow = d.getDay() // 0=dom,1=seg,...,6=sab
+      const diff = dow === 0 ? -6 : 1 - dow
+      const seg = new Date(d); seg.setDate(d.getDate() + diff)
+      return seg.toISOString().slice(0, 10)
+    }
+    const periodoMap: Record<string, { entradas: number; saidas: number; label: string }> = {}
     for (const item of itens) {
-      const key = item.periodo_label || item.data_inicio?.slice(0, 10) || '?'
-      if (!periodoMap[key]) periodoMap[key] = { entradas: 0, saidas: 0 }
+      if (!item.data_inicio) continue
+      const key = getSegunda(item.data_inicio)
+      if (!periodoMap[key]) {
+        const d = new Date(key + 'T00:00:00')
+        periodoMap[key] = {
+          entradas: 0, saidas: 0,
+          label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        }
+      }
       if (item.tipo === 'receita') periodoMap[key].entradas += item.valor
       else periodoMap[key].saidas += item.valor
     }
-    const grafico = Object.entries(periodoMap).map(([periodo, v]) => ({ periodo, ...v }))
+    const grafico = Object.entries(periodoMap)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => ({ periodo: v.label, entradas: v.entradas, saidas: v.saidas }))
 
     // Por categoria
     const filtrados = filtroTipo === 'todos' ? itens : itens.filter(i => i.tipo === filtroTipo)
