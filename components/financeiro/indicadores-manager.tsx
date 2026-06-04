@@ -2,20 +2,16 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-} from 'recharts'
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatPct } from '@/lib/financeiro/formatters'
-import { CATEGORIAS_CUSTO, CATEGORIAS_MAO_DE_OBRA } from '@/lib/tiny/categorias'
 
 type BalanceteItem = { tipo: string; grupo: string; categoria: string; valor: number }
 type VendaItem = {
   cliente: string; cnpj_cpf: string; valor: number; frete: number
   custo: number; valor_lucro: number; percentual_lucro: number; total: number; segmento: string
 }
-type PedidoItem = { valor_total: number; valor_liquido: number; taxas: number; tarifas: number; forma_recebimento: string }
-type RecebimentoItem = { valor_original: number; valor_recebido: number; juros: number; taxas: number; descontos: number }
+type PedidoItem = { valor_total: number }
+type RecebimentoItem = { valor_recebido: number }
 
 type FiltroTipo = 'mes' | 'trimestre' | 'ano'
 
@@ -24,18 +20,31 @@ const ANO_ATUAL = new Date().getFullYear()
 const ANOS = Array.from({ length: 5 }, (_, i) => ANO_ATUAL - 3 + i).filter(a => a >= 2023)
 const MES_ATUAL = new Date().getMonth() + 1
 
-const SEGMENTO_LABEL: Record<string, string> = {
-  corporativo: 'Corporativo',
-  decor: 'Decor',
-  lojista: 'Lojista',
-  outros: 'Outros',
+const SEGMENTO_LABEL: Record<string, string> = { corporativo: 'Corporativo', decor: 'Decor', lojista: 'Lojista', outros: 'Outros' }
+const SEGMENTO_COR: Record<string, string> = { corporativo: '#1b4fd6', decor: '#16a34a', lojista: '#f59e0b', outros: '#94a3b8' }
+
+// Mapeamento de grupo Tiny → categoria de resultado
+const GRUPO_RESULTADO: Record<string, string> = {}
+function getResultadoLabel(grupo: string): string {
+  const g = grupo.toLowerCase()
+  if (g.includes('custo')) return 'CMV'
+  if (g.includes('sócios') || g.includes('socios')) return 'Salários Sócios'
+  if (g.includes('financeira')) return 'Despesas Financeiras'
+  if (g.includes('operacional')) return 'Despesas Operacionais'
+  if (g.includes('trabalhista')) return 'Despesas Trabalhistas'
+  if (g.includes('tributária') || g.includes('tributaria')) return 'Despesas Tributárias'
+  if (g.includes('imobilizado')) return 'Imobilizado'
+  if (g.includes('investimento')) return 'Investimentos'
+  if (g.includes('empréstimo') || g.includes('emprestimo')) return 'Empréstimos'
+  return 'Sem Grupo'
 }
-const SEGMENTO_COR: Record<string, string> = {
-  corporativo: '#1b4fd6',
-  decor: '#16a34a',
-  lojista: '#f59e0b',
-  outros: '#94a3b8',
-}
+
+// Ordem dos grupos no DRE
+const ORDEM_RESULTADO = [
+  'CMV', 'Salários Sócios', 'Despesas Financeiras', 'Despesas Operacionais',
+  'Despesas Trabalhistas', 'Despesas Tributárias', 'Imobilizado', 'Investimentos',
+  'Empréstimos', 'Sem Grupo',
+]
 
 function getMesesAno(tipo: FiltroTipo, ano: number, mes: number): number[] {
   if (tipo === 'mes') return [mes]
@@ -44,11 +53,6 @@ function getMesesAno(tipo: FiltroTipo, ano: number, mes: number): number[] {
     return [ini, ini + 1, ini + 2]
   }
   return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-}
-
-function matchesCat(categoria: string, lista: string[]) {
-  const lower = categoria?.toLowerCase() ?? ''
-  return lista.some(c => lower.includes(c.toLowerCase()))
 }
 
 export default function IndicadoresManager() {
@@ -60,8 +64,9 @@ export default function IndicadoresManager() {
   const [filtro, setFiltro] = useState<FiltroTipo>('mes')
   const [ano, setAno] = useState(ANO_ATUAL)
   const [mes, setMes] = useState(MES_ATUAL)
-  const [paginaClientes, setPaginaClientes] = useState(1)
   const [filtroBusca, setFiltroBusca] = useState('')
+  const [paginaClientes, setPaginaClientes] = useState(1)
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const supabase = createClient()
 
   const carregar = useCallback(async () => {
@@ -70,8 +75,8 @@ export default function IndicadoresManager() {
     const [{ data: bal }, { data: vd }, { data: ped }, { data: rec }] = await Promise.all([
       supabase.from('fin_balancete').select('tipo,grupo,categoria,valor').eq('ano', ano).in('mes', meses),
       supabase.from('fin_vendas_import').select('cliente,cnpj_cpf,valor,frete,custo,valor_lucro,percentual_lucro,total,segmento').eq('ano', ano).in('mes', meses),
-      supabase.from('fin_pedidos_import').select('valor_total,valor_liquido,taxas,tarifas,forma_recebimento').eq('ano', ano).in('mes', meses),
-      supabase.from('fin_recebimentos_import').select('valor_original,valor_recebido,juros,taxas,descontos').eq('ano', ano).in('mes', meses),
+      supabase.from('fin_pedidos_import').select('valor_total').eq('ano', ano).in('mes', meses),
+      supabase.from('fin_recebimentos_import').select('valor_recebido').eq('ano', ano).in('mes', meses),
     ])
     setBalancete((bal ?? []) as BalanceteItem[])
     setVendasImport((vd ?? []) as VendaItem[])
@@ -86,84 +91,79 @@ export default function IndicadoresManager() {
   const dados = useMemo(() => {
     const bal = balancete
     const vd = vendasImport
-    const ped = pedidosImport
-    const rec = recebimentosImport
-
-    // ── DRE ──
-    const totalEntradas = bal.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
-    const totalSaidas = bal.filter(b => b.tipo === 'saida').reduce((s, b) => s + b.valor, 0)
-    const resultado = totalEntradas - totalSaidas
-
-    const cmv = bal.filter(b => b.tipo === 'saida' && matchesCat(b.categoria, CATEGORIAS_CUSTO)).reduce((s, b) => s + b.valor, 0)
-    const despTrab = bal.filter(b => b.tipo === 'saida' && matchesCat(b.categoria, CATEGORIAS_MAO_DE_OBRA)).reduce((s, b) => s + b.valor, 0)
-    const despOper = bal.filter(b => b.tipo === 'saida' && !matchesCat(b.categoria, CATEGORIAS_CUSTO) && !matchesCat(b.categoria, CATEGORIAS_MAO_DE_OBRA)).reduce((s, b) => s + b.valor, 0)
 
     // ── FATURAMENTO ──
-    const faturamentoBruto = vd.reduce((s, v) => s + v.valor, 0)
-    const lucroBruto = vd.reduce((s, v) => s + v.valor_lucro, 0)
-    const margemBruta = faturamentoBruto > 0 ? (lucroBruto / faturamentoBruto) * 100 : 0
-    const numPedidos = ped.length > 0 ? ped.length : vd.length
-    const ticketMedio = numPedidos > 0 ? faturamentoBruto / numPedidos : 0
-
-    // Taxas de cartão/mercado pago
-    const totalTaxasPedidos = ped.reduce((s, p) => s + p.taxas + p.tarifas, 0)
-    const faturamentoLiquido = faturamentoBruto - totalTaxasPedidos
+    const totalVendas = vd.reduce((s, v) => s + v.valor, 0)
+    const fretesCobrados = vd.reduce((s, v) => s + v.frete, 0)
+    const numPedidos = pedidosImport.length > 0 ? pedidosImport.length : vd.length
+    const ticketMedio = numPedidos > 0 ? totalVendas / numPedidos : 0
+    const lucroBrutoVendas = vd.reduce((s, v) => s + v.valor_lucro, 0)
+    const margemBruta = totalVendas > 0 ? (lucroBrutoVendas / totalVendas) * 100 : 0
+    const temSegmento = vd.some(v => v.segmento && v.segmento !== 'outros')
 
     // ── SEGMENTOS ──
-    const temSegmento = vd.some(v => v.segmento && v.segmento !== 'outros')
-    const segmentosChave = temSegmento
-      ? ['corporativo', 'decor', 'lojista']
-      : ['outros']
-    const segmentos = segmentosChave.map(seg => {
+    const segmentos = ['corporativo', 'decor', 'lojista'].map(seg => {
       const vdSeg = vd.filter(v => v.segmento === seg)
       const total = vdSeg.reduce((s, v) => s + v.valor, 0)
       const lucro = vdSeg.reduce((s, v) => s + v.valor_lucro, 0)
       const margem = total > 0 ? (lucro / total) * 100 : 0
-      const count = vdSeg.length
-      return { segmento: seg, label: SEGMENTO_LABEL[seg] || seg, total, lucro, margem, count, cor: SEGMENTO_COR[seg] }
+      return { segmento: seg, label: SEGMENTO_LABEL[seg], total, lucro, margem, cor: SEGMENTO_COR[seg] }
     }).filter(s => s.total > 0)
 
-    // ── CAIXA ──
-    const totalRecebido = rec.reduce((s, r) => s + r.valor_recebido, 0)
-    const totalOriginal = rec.reduce((s, r) => s + r.valor_original, 0)
-    const jurosRecebidos = rec.reduce((s, r) => s + r.juros, 0)
-    const taxasRecebimentos = rec.reduce((s, r) => s + r.taxas, 0)
-    const descontosDados = rec.reduce((s, r) => s + r.descontos, 0)
-
-    // Pagamentos por forma (de pedidos_import)
-    const formaMap: Record<string, number> = {}
-    for (const p of ped) {
-      const forma = p.forma_recebimento?.split(' ')[0] || 'Outros'
-      formaMap[forma] = (formaMap[forma] || 0) + p.valor_total
-    }
-    const porForma = Object.entries(formaMap).map(([forma, total]) => ({ forma, total })).sort((a, b) => b.total - a.total)
-
-    // ── CUSTOS ──
-    const catMap: Record<string, number> = {}
+    // ── BALANCETE: agrupado por grupo/categoria ──
+    const totalEntradas = bal.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
+    const gruposMap: Record<string, { categorias: Record<string, number>; total: number; isCusto: boolean }> = {}
     for (const b of bal.filter(b => b.tipo === 'saida')) {
-      catMap[b.categoria || 'Sem categoria'] = (catMap[b.categoria || 'Sem categoria'] ?? 0) + b.valor
+      const g = b.grupo || 'Sem grupo'
+      if (!gruposMap[g]) gruposMap[g] = { categorias: {}, total: 0, isCusto: g.toLowerCase().includes('custo') }
+      const cat = b.categoria || 'Sem categoria'
+      gruposMap[g].categorias[cat] = (gruposMap[g].categorias[cat] || 0) + b.valor
+      gruposMap[g].total += b.valor
     }
-    const custosPorCat = Object.entries(catMap).map(([categoria, valor]) => ({ categoria, valor })).sort((a, b) => b.valor - a.valor)
 
-    // Mão de obra
-    const maoDeObraMap: Record<string, number> = {}
-    for (const b of bal.filter(b => b.tipo === 'saida' && matchesCat(b.categoria, CATEGORIAS_MAO_DE_OBRA))) {
-      maoDeObraMap[b.categoria || 'Outros'] = (maoDeObraMap[b.categoria || 'Outros'] ?? 0) + b.valor
+    // ── RESULTADO DO MÊS: agrupa grupos no painel de resultado ──
+    const resultadoAgrupado: Record<string, number> = {}
+    for (const [g, v] of Object.entries(gruposMap)) {
+      const label = getResultadoLabel(g)
+      resultadoAgrupado[label] = (resultadoAgrupado[label] || 0) + v.total
     }
-    const totalMaoDeObra = Object.values(maoDeObraMap).reduce((s, v) => s + v, 0)
+    const totalSaidas = Object.values(gruposMap).reduce((s, v) => s + v.total, 0)
+    const cmvTotal = resultadoAgrupado['CMV'] || 0
+    const lucroBrutoBalancete = totalEntradas - cmvTotal
+    const lucroLiquido = totalEntradas - totalSaidas
 
-    // Clientes
+    // EBIT = Entradas - CMV - Despesas Operacionais - Despesas Trabalhistas - Sócios
+    const ebit = totalEntradas - cmvTotal
+      - (resultadoAgrupado['Despesas Operacionais'] || 0)
+      - (resultadoAgrupado['Despesas Trabalhistas'] || 0)
+      - (resultadoAgrupado['Salários Sócios'] || 0)
+
+    // ── FRETES ──
+    const despesasFretes = (gruposMap['DESPESAS OPERACIONAIS']?.categorias['Fretes e Carretos'] || 0)
+    const fretePagoEmpresa = Math.max(0, despesasFretes - fretesCobrados)
+    const fretesPctFaturamento = totalVendas > 0 ? (fretePagoEmpresa / totalVendas) * 100 : 0
+
+    // ── GRUPOS ORDENADOS para DRE detalhado ──
+    const gruposOrdenados = Object.entries(gruposMap).sort(([a], [b]) => {
+      const ia = ORDEM_RESULTADO.indexOf(getResultadoLabel(a))
+      const ib = ORDEM_RESULTADO.indexOf(getResultadoLabel(b))
+      if (ia !== ib) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib)
+      return a.localeCompare(b)
+    })
+
+    // ── CLIENTES ──
     const numClientes = vd.length
-    const maiorCliente = vd.length > 0 ? vd.reduce((a, b) => a.valor > b.valor ? a : b) : null
-    const menorCliente = vd.length > 0 ? vd.reduce((a, b) => a.valor < b.valor ? a : b) : null
+    const totalRecebido = recebimentosImport.reduce((s, r) => s + r.valor_recebido, 0)
+
+    void GRUPO_RESULTADO
 
     return {
-      totalEntradas, totalSaidas, resultado, cmv, despTrab, despOper,
-      faturamentoBruto, faturamentoLiquido, lucroBruto, margemBruta,
-      numPedidos, ticketMedio, totalTaxasPedidos, temSegmento, segmentos,
-      totalRecebido, totalOriginal, jurosRecebidos, taxasRecebimentos, descontosDados, porForma,
-      custosPorCat: custosPorCat.slice(0, 15), maoDeObraMap, totalMaoDeObra,
-      numClientes, maiorCliente, menorCliente,
+      totalVendas, fretesCobrados, numPedidos, ticketMedio,
+      lucroBrutoVendas, margemBruta, temSegmento, segmentos,
+      totalEntradas, totalSaidas, cmvTotal, lucroBrutoBalancete,
+      lucroLiquido, ebit, resultadoAgrupado, gruposMap, gruposOrdenados,
+      despesasFretes, fretePagoEmpresa, fretesPctFaturamento,
+      numClientes, totalRecebido,
     }
   }, [balancete, vendasImport, pedidosImport, recebimentosImport])
 
@@ -176,41 +176,34 @@ export default function IndicadoresManager() {
     return r
   }, [vendasImport, filtroBusca])
 
-  const POR_PAGINA = 20
+  const POR_PAGINA = 25
   const totalPaginasClientes = Math.ceil(clientesFiltrados.length / POR_PAGINA)
   const clientesPagina = clientesFiltrados.slice((paginaClientes - 1) * POR_PAGINA, paginaClientes * POR_PAGINA)
-
   const semDados = !loading && balancete.length === 0 && vendasImport.length === 0
 
-  const periodoLabel = filtro === 'mes'
-    ? `${MESES[mes - 1]}/${ano}`
+  const periodoLabel = filtro === 'mes' ? `${MESES[mes - 1]}/${ano}`
     : filtro === 'trimestre' ? `T${Math.ceil(mes / 3)}/${ano}` : `${ano}`
 
-  function exportarCSV() {
-    const cols = ['Segmento', 'Cliente', 'CNPJ/CPF', 'Faturamento', 'Custo', 'Lucro R$', 'Margem %']
-    const rows = clientesFiltrados.map(v => [
-      dados.temSegmento ? (SEGMENTO_LABEL[v.segmento] || v.segmento) : '',
-      v.cliente, v.cnpj_cpf, v.valor.toFixed(2), v.custo.toFixed(2),
-      v.valor_lucro.toFixed(2), v.percentual_lucro.toFixed(1),
-    ])
-    const csv = [cols, ...rows].map(r => r.join(';')).join('\n')
-    const a = document.createElement('a')
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
-    a.download = `fechamento-${periodoLabel}.csv`
-    a.click()
+  const pct = (v: number, base: number) => base > 0 ? formatPct((v / base) * 100) : '—'
+
+  function toggleExpandido(grupo: string) {
+    setExpandidos(prev => {
+      const s = new Set(prev)
+      s.has(grupo) ? s.delete(grupo) : s.add(grupo)
+      return s
+    })
   }
 
-  const dreRow = (label: string, valor: number, pctBase: number, destaque = false, positivo = true) => (
-    <tr className={destaque ? 'bg-[#eef3fb] font-black' : ''}>
-      <td className="py-2 pr-4 text-sm">{label}</td>
-      <td className={`py-2 pr-4 text-right text-sm font-semibold ${valor < 0 || (!positivo && valor > 0) ? 'text-red-600' : 'text-[#0b1733]'}`}>
-        {formatBRL(Math.abs(valor))}
-      </td>
-      <td className="py-2 text-right text-xs text-slate-500">
-        {pctBase > 0 ? formatPct((valor / pctBase) * 100) : '—'}
-      </td>
-    </tr>
-  )
+  function exportarCSV() {
+    const linhas: string[][] = [['Cliente', 'Segmento', 'CNPJ/CPF', 'Faturamento', 'Custo', 'Lucro R$', 'Margem %']]
+    clientesFiltrados.forEach(v => linhas.push([
+      v.cliente, SEGMENTO_LABEL[v.segmento] || v.segmento, v.cnpj_cpf,
+      v.valor.toFixed(2), v.custo.toFixed(2), v.valor_lucro.toFixed(2), v.percentual_lucro.toFixed(1),
+    ]))
+    const csv = linhas.map(r => r.join(';')).join('\n')
+    const a = document.createElement('a'); a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv)
+    a.download = `fechamento-${periodoLabel}.csv`; a.click()
+  }
 
   return (
     <div className="space-y-8">
@@ -218,15 +211,14 @@ export default function IndicadoresManager() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#0b1733]">Fechamento do Mês</h1>
-          <p className="mt-1 text-sm text-slate-500">DRE · Faturamento · Custos · Caixa · Margem por cliente</p>
+          <p className="mt-1 text-sm text-slate-500">DRE completo · Faturamento por segmento · Custos · Fretes · Margem por cliente</p>
         </div>
-        <Link href="/financeiro/importacao"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition self-start">
+        <Link href="/financeiro/importacao" className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition self-start">
           Importar Relatórios
         </Link>
       </div>
 
-      {/* Filtros de período */}
+      {/* Filtro período */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-500 shrink-0">Período:</span>
@@ -240,7 +232,7 @@ export default function IndicadoresManager() {
         {(filtro === 'mes' || filtro === 'trimestre') && (
           <div className="flex flex-wrap items-center gap-2">
             <select value={ano} onChange={e => setAno(Number(e.target.value))}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]">
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none">
               {ANOS.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
             <div className="flex flex-wrap gap-1">
@@ -266,205 +258,275 @@ export default function IndicadoresManager() {
       </div>
 
       {loading ? (
-        <div className="space-y-4">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-40 animate-pulse rounded-3xl bg-slate-200" />)}
-        </div>
+        <div className="space-y-4">{[...Array(4)].map((_, i) => <div key={i} className="h-40 animate-pulse rounded-3xl bg-slate-200" />)}</div>
       ) : semDados ? (
         <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-12 text-center shadow-sm">
           <p className="text-lg font-black text-slate-400">Nenhum dado importado para {periodoLabel}</p>
-          <p className="mt-2 text-sm text-slate-400">Importe os relatórios do Tiny ERP para visualizar o fechamento.</p>
-          <Link href="/financeiro/importacao"
-            className="mt-4 inline-block rounded-xl bg-[#0b1733] px-6 py-2 text-sm font-bold text-white hover:bg-[#1b4fd6] transition">
+          <Link href="/financeiro/importacao" className="mt-4 inline-block rounded-xl bg-[#0b1733] px-6 py-2 text-sm font-bold text-white hover:bg-[#1b4fd6] transition">
             Ir para Importação
           </Link>
         </div>
       ) : (
         <>
           <p className="text-xs text-slate-400">
-            Base: relatórios Tiny importados ·{' '}
-            <span className="font-semibold text-[#1b4fd6]">{periodoLabel}</span>
-            {' · '}
-            <Link href="/financeiro/importacao" className="underline hover:text-[#1b4fd6]">Reimportar</Link>
+            Base: relatórios Tiny · <span className="font-semibold text-[#1b4fd6]">{periodoLabel}</span>{' · '}
+            <Link href="/financeiro/importacao" className="underline">Reimportar</Link>
           </p>
 
-          {/* ─── BLOCO 1: DRE ─── */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="text-xl font-black text-[#0b1733]">Resultado do Período (DRE)</h2>
-            <p className="text-xs text-slate-400 mt-1">Base: Balancete importado do Tiny</p>
-            <div className="mt-4 grid gap-6 md:grid-cols-2">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-500">
-                      <th className="pb-2 pr-4">Descrição</th>
-                      <th className="pb-2 pr-4 text-right">Valor</th>
-                      <th className="pb-2 text-right">% Entradas</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {dreRow('(+) Total de Entradas', dados.totalEntradas, dados.totalEntradas, true)}
-                    {dreRow('(-) CMV', dados.cmv, dados.totalEntradas)}
-                    {dreRow('(=) Lucro Bruto', dados.totalEntradas - dados.cmv, dados.totalEntradas, true)}
-                    {dreRow('(-) Despesas Trabalhistas', dados.despTrab, dados.totalEntradas)}
-                    {dreRow('(-) Outras Despesas', dados.despOper, dados.totalEntradas)}
-                    {dreRow('(=) Resultado Líquido', dados.resultado, dados.totalEntradas, true, dados.resultado >= 0)}
-                  </tbody>
-                </table>
+          {/* ═══ BLOCO 1: RESULTADO DO MÊS + FATURAMENTO ═══ */}
+          <div className="grid gap-6 xl:grid-cols-2">
+
+            {/* Coluna esquerda: Faturamento por Fonte */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <div>
+                <h2 className="text-xl font-black text-[#0b1733]">Faturamento</h2>
+                <p className="text-xs text-slate-400">Base: Relatório de Vendas</p>
               </div>
-              <div className="grid grid-cols-2 gap-3 content-start">
+
+              {/* KPIs rápidos */}
+              <div className="grid grid-cols-2 gap-3">
                 {[
-                  { label: 'Total Entradas', valor: dados.totalEntradas, cor: 'text-[#1b4fd6]' },
-                  { label: 'Total Saídas', valor: dados.totalSaidas, cor: 'text-red-600' },
-                  { label: 'CMV', valor: dados.cmv, cor: 'text-orange-600', sub: formatPct(dados.totalEntradas > 0 ? (dados.cmv/dados.totalEntradas)*100 : 0) + ' das entradas' },
-                  { label: 'Resultado', valor: dados.resultado, cor: dados.resultado >= 0 ? 'text-green-600' : 'text-red-600' },
+                  { label: 'Total Vendas', valor: dados.totalVendas, cor: 'text-[#0b1733]' },
+                  { label: 'Pedidos Emitidos', valor: dados.numPedidos, cor: 'text-[#1b4fd6]', isMoney: false },
+                  { label: 'Ticket Médio', valor: dados.ticketMedio, cor: 'text-slate-700' },
+                  { label: 'Fretes Cobrados', valor: dados.fretesCobrados, cor: 'text-slate-500', sub: pct(dados.fretesCobrados, dados.totalVendas) },
                 ].map(k => (
-                  <div key={k.label} className="rounded-2xl bg-[#eef3fb] p-4">
-                    <p className="text-xs font-semibold text-slate-500">{k.label}</p>
-                    {k.sub && <p className="text-[10px] text-slate-400">{k.sub}</p>}
-                    <p className={`mt-1 text-lg font-black ${k.cor}`}>{formatBRL(k.valor)}</p>
+                  <div key={k.label} className="rounded-2xl bg-[#eef3fb] p-3">
+                    <p className="text-[10px] font-semibold text-slate-500">{k.label}</p>
+                    {k.sub && <p className="text-[9px] text-slate-400">{k.sub}</p>}
+                    <p className={`mt-1 text-base font-black ${k.cor}`}>
+                      {k.isMoney === false ? k.valor : formatBRL(k.valor as number)}
+                    </p>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
 
-          {/* ─── BLOCO 2: FATURAMENTO ─── */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h2 className="text-xl font-black text-[#0b1733]">Faturamento</h2>
-                <p className="text-xs text-slate-400">Base: Relatório de Vendas importado</p>
-              </div>
-              <button onClick={exportarCSV}
-                className="rounded-xl bg-[#0b1733] px-4 py-2 text-xs font-bold text-white hover:bg-[#1b4fd6] transition">
-                Exportar CSV
-              </button>
-            </div>
-
-            {/* KPIs faturamento */}
-            <div className="grid gap-3 md:grid-cols-4 mb-6">
-              {[
-                { label: 'Faturamento Bruto', valor: dados.faturamentoBruto, cor: 'text-[#0b1733]' },
-                { label: 'Lucro Bruto', valor: dados.lucroBruto, cor: 'text-green-600', sub: 'Margem: ' + formatPct(dados.margemBruta) },
-                { label: 'Pedidos', valor: dados.numPedidos, cor: 'text-[#1b4fd6]', isMoney: false },
-                { label: 'Ticket Médio', valor: dados.ticketMedio, cor: 'text-slate-700' },
-              ].map(k => (
-                <div key={k.label} className="rounded-2xl bg-[#eef3fb] p-4">
-                  <p className="text-xs font-semibold text-slate-500">{k.label}</p>
-                  {k.sub && <p className="text-[10px] text-slate-400">{k.sub}</p>}
-                  <p className={`mt-1 text-lg font-black ${k.cor}`}>
-                    {k.isMoney === false ? k.valor : formatBRL(k.valor as number)}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Segmentos */}
-            {dados.temSegmento ? (
-              <div>
-                <p className="text-xs font-semibold text-slate-500 mb-3">Faturamento por Fonte de Receita</p>
-                <div className="overflow-x-auto">
+              {/* Segmentos */}
+              {dados.temSegmento ? (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-2">Por Fonte de Receita</p>
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-500">
-                        <th className="pb-2 pr-4">Segmento</th>
-                        <th className="pb-2 pr-4 text-right">Pedidos</th>
-                        <th className="pb-2 pr-4 text-right">Faturamento</th>
-                        <th className="pb-2 pr-4 text-right">Lucro R$</th>
-                        <th className="pb-2 text-right">Margem %</th>
+                      <tr className="border-b border-slate-100 text-left text-[10px] font-semibold text-slate-400">
+                        <th className="pb-1.5">Fonte</th>
+                        <th className="pb-1.5 text-right">Total</th>
+                        <th className="pb-1.5 text-right">Lucro</th>
+                        <th className="pb-1.5 text-right">Margem</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dados.segmentos.map((s, i) => (
-                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="py-3 pr-4">
-                            <span className="inline-flex items-center gap-2 font-black text-[#0b1733]">
-                              <span className="w-3 h-3 rounded-full" style={{ background: s.cor }} />
-                              {s.label}
-                            </span>
-                          </td>
-                          <td className="py-3 pr-4 text-right text-slate-500">{s.count}</td>
-                          <td className="py-3 pr-4 text-right font-bold">{formatBRL(s.total)}</td>
-                          <td className={`py-3 pr-4 text-right font-semibold ${s.lucro >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(s.lucro)}</td>
-                          <td className={`py-3 text-right font-black ${s.margem < 20 ? 'text-red-600' : s.margem < 35 ? 'text-orange-600' : 'text-green-700'}`}>{formatPct(s.margem)}</td>
+                        <tr key={i} className="border-b border-slate-50">
+                          <td className="py-1.5 font-semibold" style={{ color: s.cor }}>{s.label}</td>
+                          <td className="py-1.5 text-right font-bold text-[#0b1733]">{formatBRL(s.total)}</td>
+                          <td className="py-1.5 text-right text-green-700">{formatBRL(s.lucro)}</td>
+                          <td className={`py-1.5 text-right font-black text-sm ${s.margem < 25 ? 'text-red-600' : s.margem < 35 ? 'text-orange-500' : 'text-green-700'}`}>{s.margem.toFixed(2)}%</td>
                         </tr>
                       ))}
-                      <tr className="border-t-2 border-slate-200 bg-[#eef3fb] font-black">
-                        <td className="py-3 pr-4 text-[#0b1733]">Total</td>
-                        <td className="py-3 pr-4 text-right">{vendasImport.length}</td>
-                        <td className="py-3 pr-4 text-right">{formatBRL(dados.faturamentoBruto)}</td>
-                        <td className={`py-3 pr-4 text-right ${dados.lucroBruto >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(dados.lucroBruto)}</td>
-                        <td className={`py-3 text-right ${dados.margemBruta < 20 ? 'text-red-600' : dados.margemBruta < 35 ? 'text-orange-600' : 'text-green-700'}`}>{formatPct(dados.margemBruta)}</td>
+                      <tr className="border-t-2 border-slate-300 font-black bg-[#eef3fb]">
+                        <td className="py-1.5 text-[#0b1733]">Total</td>
+                        <td className="py-1.5 text-right text-[#0b1733]">{formatBRL(dados.totalVendas)}</td>
+                        <td className="py-1.5 text-right text-green-700">{formatBRL(dados.lucroBrutoVendas)}</td>
+                        <td className={`py-1.5 text-right text-sm ${dados.margemBruta < 25 ? 'text-red-600' : dados.margemBruta < 35 ? 'text-orange-500' : 'text-green-700'}`}>{dados.margemBruta.toFixed(2)}%</td>
                       </tr>
                     </tbody>
                   </table>
                 </div>
-                {dados.totalTaxasPedidos > 0 && (
-                  <p className="mt-2 text-xs text-slate-400">
-                    Taxas de cartão/gateway: <span className="font-semibold text-red-500">-{formatBRL(dados.totalTaxasPedidos)}</span>{' '}
-                    → Faturamento líquido: <span className="font-semibold text-green-600">{formatBRL(dados.faturamentoLiquido)}</span>
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center">
-                <p className="text-sm text-slate-500">
-                  Para ver faturamento por <strong>Corporativo / Decor / Lojista</strong>, exporte o Relatório de Vendas do Tiny incluindo a coluna <strong>Fonte de Receita</strong>.
-                </p>
-                <p className="mt-1 text-xs text-slate-400">Tiny → Relatórios → Vendas → Relatório de Vendas → adicionar coluna Fonte de Receita</p>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-slate-200 p-3 text-center">
+                  <p className="text-xs text-slate-400">Para ver Corporativo / Decor / Lojista, exporte o Relatório de Vendas com a coluna <strong>Fonte de Receita</strong> do Tiny.</p>
+                </div>
+              )}
 
-          {/* ─── BLOCO 3: CAIXA DO PERÍODO ─── */}
-          {(dados.totalRecebido > 0 || dados.totalOriginal > 0) && (
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-black text-[#0b1733]">Caixa do Período</h2>
-              <p className="text-xs text-slate-400 mt-1">Base: Relatório de Recebimentos + Pedidos</p>
-              <div className="mt-4 grid gap-4 md:grid-cols-4">
-                {[
-                  { label: 'Valor Original (NFs)', valor: dados.totalOriginal, cor: 'text-[#0b1733]' },
-                  { label: 'Valor Recebido', valor: dados.totalRecebido, cor: 'text-green-600', sub: `Eficiência: ${dados.totalOriginal > 0 ? ((dados.totalRecebido/dados.totalOriginal)*100).toFixed(1) : 0}%` },
-                  { label: 'Juros Recebidos', valor: dados.jurosRecebidos, cor: 'text-[#1b4fd6]' },
-                  { label: 'Taxas / Descontos', valor: dados.taxasRecebimentos + dados.descontosDados, cor: 'text-red-500' },
-                ].map(k => (
-                  <div key={k.label} className="rounded-2xl bg-[#eef3fb] p-4">
-                    <p className="text-xs font-semibold text-slate-500">{k.label}</p>
-                    {k.sub && <p className="text-[10px] text-slate-400">{k.sub}</p>}
-                    <p className={`mt-1 text-lg font-black ${k.cor}`}>{formatBRL(k.valor)}</p>
-                  </div>
-                ))}
-              </div>
-              {dados.porForma.length > 0 && (
-                <div className="mt-4">
-                  <p className="text-xs font-semibold text-slate-500 mb-3">Recebimentos por Forma de Pagamento</p>
-                  <div className="flex flex-wrap gap-3">
-                    {dados.porForma.map((f, i) => (
-                      <div key={i} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5">
-                        <p className="text-xs text-slate-500">{f.forma}</p>
-                        <p className="font-black text-[#0b1733]">{formatBRL(f.total)}</p>
-                      </div>
-                    ))}
-                  </div>
+              {/* Fretes */}
+              {dados.despesasFretes > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-slate-500 mb-2">Fretes</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {[
+                        { label: 'Receita Fretes (cobrado)', valor: dados.fretesCobrados, cor: 'text-green-600' },
+                        { label: 'Despesas Fretes (Tiny)', valor: dados.despesasFretes, cor: 'text-red-500' },
+                        { label: 'Frete pago pela empresa', valor: dados.fretePagoEmpresa, cor: 'text-orange-600' },
+                      ].map(r => (
+                        <tr key={r.label} className="border-b border-slate-50">
+                          <td className="py-1 text-slate-600">{r.label}</td>
+                          <td className={`py-1 text-right font-semibold ${r.cor}`}>{formatBRL(r.valor)}</td>
+                          <td className="py-1 text-right text-slate-400">{pct(r.valor, dados.totalVendas)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
-          )}
 
-          {/* ─── BLOCO 4: MARGEM POR CLIENTE ─── */}
+            {/* Coluna direita: Resultado do Mês */}
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <h2 className="text-xl font-black text-[#0b1733]">Resultado do Mês</h2>
+                <p className="text-xs text-slate-400">Base: Balancete Tiny · {periodoLabel}</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-[10px] font-semibold text-slate-400">
+                    <th className="pb-1.5 text-left">Descrição</th>
+                    <th className="pb-1.5 text-right">Valor</th>
+                    <th className="pb-1.5 text-right">%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  <tr className="bg-[#eef3fb] font-black">
+                    <td className="py-2 text-[#0b1733]">Total Vendas</td>
+                    <td className="py-2 text-right text-[#0b1733]">{formatBRL(dados.totalVendas)}</td>
+                    <td className="py-2 text-right text-slate-400">100%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-slate-500 text-xs pl-3">Fretes Cobrados</td>
+                    <td className="py-1.5 text-right text-xs text-slate-500">{formatBRL(dados.fretesCobrados)}</td>
+                    <td className="py-1.5 text-right text-xs text-slate-400">{pct(dados.fretesCobrados, dados.totalVendas)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-slate-500 text-xs pl-3">Pedidos Emitidos</td>
+                    <td className="py-1.5 text-right text-xs text-slate-500">{dados.numPedidos}</td>
+                    <td className="py-1.5 text-right text-xs text-slate-400">—</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1.5 text-slate-500 text-xs pl-3">Ticket Médio</td>
+                    <td className="py-1.5 text-right text-xs text-slate-500">{formatBRL(dados.ticketMedio)}</td>
+                    <td className="py-1.5 text-right text-xs text-slate-400">—</td>
+                  </tr>
+
+                  {/* Linha separadora */}
+                  <tr><td colSpan={3} className="py-0.5" /></tr>
+
+                  {/* CMV */}
+                  <tr>
+                    <td className="py-1.5 font-semibold text-red-700">CMV</td>
+                    <td className="py-1.5 text-right font-semibold text-red-700">{formatBRL(dados.cmvTotal)}</td>
+                    <td className="py-1.5 text-right text-red-600">{pct(dados.cmvTotal, dados.totalVendas)}</td>
+                  </tr>
+                  <tr className="bg-green-50">
+                    <td className="py-1.5 font-bold text-green-800 pl-3">Lucro Bruto</td>
+                    <td className="py-1.5 text-right font-bold text-green-700">{formatBRL(dados.lucroBrutoBalancete)}</td>
+                    <td className="py-1.5 text-right text-green-600">{pct(dados.lucroBrutoBalancete, dados.totalVendas)}</td>
+                  </tr>
+
+                  {/* Grupos de despesa em ordem */}
+                  {ORDEM_RESULTADO.filter(r => r !== 'CMV').map(label => {
+                    const val = dados.resultadoAgrupado[label] || 0
+                    if (val === 0) return null
+                    return (
+                      <tr key={label}>
+                        <td className="py-1.5 text-slate-600">{label}</td>
+                        <td className="py-1.5 text-right text-slate-700 font-semibold">{formatBRL(val)}</td>
+                        <td className="py-1.5 text-right text-slate-400">{pct(val, dados.totalVendas)}</td>
+                      </tr>
+                    )
+                  })}
+
+                  {/* EBIT */}
+                  <tr className="border-t border-slate-200 bg-blue-50">
+                    <td className="py-1.5 font-bold text-[#1b4fd6] pl-3">EBIT</td>
+                    <td className={`py-1.5 text-right font-bold ${dados.ebit >= 0 ? 'text-[#1b4fd6]' : 'text-red-600'}`}>{formatBRL(dados.ebit)}</td>
+                    <td className="py-1.5 text-right text-slate-400">{pct(dados.ebit, dados.totalVendas)}</td>
+                  </tr>
+
+                  {/* Lucro Líquido */}
+                  <tr className={`border-t-2 border-slate-300 font-black ${dados.lucroLiquido >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
+                    <td className={`py-2 ${dados.lucroLiquido >= 0 ? 'text-green-800' : 'text-red-700'}`}>Lucro Líquido</td>
+                    <td className={`py-2 text-right text-lg ${dados.lucroLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(dados.lucroLiquido)}</td>
+                    <td className={`py-2 text-right ${dados.lucroLiquido >= 0 ? 'text-green-600' : 'text-red-500'}`}>{pct(dados.lucroLiquido, dados.totalVendas)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ═══ BLOCO 2: DRE DETALHADO POR GRUPO ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="p-6 pb-3 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-[#0b1733]">DRE Detalhado por Grupo</h2>
+                <p className="text-xs text-slate-400">Todas as saídas do Balancete agrupadas · % do Total Vendas</p>
+              </div>
+              <button
+                onClick={() => {
+                  if (expandidos.size > 0) setExpandidos(new Set())
+                  else setExpandidos(new Set(dados.gruposOrdenados.map(([g]) => g)))
+                }}
+                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+              >
+                {expandidos.size > 0 ? 'Recolher tudo' : 'Expandir tudo'}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-slate-100 bg-[#f8fafc]">
+                  <tr>
+                    <th className="px-6 py-2.5 text-left text-xs font-semibold text-slate-500">Grupo / Categoria</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">Valor</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold text-slate-500">% Vendas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dados.gruposOrdenados.map(([grupo, gDados]) => {
+                    const isExpanded = expandidos.has(grupo)
+                    const isCusto = gDados.isCusto
+                    const cats = Object.entries(gDados.categorias).sort((a, b) => b[1] - a[1])
+                    return [
+                      <tr
+                        key={`g-${grupo}`}
+                        onClick={() => toggleExpandido(grupo)}
+                        className={`border-b cursor-pointer select-none ${isCusto ? 'bg-red-50 border-red-100 hover:bg-red-100/60' : 'bg-[#eef3fb] border-blue-100 hover:bg-blue-100/40'}`}
+                      >
+                        <td className="px-6 py-3 font-black text-[#0b1733]">
+                          <span className="mr-2 text-slate-400">{isExpanded ? '▼' : '▶'}</span>
+                          {grupo}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-black ${isCusto ? 'text-red-700' : 'text-[#0b1733]'}`}>{formatBRL(gDados.total)}</td>
+                        <td className={`px-4 py-3 text-right font-bold ${isCusto ? 'text-red-600' : 'text-slate-600'}`}>{pct(gDados.total, dados.totalVendas)}</td>
+                      </tr>,
+                      ...(isExpanded ? cats.map(([cat, val]) => (
+                        <tr key={`c-${grupo}-${cat}`} className="border-b border-slate-50 hover:bg-slate-50">
+                          <td className="px-6 py-2 pl-12 text-slate-600">{cat}</td>
+                          <td className="px-4 py-2 text-right text-slate-700">{formatBRL(val)}</td>
+                          <td className="px-4 py-2 text-right text-slate-400 text-xs">{pct(val, dados.totalVendas)}</td>
+                        </tr>
+                      )) : [])
+                    ]
+                  })}
+                  {/* Total saídas */}
+                  <tr className="border-t-2 border-slate-400 bg-slate-100 font-black">
+                    <td className="px-6 py-3 text-[#0b1733]">Total Saídas</td>
+                    <td className="px-4 py-3 text-right text-[#0b1733]">{formatBRL(dados.totalSaidas)}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{pct(dados.totalSaidas, dados.totalVendas)}</td>
+                  </tr>
+                  <tr className={`font-black text-base ${dados.lucroLiquido >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                    <td className={`px-6 py-3 ${dados.lucroLiquido >= 0 ? 'text-green-800' : 'text-red-700'}`}>Lucro Líquido</td>
+                    <td className={`px-4 py-3 text-right ${dados.lucroLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(dados.lucroLiquido)}</td>
+                    <td className={`px-4 py-3 text-right ${dados.lucroLiquido >= 0 ? 'text-green-600' : 'text-red-500'}`}>{pct(dados.lucroLiquido, dados.totalVendas)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* ═══ BLOCO 3: MARGEM POR CLIENTE ═══ */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-black text-[#0b1733]">Margem por Cliente</h2>
               <div className="flex flex-wrap gap-3 items-center">
                 <input type="text" placeholder="Buscar cliente ou CNPJ" value={filtroBusca}
                   onChange={e => { setFiltroBusca(e.target.value); setPaginaClientes(1) }}
                   className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4fd6] w-52" />
-                {dados.lucroBruto === 0 && (
-                  <span className="text-xs text-orange-500">Importe o relatório com Custo/Lucro para ver as margens</span>
-                )}
+                <button onClick={exportarCSV}
+                  className="rounded-xl bg-[#0b1733] px-4 py-2 text-xs font-bold text-white hover:bg-[#1b4fd6] transition">
+                  Exportar CSV
+                </button>
               </div>
             </div>
-            <div className="mt-4 overflow-x-auto">
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-500">
@@ -499,7 +561,7 @@ export default function IndicadoresManager() {
                           {v.valor_lucro !== 0 ? formatBRL(v.valor_lucro) : '—'}
                         </td>
                         <td className={`py-2 text-right font-black ${mp === 0 ? 'text-slate-400' : mp < 20 ? 'text-red-600' : mp < 35 ? 'text-orange-600' : 'text-green-700'}`}>
-                          {mp !== 0 ? formatPct(mp) : '—'}
+                          {mp !== 0 ? `${mp.toFixed(2)}%` : '—'}
                         </td>
                       </tr>
                     )
@@ -523,58 +585,6 @@ export default function IndicadoresManager() {
               </div>
             )}
           </div>
-
-          {/* ─── BLOCO 5: CUSTOS POR CATEGORIA ─── */}
-          {dados.custosPorCat.length > 0 && (
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-black text-[#0b1733]">Custos e Despesas por Categoria</h2>
-              <p className="text-xs text-slate-400 mt-1">Top 15 categorias do balancete (saídas)</p>
-              <div className="mt-4">
-                <ResponsiveContainer width="100%" height={Math.min(420, dados.custosPorCat.length * 30 + 60)}>
-                  <BarChart data={dados.custosPorCat} layout="vertical" margin={{ top: 4, right: 80, left: 8, bottom: 4 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                    <XAxis type="number" tickFormatter={v => `R$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
-                    <YAxis type="category" dataKey="categoria" tick={{ fontSize: 10 }} width={180} />
-                    <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} />
-                    <Bar dataKey="valor" name="Valor" radius={[0, 4, 4, 0]}>
-                      {dados.custosPorCat.map((_, i) => <Cell key={i} fill={i % 2 === 0 ? '#1b4fd6' : '#3b6fe0'} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          )}
-
-          {/* ─── BLOCO 6: MÃO DE OBRA ─── */}
-          {Object.keys(dados.maoDeObraMap).length > 0 && (
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-xl font-black text-[#0b1733]">Custo de Mão de Obra</h2>
-              <p className="text-xs text-slate-400 mt-1">Total: <span className="font-bold text-[#0b1733]">{formatBRL(dados.totalMaoDeObra)}</span>
-                {' · '}{dados.totalEntradas > 0 ? formatPct((dados.totalMaoDeObra/dados.totalEntradas)*100) : '0%'} das entradas</p>
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-left text-xs font-semibold text-slate-500">
-                      <th className="pb-2 pr-4">Categoria</th>
-                      <th className="pb-2 pr-4 text-right">Valor</th>
-                      <th className="pb-2 pr-4 text-right">% das Entradas</th>
-                      <th className="pb-2 text-right">% do Total MO</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(dados.maoDeObraMap).sort((a, b) => b[1] - a[1]).map(([cat, val]) => (
-                      <tr key={cat} className="border-b border-slate-50 hover:bg-slate-50">
-                        <td className="py-2 pr-4 font-medium">{cat}</td>
-                        <td className="py-2 pr-4 text-right font-semibold">{formatBRL(val)}</td>
-                        <td className="py-2 pr-4 text-right text-slate-500">{dados.totalEntradas > 0 ? formatPct((val/dados.totalEntradas)*100) : '—'}</td>
-                        <td className="py-2 text-right text-slate-500">{dados.totalMaoDeObra > 0 ? formatPct((val/dados.totalMaoDeObra)*100) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>
