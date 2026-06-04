@@ -570,6 +570,22 @@ export default function IndicadoresManager() {
                 </button>
               </div>
             </div>
+
+            {/* Aviso quando o relatório de vendas não tem coluna de custo */}
+            {dados.lucroBrutoVendas === 0 && dados.totalVendas > 0 && (
+              <div className="mb-4 rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                <p className="text-sm font-bold text-orange-700">
+                  O relatório de Vendas importado não tem a coluna de Custo
+                </p>
+                <p className="mt-1 text-xs text-orange-600">
+                  Por isso Custo, Lucro e Margem aparecem em branco. Para ver as margens, exporte o
+                  Relatório de Vendas do Tiny <strong>incluindo as colunas Custo, Lucro e % Lucro</strong>
+                  {' '}(em Tiny → Relatórios → Vendas → Relatório de Vendas → ⚙ selecionar colunas) e reimporte
+                  no card &quot;Relatório de Vendas&quot;.
+                </p>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
