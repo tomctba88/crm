@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/browser-client'
 
-type Tipo = 'balancete' | 'fluxo_caixa' | 'vendas' | 'contas_receber' | 'contas_pagar'
+type Tipo = 'balancete' | 'fluxo_caixa' | 'vendas' | 'contas_receber' | 'contas_pagar' | 'recebimentos' | 'pedidos'
 
 type CardEstado = {
   arquivo: File | null
@@ -23,11 +23,13 @@ type Upload = {
 }
 
 const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string; dica: string }[] = [
-  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE e resultado por categoria do mês', colunaValidacao: 'tipo', dica: 'Tiny → Relatórios → Financeiro → Balancete' },
-  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato', colunaValidacao: 'histórico', dica: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato' },
-  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento, custo e margem por cliente', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas' },
-  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebimentos do mês', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Receber' },
-  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagamentos do mês', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
+  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE completo por grupo e categoria, com valores diários e total', colunaValidacao: 'tipo', dica: 'Tiny → Relatórios → Financeiro → Balancete' },
+  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato e data', colunaValidacao: 'histórico', dica: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato' },
+  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento por cliente (inclui custo e margem se disponível)', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas' },
+  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebidos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Receber' },
+  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
+  { tipo: 'recebimentos', titulo: 'Recebimentos', descricao: 'O que foi recebido por cliente, com juros, taxas e descontos', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Financeiro → Recebimentos' },
+  { tipo: 'pedidos', titulo: 'Pedidos / NFs', descricao: 'Pedidos com forma de pagamento, taxas e status de entrega', colunaValidacao: 'número', dica: 'Tiny → Relatórios → Vendas → Relatório Financeiro de Vendas' },
 ]
 
 const MESES_NOME = [
@@ -41,6 +43,8 @@ const TIPO_LABEL: Record<Tipo, string> = {
   vendas: 'Vendas',
   contas_receber: 'Contas a Receber',
   contas_pagar: 'Contas a Pagar',
+  recebimentos: 'Recebimentos',
+  pedidos: 'Pedidos / NFs',
 }
 
 async function lerXLS(file: File): Promise<unknown[][]> {
@@ -71,6 +75,8 @@ export default function ImportadorRelatorios() {
     vendas: { ...ESTADO_VAZIO },
     contas_receber: { ...ESTADO_VAZIO },
     contas_pagar: { ...ESTADO_VAZIO },
+    recebimentos: { ...ESTADO_VAZIO },
+    pedidos: { ...ESTADO_VAZIO },
   })
 
   const fileInputRefs = useRef<Partial<Record<Tipo, HTMLInputElement | null>>>({})

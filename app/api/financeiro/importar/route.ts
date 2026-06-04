@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server-client'
 import {
   parseBalancete, parseFluxoCaixa, parseVendas,
   parseContasReceber, parseContasPagar,
+  parseRecebimentos, parsePedidos,
 } from '@/lib/financeiro/parsers'
 
 export const maxDuration = 300
@@ -13,6 +14,8 @@ const TABELAS = {
   vendas: 'fin_vendas_import',
   contas_receber: 'fin_cr_import',
   contas_pagar: 'fin_cp_import',
+  recebimentos: 'fin_recebimentos_import',
+  pedidos: 'fin_pedidos_import',
 } as const
 
 type Tipo = keyof typeof TABELAS
@@ -42,16 +45,19 @@ export async function POST(request: Request) {
 
     const rows = JSON.parse(rowsJson) as unknown[][]
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let parsed: Record<string, unknown>[] = []
     if (tipo === 'balancete') parsed = parseBalancete(rows) as any
     else if (tipo === 'fluxo_caixa') parsed = parseFluxoCaixa(rows) as any
     else if (tipo === 'vendas') parsed = parseVendas(rows) as any
     else if (tipo === 'contas_receber') parsed = parseContasReceber(rows) as any
     else if (tipo === 'contas_pagar') parsed = parseContasPagar(rows) as any
+    else if (tipo === 'recebimentos') parsed = parseRecebimentos(rows) as any
+    else if (tipo === 'pedidos') parsed = parsePedidos(rows) as any
 
     if (parsed.length === 0) {
       return NextResponse.json({
-        error: `Nenhum registro válido encontrado. Verifique se exportou o relatório "${tipo.replace('_', ' ')}" correto do Tiny.`,
+        error: `Nenhum registro válido encontrado. Verifique se exportou o relatório correto do Tiny.`,
       }, { status: 400 })
     }
 
@@ -75,7 +81,6 @@ export async function POST(request: Request) {
       else importados += chunk.length
     }
 
-    // Se houve erros de inserção, informar mas não deixar dados parciais
     if (erros > 0 && importados === 0) {
       return NextResponse.json({ error: 'Falha ao inserir os registros. Os dados anteriores foram removidos. Tente reimportar.' }, { status: 500 })
     }

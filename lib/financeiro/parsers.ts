@@ -33,10 +33,18 @@ export function parseClienteCNPJ(val: unknown): { cliente: string; cnpj: string 
 }
 
 // ─── BALANCETE ────────────────────────────────────────────────────────────────
-// Colunas: Tipo | Grupo | Categoria | [Mês] | Total
+// Formatos aceitos:
+//   Compacto: Tipo | Grupo | Categoria | Mai/26 | Total
+//   Diário:   Tipo | Grupo | Categoria | Sex 1/5 | Sab 2/5 | ... | Dom 31/5 | Total
+// O parser localiza a coluna "Total" dinamicamente.
 export function parseBalancete(rows: unknown[][]): Array<{
   tipo: string; grupo: string; categoria: string; valor: number
 }> {
+  if (!rows.length) return []
+  const header = (rows[0] as unknown[]).map(h => String(h || '').trim())
+  // Localiza a coluna "Total" — pode ser índice 3 (compacto) ou 34 (diário)
+  const totalIdx = header.findIndex(h => h.toLowerCase() === 'total')
+  const valorIdx = totalIdx >= 0 ? totalIdx : 3
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
@@ -46,7 +54,7 @@ export function parseBalancete(rows: unknown[][]): Array<{
     const grupo = String(row[1] || '').trim()
     const categoria = String(row[2] || '').trim()
     if (!categoria || categoria.toLowerCase() === 'categoria') continue
-    const valor = parseNum(row[3]) // coluna do mês (índice 3)
+    const valor = parseNum(row[valorIdx])
     if (valor === 0) continue
     results.push({ tipo: tipo === 'entrada' ? 'entrada' : 'saida', grupo, categoria, valor })
   }
@@ -68,7 +76,6 @@ export function parseFluxoCaixa(rows: unknown[][]): Array<{
     if (!row || row.length < 5) continue
     const historico = String(row[2] || '').trim()
     if (!historico) continue
-    // Ignora transferências internas entre contas (cancelam entre si)
     const histLower = historico.toLowerCase()
     if (histLower.startsWith('transferência entre contas') || histLower.startsWith('transferencia entre contas')) continue
     const valorRaw = parseNum(row[4])
@@ -91,28 +98,47 @@ export function parseFluxoCaixa(rows: unknown[][]): Array<{
 }
 
 // ─── VENDAS ──────────────────────────────────────────────────────────────────
-// Colunas: Cliente (com CNPJ) | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+// Formato completo (8 col): Cliente | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+// Formato simples  (4 col): Cliente | Valor | Frete | Total
+// O parser detecta o formato automaticamente pelo número de colunas.
 export function parseVendas(rows: unknown[][]): Array<{
   cliente: string; cnpj_cpf: string; valor: number; frete: number
   custo: number; valor_lucro: number; percentual_lucro: number; total: number; segmento: string
 }> {
+  if (!rows.length) return []
+  const header = (rows[0] as unknown[]).map(h => String(h || '').trim().toLowerCase())
+  const temMargem = header.some(h => h.includes('custo') || h.includes('lucro'))
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || row.length < 5) continue
+    if (!row || row.length < 3) continue
     const clienteRaw = String(row[0] || '').trim()
     if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
     const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
-    results.push({
-      cliente, cnpj_cpf: cnpj,
-      valor: parseNum(row[1]),
-      frete: parseNum(row[2]),
-      custo: parseNum(row[3]),
-      valor_lucro: parseNum(row[4]),
-      percentual_lucro: parsePct(row[5]),
-      total: parseNum(row[6] ?? row[4]),
-      segmento: 'outros',
-    })
+    if (temMargem) {
+      results.push({
+        cliente, cnpj_cpf: cnpj,
+        valor: parseNum(row[1]),
+        frete: parseNum(row[2]),
+        custo: parseNum(row[3]),
+        valor_lucro: parseNum(row[4]),
+        percentual_lucro: parsePct(row[5]),
+        total: parseNum(row[6] ?? row[4]),
+        segmento: 'outros',
+      })
+    } else {
+      // Formato simples: sem custo/margem
+      results.push({
+        cliente, cnpj_cpf: cnpj,
+        valor: parseNum(row[1]),
+        frete: parseNum(row[2]),
+        custo: 0,
+        valor_lucro: 0,
+        percentual_lucro: 0,
+        total: parseNum(row[3]),
+        segmento: 'outros',
+      })
+    }
   }
   return results
 }
@@ -176,6 +202,70 @@ export function parseContasPagar(rows: unknown[][]): Array<{
       numero_documento: String(row[3] || '').trim(),
       data_emissao: parseDateBR(row[4]),
       valor, saldo, pago, status,
+    })
+  }
+  return results
+}
+
+// ─── RECEBIMENTOS ─────────────────────────────────────────────────────────────
+// Colunas: Cliente | Juros | Taxas | Acréscimos | Descontos | Valor Original | Valor Recebido
+export function parseRecebimentos(rows: unknown[][]): Array<{
+  cliente: string; juros: number; taxas: number
+  acrescimos: number; descontos: number; valor_original: number; valor_recebido: number
+}> {
+  const results = []
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (!row || row.length < 6) continue
+    const cliente = String(row[0] || '').trim()
+    if (!cliente || cliente.toLowerCase() === 'cliente') continue
+    const valor_original = parseNum(row[5])
+    const valor_recebido = parseNum(row[6])
+    if (valor_original === 0 && valor_recebido === 0) continue
+    results.push({
+      cliente,
+      juros: parseNum(row[1]),
+      taxas: parseNum(row[2]),
+      acrescimos: parseNum(row[3]),
+      descontos: parseNum(row[4]),
+      valor_original,
+      valor_recebido,
+    })
+  }
+  return results
+}
+
+// ─── PEDIDOS / NFs ────────────────────────────────────────────────────────────
+// Colunas: Data | Número | Valor total | Taxas | Tarifas | Valor líquido |
+//          Forma de recebimento | Meio de recebimento | Detalhes | Nº parcelas | Prazo médio | Situação
+export function parsePedidos(rows: unknown[][]): Array<{
+  data_venda: string | null; numero: string; valor_total: number
+  taxas: number; tarifas: number; valor_liquido: number
+  forma_recebimento: string; meio_recebimento: string; detalhes: string
+  num_parcelas: string; prazo_medio: number; situacao: string
+}> {
+  const results = []
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (!row || row.length < 6) continue
+    const data_venda = parseDateBR(row[0])
+    if (!data_venda) continue
+    const valor_total = parseNum(row[2])
+    if (valor_total === 0) continue
+    const prazoRaw = String(row[10] || '').replace(',', '.')
+    results.push({
+      data_venda,
+      numero: String(row[1] || '').trim(),
+      valor_total,
+      taxas: parseNum(row[3]),
+      tarifas: parseNum(row[4]),
+      valor_liquido: parseNum(row[5]),
+      forma_recebimento: String(row[6] || '').trim(),
+      meio_recebimento: String(row[7] || '').trim(),
+      detalhes: String(row[8] || '').trim(),
+      num_parcelas: String(row[9] || '').trim(),
+      prazo_medio: parseFloat(prazoRaw) || 0,
+      situacao: String(row[11] || '').trim(),
     })
   }
   return results
