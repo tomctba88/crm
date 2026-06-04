@@ -49,25 +49,21 @@ export default function DREManager() {
   const carregar = useCallback(async () => {
     setLoading(true)
 
-    const iniMes = `${ano}-${String(mes).padStart(2, '0')}-01`
-    const fimMes = new Date(ano, mes, 0).toISOString().slice(0, 10)
-
     const mesAnt = mes === 1 ? 12 : mes - 1
     const anoAnt = mes === 1 ? ano - 1 : ano
-    const iniAnt = `${anoAnt}-${String(mesAnt).padStart(2, '0')}-01`
-    const fimAnt = new Date(anoAnt, mesAnt, 0).toISOString().slice(0, 10)
 
-    const [{ data: cr }, { data: cp }, { data: crAnt }, { data: cpAnt }] = await Promise.all([
-      supabase.from('fin_contas_receber').select('valor,categoria').eq('status', 'recebido').gte('data_recebimento', iniMes).lte('data_recebimento', fimMes),
-      supabase.from('fin_contas_pagar').select('valor,categoria').eq('status', 'pago').gte('data_pagamento', iniMes).lte('data_pagamento', fimMes),
-      supabase.from('fin_contas_receber').select('valor,categoria').eq('status', 'recebido').gte('data_recebimento', iniAnt).lte('data_recebimento', fimAnt),
-      supabase.from('fin_contas_pagar').select('valor,categoria').eq('status', 'pago').gte('data_pagamento', iniAnt).lte('data_pagamento', fimAnt),
+    const [{ data: bal }, { data: balAnt }] = await Promise.all([
+      supabase.from('fin_balancete').select('tipo,grupo,categoria,valor').eq('mes', mes).eq('ano', ano),
+      supabase.from('fin_balancete').select('tipo,grupo,categoria,valor').eq('mes', mesAnt).eq('ano', anoAnt),
     ])
 
-    const receitas = (cr ?? []) as { valor: number; categoria: string }[]
-    const despesas = (cp ?? []) as { valor: number; categoria: string }[]
-    const receitasAnt = (crAnt ?? []) as { valor: number; categoria: string }[]
-    const despesasAnt = (cpAnt ?? []) as { valor: number; categoria: string }[]
+    const balancete = (bal ?? []) as { tipo: string; grupo: string; categoria: string; valor: number }[]
+    const balanceteAnt = (balAnt ?? []) as { tipo: string; grupo: string; categoria: string; valor: number }[]
+
+    const receitas = balancete.filter(b => b.tipo === 'entrada').map(b => ({ valor: b.valor, categoria: b.categoria }))
+    const despesas = balancete.filter(b => b.tipo === 'saida').map(b => ({ valor: b.valor, categoria: b.categoria }))
+    const receitasAnt = balanceteAnt.filter(b => b.tipo === 'entrada').map(b => ({ valor: b.valor, categoria: b.categoria }))
+    const despesasAnt = balanceteAnt.filter(b => b.tipo === 'saida').map(b => ({ valor: b.valor, categoria: b.categoria }))
 
     const receitaBruta = receitas.reduce((s, r) => s + r.valor, 0)
     const receitaBrutaAnt = receitasAnt.reduce((s, r) => s + r.valor, 0)

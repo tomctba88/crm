@@ -10,7 +10,6 @@ const abas = [
   { href: '/financeiro/contas-pagar', label: 'Contas a Pagar' },
   { href: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa' },
   { href: '/financeiro/importacao', label: 'Importação' },
-  { href: '/financeiro/integracoes', label: 'Integrações' },
 ]
 
 export default function FinanceiroLayout({ children }: { children: React.ReactNode }) {

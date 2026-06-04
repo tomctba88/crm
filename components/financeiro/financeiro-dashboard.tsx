@@ -5,10 +5,10 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatData, isVencido, diasParaVencer } from '@/lib/financeiro/formatters'
 import StatusBadge from './status-badge'
-import SincronizarButton from './sincronizar-button'
 
 type ContaReceber = {
   id: string; cliente: string; historico: string; valor: number
@@ -38,7 +38,6 @@ export default function FinanceiroDashboard() {
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
   const [vendasRaw, setVendasRaw] = useState<VendaItem[]>([])
   const [fluxoCaixaImp, setFluxoCaixaImp] = useState<FluxoCaixaImpItem[]>([])
-  const [ultimaSync, setUltimaSync] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('mes')
@@ -78,12 +77,13 @@ export default function FinanceiroDashboard() {
     const crAberto = contasReceber.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
     const cpAberto = contasPagar.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
 
-    const recebido = contasReceber
-      .filter(r => r.status === 'recebido' && inCaixa(r.data_recebimento ?? ''))
-      .reduce((s, r) => s + (r.valor_recebido > 0 ? r.valor_recebido : r.valor), 0)
-    const pago = contasPagar
-      .filter(r => r.status === 'pago' && inCaixa(r.data_pagamento ?? ''))
-      .reduce((s, r) => s + (r.valor_pago > 0 ? r.valor_pago : r.valor), 0)
+    // Recebido/Pago: usa fluxo de caixa importado quando disponível (mais preciso)
+    const recebido = fluxoCaixaImp.length > 0
+      ? fluxoCaixaImp.filter(f => f.tipo === 'receita' && f.data_inicio && inCaixa(f.data_inicio)).reduce((s, f) => s + f.valor, 0)
+      : contasReceber.filter(r => r.status === 'recebido' && inCaixa(r.data_recebimento ?? '')).reduce((s, r) => s + (r.valor_recebido > 0 ? r.valor_recebido : r.valor), 0)
+    const pago = fluxoCaixaImp.length > 0
+      ? fluxoCaixaImp.filter(f => f.tipo === 'despesa' && f.data_inicio && inCaixa(f.data_inicio)).reduce((s, f) => s + f.valor, 0)
+      : contasPagar.filter(r => r.status === 'pago' && inCaixa(r.data_pagamento ?? '')).reduce((s, r) => s + (r.valor_pago > 0 ? r.valor_pago : r.valor), 0)
 
     const inVenda = (d: string | null) => !range || (!!d && d >= range.ini && d <= range.fim)
     const faturamento = vendasRaw
@@ -106,7 +106,7 @@ export default function FinanceiroDashboard() {
       ticketMedio,
       numVendas,
     }
-  }, [contasReceber, contasPagar, vendasRaw, range])
+  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, range])
 
   const charts = useMemo(() => {
     const hoje = new Date()
@@ -213,23 +213,15 @@ export default function FinanceiroDashboard() {
     setLoading(true)
     try {
       const [
-        { data: receber },
-        { data: pagar },
-        { data: vendas },
         { data: receberImp },
         { data: pagarImp },
         { data: vendasImp },
         { data: fluxoImp },
-        { data: integ },
       ] = await Promise.all([
-        supabase.from('fin_contas_receber').select('id,cliente,historico,valor,valor_recebido,data_vencimento,data_recebimento,status,categoria'),
-        supabase.from('fin_contas_pagar').select('id,fornecedor,historico,valor,valor_pago,data_vencimento,data_pagamento,status,categoria'),
-        supabase.from('fin_vendas').select('data_venda,valor_liquido,valor_estofaria,valor_marcenaria'),
         supabase.from('fin_cr_import').select('id,cliente,historico,valor,recebido,vencimento,status'),
         supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,pago,vencimento,status'),
         supabase.from('fin_vendas_import').select('valor,segmento,mes,ano'),
         supabase.from('fin_fluxo_caixa_import').select('tipo,valor,data_inicio,mes,ano'),
-        supabase.from('integracoes_olist').select('ultimo_sync_em').eq('nome', 'olist_tiny').maybeSingle(),
       ])
 
       // Mapeia import CR → ContaReceber
@@ -269,11 +261,10 @@ export default function FinanceiroDashboard() {
         valor_marcenaria: r.segmento === 'marcenaria' ? (r.valor ?? 0) : 0,
       }))
 
-      setContasReceber([...(receber ?? []) as ContaReceber[], ...receberMapped])
-      setContasPagar([...(pagar ?? []) as ContaPagar[], ...pagarMapped])
-      setVendasRaw([...(vendas ?? []) as VendaItem[], ...vendasMapped])
+      setContasReceber(receberMapped)
+      setContasPagar(pagarMapped)
+      setVendasRaw(vendasMapped)
       setFluxoCaixaImp((fluxoImp ?? []) as FluxoCaixaImpItem[])
-      setUltimaSync(integ?.ultimo_sync_em ?? null)
     } finally {
       setLoading(false)
     }
@@ -307,7 +298,10 @@ export default function FinanceiroDashboard() {
         <div>
           <h1 className="text-3xl font-black text-[#0b1733]">Dashboard Financeiro</h1>
         </div>
-        <SincronizarButton ultimaSync={ultimaSync} onSucesso={carregar} />
+        <Link href="/financeiro/importacao"
+          className="rounded-2xl bg-[#0b1733] px-6 py-2.5 text-sm font-bold text-white hover:bg-[#1b4fd6] transition">
+          Importar Relatórios
+        </Link>
       </div>
 
       {/* Filtros */}
@@ -388,7 +382,7 @@ export default function FinanceiroDashboard() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-slate-500">Recebido</p>
-                  <p className="text-[10px] text-slate-400">data real do caixa Tiny</p>
+                  <p className="text-[10px] text-slate-400">do relatório importado</p>
                 </div>
                 <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 whitespace-nowrap">{filtroLabel}</span>
               </div>
@@ -398,7 +392,7 @@ export default function FinanceiroDashboard() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-semibold text-slate-500">Pago</p>
-                  <p className="text-[10px] text-slate-400">data real do caixa Tiny</p>
+                  <p className="text-[10px] text-slate-400">do relatório importado</p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 whitespace-nowrap">{filtroLabel}</span>
               </div>
@@ -450,7 +444,7 @@ export default function FinanceiroDashboard() {
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-black text-[#0b1733]">Fluxo de Caixa Real</h3>
-              <p className="text-xs text-slate-400">Entradas e saídas do Caixa Tiny</p>
+              <p className="text-xs text-slate-400">Entradas e saídas do relatório importado</p>
               <div className="mt-4">
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={charts.fluxoMensal} margin={{ top: 4, right: 8, left: 8, bottom: 4 }}>
