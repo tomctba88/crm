@@ -160,30 +160,34 @@ export default function ImportadorRelatorios() {
         </p>
       </div>
 
-      {/* Seletor de período */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <p className="text-xs font-semibold text-slate-500 mb-3">Mês de referência dos relatórios</p>
+      {/* Seletor de período — destaque para evitar importar no mês errado */}
+      <div className="rounded-2xl border-2 border-[#1b4fd6] bg-[#eef3fb] p-4 shadow-sm">
+        <p className="text-xs font-black text-[#1b4fd6] mb-1 uppercase tracking-wide">Mês de referência dos relatórios</p>
+        <p className="text-xs text-slate-500 mb-3">
+          Selecione o mês a que os relatórios se referem — <strong>não necessariamente o mês atual</strong>.
+          Todos os arquivos importados abaixo serão vinculados a este mês.
+        </p>
         <div className="flex flex-wrap items-center gap-3">
           <select
             value={mesSel}
             onChange={e => setMesSel(Number(e.target.value))}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+            className="rounded-xl border-2 border-[#1b4fd6] bg-white px-3 py-2 text-base font-black text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
           >
             {MESES_NOME.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
           </select>
           <select
             value={anoSel}
             onChange={e => setAnoSel(Number(e.target.value))}
-            className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
+            className="rounded-xl border-2 border-[#1b4fd6] bg-white px-3 py-2 text-base font-black text-[#0b1733] focus:outline-none focus:ring-2 focus:ring-[#1b4fd6]"
           >
             {[2024, 2025, 2026, 2027].map(a => <option key={a} value={a}>{a}</option>)}
           </select>
-          <span className="text-xs text-slate-400">
-            Vinculado a{' '}
-            <span className="font-semibold text-[#1b4fd6]">
-              {MESES_NOME[mesSel - 1]}/{anoSel}
+          <div className="rounded-xl bg-[#1b4fd6] px-4 py-2 text-white">
+            <span className="text-xs font-semibold opacity-80">Importando para:</span>
+            <span className="ml-2 text-base font-black">
+              {MESES_NOME[mesSel - 1].toUpperCase()}/{anoSel}
             </span>
-          </span>
+          </div>
         </div>
       </div>
 

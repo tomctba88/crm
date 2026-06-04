@@ -180,9 +180,17 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Pizza contas a receber por status
+    // Filtro de período para gráficos/vencimentos — usa mes/ano em modo "mes" para não
+    // mostrar dados de outros meses com vencimento no período selecionado
     const inVenc = (d: string | null) => !range || (!!d && d >= range.ini && d <= range.fim)
-    const crFiltradas = contasReceber.filter(r => r.status === 'aberto' && inVenc(r.data_vencimento))
+    const inPeriodoGrafico = (r: ContaReceber | ContaPagar): boolean => {
+      if (filtroTipo === 'mes') return r.mes === filtroMes && r.ano === filtroAno
+      if (filtroTipo === 'ano') return r.ano === filtroAno
+      return true
+    }
+
+    // Pizza contas a receber por status
+    const crFiltradas = contasReceber.filter(r => r.status === 'aberto' && inPeriodoGrafico(r) && inVenc(r.data_vencimento))
     let emDia = 0, vencidas = 0
     const hoje2 = new Date().toISOString().slice(0, 10)
     for (const r of crFiltradas) {
@@ -194,15 +202,15 @@ export default function FinanceiroDashboard() {
       { name: 'Vencido', value: vencidas, color: '#dc2626' },
     ].filter(s => s.value > 0)
 
-    // Próximos vencimentos (30 dias)
+    // Próximos vencimentos — filtra pelo período do import (mes/ano) E pela data de vencimento
     const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
     const hojeStr = new Date().toISOString().slice(0, 10)
     const crOpen = contasReceber.filter(r =>
-      r.status === 'aberto' && r.data_vencimento &&
+      r.status === 'aberto' && r.data_vencimento && inPeriodoGrafico(r) &&
       (filtroTipo === 'todos' ? r.data_vencimento <= em30Str : inVenc(r.data_vencimento))
     )
     const cpOpen = contasPagar.filter(r =>
-      r.status === 'aberto' && r.data_vencimento &&
+      r.status === 'aberto' && r.data_vencimento && inPeriodoGrafico(r) &&
       (filtroTipo === 'todos' ? r.data_vencimento <= em30Str : inVenc(r.data_vencimento))
     )
     const vencimentos = [
@@ -218,7 +226,7 @@ export default function FinanceiroDashboard() {
       statusPizza,
       vencimentos,
     }
-  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, filtroTipo, filtroAno, filtroMes, customInicio, customFim, range])
+  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, filtroTipo, filtroMes, filtroAno, customInicio, customFim, range])
 
   const carregar = useCallback(async () => {
     setLoading(true)
