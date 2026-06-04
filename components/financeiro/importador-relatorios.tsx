@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/browser-client'
 
-type Tipo = 'balancete' | 'fluxo_caixa' | 'vendas' | 'contas_receber' | 'contas_pagar' | 'recebimentos' | 'pedidos'
+type Tipo = 'balancete' | 'fluxo_caixa' | 'vendas' | 'contas_receber' | 'contas_pagar' | 'recebimentos' | 'pedidos' | 'vendas_produtos'
 
 type CardEstado = {
   arquivo: File | null
@@ -30,6 +30,7 @@ const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: s
   { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
   { tipo: 'recebimentos', titulo: 'Recebimentos', descricao: 'O que foi recebido por cliente, com juros, taxas e descontos', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Financeiro → Recebimentos' },
   { tipo: 'pedidos', titulo: 'Pedidos / NFs', descricao: 'Pedidos com forma de pagamento, taxas e status de entrega', colunaValidacao: 'número', dica: 'Tiny → Relatórios → Vendas → Relatório Financeiro de Vendas' },
+  { tipo: 'vendas_produtos', titulo: 'Vendas por Produto', descricao: 'Custo e margem por produto/SKU — análise de CMV por item', colunaValidacao: 'código', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas (por produto)' },
 ]
 
 const MESES_NOME = [
@@ -45,6 +46,7 @@ const TIPO_LABEL: Record<Tipo, string> = {
   contas_pagar: 'Contas a Pagar',
   recebimentos: 'Recebimentos',
   pedidos: 'Pedidos / NFs',
+  vendas_produtos: 'Vendas por Produto',
 }
 
 async function lerXLS(file: File): Promise<unknown[][]> {
@@ -77,6 +79,7 @@ export default function ImportadorRelatorios() {
     contas_pagar: { ...ESTADO_VAZIO },
     recebimentos: { ...ESTADO_VAZIO },
     pedidos: { ...ESTADO_VAZIO },
+    vendas_produtos: { ...ESTADO_VAZIO },
   })
 
   const fileInputRefs = useRef<Partial<Record<Tipo, HTMLInputElement | null>>>({})

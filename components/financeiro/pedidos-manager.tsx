@@ -8,6 +8,13 @@ import {
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatData } from '@/lib/financeiro/formatters'
 
+type Produto = {
+  id: string; produto: string; sku: string; quantidade: number
+  valor: number; frete: number; custo: number
+  valor_lucro: number | null; percentual_lucro: number | null
+  total: number; tem_custo: boolean
+}
+
 type Pedido = {
   id: string
   data_venda: string | null
@@ -47,18 +54,23 @@ export default function PedidosManager() {
   const [anoSel, setAnoSel] = useState(hoje.getFullYear())
   const [pedidos, setPedidos] = useState<Pedido[]>([])
   const [recebimentos, setRecebimentos] = useState<Recebimento[]>([])
+  const [produtos, setProdutos] = useState<Produto[]>([])
   const [loading, setLoading] = useState(true)
-  const [aba, setAba] = useState<'pedidos' | 'recebimentos'>('pedidos')
+  const [aba, setAba] = useState<'pedidos' | 'recebimentos' | 'produtos'>('pedidos')
+  const [filtroProduto, setFiltroProduto] = useState('')
+  const [ordenarProdutos, setOrdenarProdutos] = useState<'valor' | 'custo' | 'margem' | 'quantidade'>('valor')
 
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: ped }, { data: rec }] = await Promise.all([
+      const [{ data: ped }, { data: rec }, { data: prod }] = await Promise.all([
         supabase.from('fin_pedidos_import').select('*').eq('mes', mesSel).eq('ano', anoSel).order('data_venda', { ascending: false }),
         supabase.from('fin_recebimentos_import').select('*').eq('mes', mesSel).eq('ano', anoSel).order('valor_recebido', { ascending: false }),
+        supabase.from('fin_vendas_produtos_import').select('*').eq('mes', mesSel).eq('ano', anoSel).order('valor', { ascending: false }),
       ])
       setPedidos((ped ?? []) as Pedido[])
       setRecebimentos((rec ?? []) as Recebimento[])
+      setProdutos((prod ?? []) as Produto[])
     } finally {
       setLoading(false)
     }
@@ -110,15 +122,39 @@ export default function PedidosManager() {
     }
   }, [pedidos, recebimentos])
 
-  const semDados = !loading && pedidos.length === 0 && recebimentos.length === 0
+  const semDados = !loading && pedidos.length === 0 && recebimentos.length === 0 && produtos.length === 0
   const periodoLabel = `${MESES[mesSel - 1]}/${anoSel}`
+
+  const analiseProdutos = useMemo(() => {
+    const totalValor = produtos.reduce((s, p) => s + p.valor, 0)
+    const totalCusto = produtos.reduce((s, p) => s + p.custo, 0)
+    const totalLucro = produtos.filter(p => p.valor_lucro !== null).reduce((s, p) => s + (p.valor_lucro ?? 0), 0)
+    const comCusto = produtos.filter(p => p.tem_custo)
+    const semCusto = produtos.filter(p => !p.tem_custo)
+    const totalValorSemCusto = semCusto.reduce((s, p) => s + p.valor, 0)
+    const margemGeral = totalValor > 0 ? (totalLucro / totalValor) * 100 : 0
+
+    const filtrados = produtos
+      .filter(p => !filtroProduto || p.produto.toLowerCase().includes(filtroProduto.toLowerCase()) || p.sku.toLowerCase().includes(filtroProduto.toLowerCase()))
+      .sort((a, b) => {
+        if (ordenarProdutos === 'valor') return b.valor - a.valor
+        if (ordenarProdutos === 'custo') return b.custo - a.custo
+        if (ordenarProdutos === 'margem') return (b.percentual_lucro ?? -1) - (a.percentual_lucro ?? -1)
+        if (ordenarProdutos === 'quantidade') return b.quantidade - a.quantidade
+        return 0
+      })
+
+    const top10 = [...produtos].sort((a, b) => b.valor - a.valor).slice(0, 10)
+
+    return { totalValor, totalCusto, totalLucro, margemGeral, comCusto, semCusto, totalValorSemCusto, filtrados, top10 }
+  }, [produtos, filtroProduto, ordenarProdutos])
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-black text-[#0b1733]">Pedidos & Recebimentos</h1>
-          <p className="text-sm text-slate-500 mt-1">Análise de pedidos por forma de pagamento e recebimentos do período</p>
+          <h1 className="text-3xl font-black text-[#0b1733]">Pedidos, Recebimentos & Produtos</h1>
+          <p className="text-sm text-slate-500 mt-1">Análise de pedidos, recebimentos e custo por produto (CMV por SKU)</p>
         </div>
         <Link href="/financeiro/importacao"
           className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
@@ -143,11 +179,15 @@ export default function PedidosManager() {
       </div>
 
       {/* Abas */}
-      <div className="flex gap-2">
-        {(['pedidos', 'recebimentos'] as const).map(a => (
-          <button key={a} onClick={() => setAba(a)}
-            className={`rounded-xl px-5 py-2 text-sm font-semibold transition ${aba === a ? 'bg-[#0b1733] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-            {a === 'pedidos' ? `Pedidos/NFs (${pedidos.length})` : `Recebimentos (${recebimentos.length})`}
+      <div className="flex flex-wrap gap-2">
+        {([
+          { key: 'pedidos', label: `Pedidos/NFs (${pedidos.length})` },
+          { key: 'recebimentos', label: `Recebimentos (${recebimentos.length})` },
+          { key: 'produtos', label: `Produtos por Custo (${produtos.length})` },
+        ] as const).map(a => (
+          <button key={a.key} onClick={() => setAba(a.key)}
+            className={`rounded-xl px-5 py-2 text-sm font-semibold transition ${aba === a.key ? 'bg-[#0b1733] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+            {a.label}
           </button>
         ))}
       </div>
@@ -291,7 +331,7 @@ export default function PedidosManager() {
             </div>
           </div>
         </>
-      ) : (
+      ) : aba === 'recebimentos' ? (
         <>
           {/* KPIs de Recebimentos */}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -350,7 +390,136 @@ export default function PedidosManager() {
             </div>
           </div>
         </>
-      )}
+      ) : aba === 'produtos' ? (
+        <>
+          {/* KPIs de Produtos */}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: 'Faturamento (Produtos)', valor: analiseProdutos.totalValor, cor: 'text-[#0b1733]', sub: `${produtos.length} produtos` },
+              { label: 'Custo Total (CMV)', valor: analiseProdutos.totalCusto, cor: 'text-red-600', sub: `${analiseProdutos.comCusto.length} produtos com custo` },
+              { label: 'Lucro Bruto', valor: analiseProdutos.totalLucro, cor: 'text-green-600', sub: `Margem: ${analiseProdutos.margemGeral.toFixed(1)}%` },
+              { label: 'Sem Custo Cadastrado', valor: analiseProdutos.totalValorSemCusto, cor: 'text-orange-500', sub: `${analiseProdutos.semCusto.length} produtos — CMV desconhecido` },
+            ].map(k => (
+              <div key={k.label} className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+                <p className="text-sm font-semibold text-slate-500">{k.label}</p>
+                {k.sub && <p className="text-[10px] text-slate-400">{k.sub}</p>}
+                <p className={`mt-3 text-2xl font-black ${k.cor}`}>{formatBRL(k.valor)}</p>
+              </div>
+            ))}
+          </div>
+
+          {analiseProdutos.totalValorSemCusto > 0 && (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+              <p className="text-sm font-semibold text-orange-700">
+                Atenção: R$ {formatBRL(analiseProdutos.totalValorSemCusto)} em vendas sem custo cadastrado no Tiny
+              </p>
+              <p className="text-xs text-orange-600 mt-1">
+                Produtos: {analiseProdutos.semCusto.map(p => p.produto.split(' ').slice(0, 4).join(' ')).join(', ')}
+                . Cadastre o custo no Tiny para uma análise de CMV precisa.
+              </p>
+            </div>
+          )}
+
+          {/* Gráfico top 10 */}
+          {analiseProdutos.top10.length > 0 && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h3 className="text-xl font-black text-[#0b1733]">Top 10 Produtos por Faturamento</h3>
+              <p className="text-xs text-slate-400">{periodoLabel}</p>
+              <div className="mt-4">
+                <ResponsiveContainer width="100%" height={Math.min(400, analiseProdutos.top10.length * 38 + 60)}>
+                  <BarChart
+                    data={analiseProdutos.top10.map(p => ({
+                      produto: p.produto.split(' ').slice(0, 4).join(' '),
+                      faturamento: p.valor,
+                      custo: p.custo,
+                      lucro: p.valor_lucro ?? 0,
+                    }))}
+                    layout="vertical"
+                    margin={{ top: 4, right: 80, left: 8, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <XAxis type="number" tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} tick={{ fontSize: 10 }} />
+                    <YAxis type="category" dataKey="produto" width={200} tick={{ fontSize: 9 }} />
+                    <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} />
+                    <Legend />
+                    <Bar dataKey="faturamento" name="Faturamento" fill="#1b4fd6" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="custo" name="Custo" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Tabela de produtos */}
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-6 pb-4">
+              <div>
+                <h3 className="text-xl font-black text-[#0b1733]">Custo por Produto / SKU</h3>
+                <p className="text-xs text-slate-400">{periodoLabel}</p>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center">
+                <input
+                  type="text"
+                  placeholder="Buscar produto ou SKU..."
+                  value={filtroProduto}
+                  onChange={e => setFiltroProduto(e.target.value)}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1b4fd6] w-52"
+                />
+                <select
+                  value={ordenarProdutos}
+                  onChange={e => setOrdenarProdutos(e.target.value as typeof ordenarProdutos)}
+                  className="rounded-xl border border-slate-200 bg-[#eef3fb] px-3 py-2 text-sm outline-none focus:border-[#1b4fd6]"
+                >
+                  <option value="valor">Ordenar: Faturamento</option>
+                  <option value="custo">Ordenar: Custo</option>
+                  <option value="margem">Ordenar: Margem</option>
+                  <option value="quantidade">Ordenar: Quantidade</option>
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-slate-100 bg-[#f8fafc]">
+                  <tr>
+                    {['Produto', 'SKU', 'Qtd', 'Valor Unit.', 'Faturamento', 'Custo', 'Lucro R$', 'Margem %'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {analiseProdutos.filtrados.length === 0 ? (
+                    <tr><td colSpan={8} className="p-8 text-center text-slate-400">Nenhum produto encontrado.</td></tr>
+                  ) : analiseProdutos.filtrados.map(p => (
+                    <tr key={p.id} className={`border-b border-slate-50 hover:bg-slate-50 ${!p.tem_custo ? 'bg-orange-50/30' : ''}`}>
+                      <td className="px-4 py-3 font-medium text-[#0b1733] max-w-[280px]">
+                        <p className="truncate">{p.produto}</p>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-[#1b4fd6]">{p.sku || '—'}</td>
+                      <td className="px-4 py-3 text-center font-bold text-slate-700">{p.quantidade}</td>
+                      <td className="px-4 py-3 text-right text-slate-500">{p.quantidade > 0 ? formatBRL(p.valor / p.quantidade) : '—'}</td>
+                      <td className="px-4 py-3 text-right font-bold text-[#0b1733]">{formatBRL(p.valor)}</td>
+                      <td className="px-4 py-3 text-right text-red-600 font-semibold">
+                        {p.tem_custo ? formatBRL(p.custo) : <span className="text-orange-500 text-xs font-semibold">sem custo</span>}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-semibold ${p.valor_lucro === null ? 'text-slate-300' : p.valor_lucro >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                        {p.valor_lucro !== null ? formatBRL(p.valor_lucro) : '—'}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-black text-sm ${
+                        p.percentual_lucro === null ? 'text-slate-300'
+                        : p.percentual_lucro < 20 ? 'text-red-600'
+                        : p.percentual_lucro < 35 ? 'text-orange-600'
+                        : 'text-green-700'
+                      }`}>
+                        {p.percentual_lucro !== null ? `${p.percentual_lucro.toFixed(1)}%` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }

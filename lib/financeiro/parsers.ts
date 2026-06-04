@@ -266,6 +266,44 @@ export function parseRecebimentos(rows: unknown[][]): Array<{
   return results
 }
 
+// ─── VENDAS POR PRODUTO ───────────────────────────────────────────────────────
+// Formato: Produto (grupo) | Produto | Código SKU | Quantidade | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+// Linhas de grupo têm col[0] preenchido e col[1] vazio → ignorar.
+// Linhas de produto têm col[0] vazio e col[1] preenchido → processar.
+// Custo e Lucro podem ser "-" quando o produto não tem custo cadastrado.
+export function parseVendasProdutos(rows: unknown[][]): Array<{
+  produto: string; sku: string; quantidade: number; valor: number
+  frete: number; custo: number; valor_lucro: number | null; percentual_lucro: number | null
+  total: number; tem_custo: boolean
+}> {
+  const results = []
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (!row || row.length < 4) continue
+    const col0 = String(row[0] || '').trim()
+    const col1 = String(row[1] || '').trim()
+    if (!col1) continue // linha de grupo ou vazia
+    if (col0 && !col1) continue // linha de grupo sem detalhe
+    const custoRaw = String(row[6] || '').trim()
+    const lucroRaw = String(row[7] || '').trim()
+    const pctRaw   = String(row[8] || '').trim()
+    const temCusto = custoRaw !== '-' && custoRaw !== '' && custoRaw !== '0' && parseNum(row[6]) > 0
+    results.push({
+      produto: col1,
+      sku: String(row[2] || '').trim(),
+      quantidade: parseInt(String(row[3] || '1')) || 1,
+      valor: parseNum(row[4]),
+      frete: parseNum(row[5]),
+      custo: temCusto ? parseNum(row[6]) : 0,
+      valor_lucro: lucroRaw === '-' ? null : parseNum(row[7]),
+      percentual_lucro: pctRaw === '-' ? null : parsePct(row[8]),
+      total: parseNum(row[9]),
+      tem_custo: temCusto,
+    })
+  }
+  return results
+}
+
 // ─── PEDIDOS / NFs ────────────────────────────────────────────────────────────
 // Colunas: Data | Número | Valor total | Taxas | Tarifas | Valor líquido |
 //          Forma de recebimento | Meio de recebimento | Detalhes | Nº parcelas | Prazo médio | Situação

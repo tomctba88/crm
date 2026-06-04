@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server-client'
 import {
   parseBalancete, parseFluxoCaixa, parseVendas,
   parseContasReceber, parseContasPagar,
-  parseRecebimentos, parsePedidos,
+  parseRecebimentos, parsePedidos, parseVendasProdutos,
 } from '@/lib/financeiro/parsers'
 
 export const maxDuration = 300
@@ -16,6 +16,7 @@ const TABELAS = {
   contas_pagar: 'fin_cp_import',
   recebimentos: 'fin_recebimentos_import',
   pedidos: 'fin_pedidos_import',
+  vendas_produtos: 'fin_vendas_produtos_import',
 } as const
 
 type Tipo = keyof typeof TABELAS
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     else if (tipo === 'contas_pagar') parsed = parseContasPagar(rows) as any
     else if (tipo === 'recebimentos') parsed = parseRecebimentos(rows) as any
     else if (tipo === 'pedidos') parsed = parsePedidos(rows) as any
+    else if (tipo === 'vendas_produtos') parsed = parseVendasProdutos(rows) as any
 
     if (parsed.length === 0) {
       return NextResponse.json({

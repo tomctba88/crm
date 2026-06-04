@@ -34,3 +34,23 @@ CREATE TABLE IF NOT EXISTS fin_pedidos_import (
   created_at timestamptz DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_pedidos_import_periodo ON fin_pedidos_import(ano, mes);
+
+-- Vendas detalhadas por produto (com custo e margem por SKU)
+CREATE TABLE IF NOT EXISTS fin_vendas_produtos_import (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  mes int NOT NULL,
+  ano int NOT NULL,
+  produto text NOT NULL,
+  sku text,
+  quantidade int DEFAULT 1,
+  valor numeric(15,2) DEFAULT 0,
+  frete numeric(15,2) DEFAULT 0,
+  custo numeric(15,2) DEFAULT 0,
+  valor_lucro numeric(15,2),
+  percentual_lucro numeric(8,4),
+  total numeric(15,2) DEFAULT 0,
+  tem_custo boolean DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_vendas_produtos_periodo ON fin_vendas_produtos_import(ano, mes);
+CREATE INDEX IF NOT EXISTS idx_vendas_produtos_sku ON fin_vendas_produtos_import(sku);
