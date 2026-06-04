@@ -21,6 +21,7 @@ type ContaPagar = {
   data_pagamento: string | null; status: string; categoria: string
 }
 type VendaItem = { data_venda: string | null; valor_liquido: number; valor_estofaria: number; valor_marcenaria: number }
+type FluxoCaixaImpItem = { tipo: string; valor: number; data_inicio: string | null; mes: number; ano: number }
 type FiltroTipo = 'todos' | 'mes' | 'ano' | 'custom'
 
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
@@ -36,6 +37,7 @@ export default function FinanceiroDashboard() {
   const [contasReceber, setContasReceber] = useState<ContaReceber[]>([])
   const [contasPagar, setContasPagar] = useState<ContaPagar[]>([])
   const [vendasRaw, setVendasRaw] = useState<VendaItem[]>([])
+  const [fluxoCaixaImp, setFluxoCaixaImp] = useState<FluxoCaixaImpItem[]>([])
   const [ultimaSync, setUltimaSync] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -130,18 +132,29 @@ export default function FinanceiroDashboard() {
       }
     }
 
-    // Fluxo de caixa real — agrupa por data_recebimento / data_pagamento
+    // Fluxo de caixa — usa fin_fluxo_caixa_import quando disponível (mais preciso),
+    // senão cai no fallback CR/CP com data_recebimento/data_pagamento
     const fluxoMap: Record<string, { entradas: number; saidas: number }> = {}
     meses.forEach(m => { fluxoMap[m] = { entradas: 0, saidas: 0 } })
-    for (const r of contasReceber) {
-      if (r.status !== 'recebido' || !r.data_recebimento) continue
-      const k = r.data_recebimento.slice(0, 7)
-      if (fluxoMap[k]) fluxoMap[k].entradas += r.valor_recebido > 0 ? r.valor_recebido : r.valor
-    }
-    for (const r of contasPagar) {
-      if (r.status !== 'pago' || !r.data_pagamento) continue
-      const k = r.data_pagamento.slice(0, 7)
-      if (fluxoMap[k]) fluxoMap[k].saidas += r.valor_pago > 0 ? r.valor_pago : r.valor
+    if (fluxoCaixaImp.length > 0) {
+      for (const f of fluxoCaixaImp) {
+        if (!f.data_inicio) continue
+        const k = f.data_inicio.slice(0, 7)
+        if (!fluxoMap[k]) continue
+        if (f.tipo === 'receita') fluxoMap[k].entradas += f.valor
+        else fluxoMap[k].saidas += f.valor
+      }
+    } else {
+      for (const r of contasReceber) {
+        if (r.status !== 'recebido' || !r.data_recebimento) continue
+        const k = r.data_recebimento.slice(0, 7)
+        if (fluxoMap[k]) fluxoMap[k].entradas += r.valor_recebido > 0 ? r.valor_recebido : r.valor
+      }
+      for (const r of contasPagar) {
+        if (r.status !== 'pago' || !r.data_pagamento) continue
+        const k = r.data_pagamento.slice(0, 7)
+        if (fluxoMap[k]) fluxoMap[k].saidas += r.valor_pago > 0 ? r.valor_pago : r.valor
+      }
     }
 
     // Faturamento por segmento
@@ -194,20 +207,72 @@ export default function FinanceiroDashboard() {
       statusPizza,
       vencimentos,
     }
-  }, [contasReceber, contasPagar, vendasRaw, filtroTipo, filtroAno, filtroMes, customInicio, customFim, range])
+  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, filtroTipo, filtroAno, filtroMes, customInicio, customFim, range])
 
   const carregar = useCallback(async () => {
     setLoading(true)
     try {
-      const [{ data: receber }, { data: pagar }, { data: vendas }, { data: integ }] = await Promise.all([
+      const [
+        { data: receber },
+        { data: pagar },
+        { data: vendas },
+        { data: receberImp },
+        { data: pagarImp },
+        { data: vendasImp },
+        { data: fluxoImp },
+        { data: integ },
+      ] = await Promise.all([
         supabase.from('fin_contas_receber').select('id,cliente,historico,valor,valor_recebido,data_vencimento,data_recebimento,status,categoria'),
         supabase.from('fin_contas_pagar').select('id,fornecedor,historico,valor,valor_pago,data_vencimento,data_pagamento,status,categoria'),
         supabase.from('fin_vendas').select('data_venda,valor_liquido,valor_estofaria,valor_marcenaria'),
+        supabase.from('fin_cr_import').select('id,cliente,historico,valor,recebido,vencimento,status'),
+        supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,pago,vencimento,status'),
+        supabase.from('fin_vendas_import').select('valor,segmento,mes,ano'),
+        supabase.from('fin_fluxo_caixa_import').select('tipo,valor,data_inicio,mes,ano'),
         supabase.from('integracoes_olist').select('ultimo_sync_em').eq('nome', 'olist_tiny').maybeSingle(),
       ])
-      setContasReceber((receber ?? []) as ContaReceber[])
-      setContasPagar((pagar ?? []) as ContaPagar[])
-      setVendasRaw((vendas ?? []) as VendaItem[])
+
+      // Mapeia import CR → ContaReceber
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const receberMapped: ContaReceber[] = (receberImp ?? []).map((r: any, i: number) => ({
+        id: `imp-cr-${i}`,
+        cliente: r.cliente ?? '',
+        historico: r.historico ?? '',
+        valor: r.valor ?? 0,
+        valor_recebido: r.recebido ?? 0,
+        data_vencimento: r.vencimento ?? null,
+        data_recebimento: (r.status === 'recebido' || r.status === 'parcial') ? r.vencimento : null,
+        status: r.status ?? 'aberto',
+        categoria: '',
+      }))
+
+      // Mapeia import CP → ContaPagar
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pagarMapped: ContaPagar[] = (pagarImp ?? []).map((r: any, i: number) => ({
+        id: `imp-cp-${i}`,
+        fornecedor: r.fornecedor ?? '',
+        historico: r.historico ?? '',
+        valor: r.valor ?? 0,
+        valor_pago: r.pago ?? 0,
+        data_vencimento: r.vencimento ?? null,
+        data_pagamento: (r.status === 'pago' || r.status === 'parcial') ? r.vencimento : null,
+        status: r.status ?? 'aberto',
+        categoria: '',
+      }))
+
+      // Mapeia import vendas → VendaItem
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vendasMapped: VendaItem[] = (vendasImp ?? []).map((r: any) => ({
+        data_venda: `${r.ano}-${String(r.mes).padStart(2, '0')}-01`,
+        valor_liquido: r.valor ?? 0,
+        valor_estofaria: r.segmento === 'estofaria' ? (r.valor ?? 0) : 0,
+        valor_marcenaria: r.segmento === 'marcenaria' ? (r.valor ?? 0) : 0,
+      }))
+
+      setContasReceber([...(receber ?? []) as ContaReceber[], ...receberMapped])
+      setContasPagar([...(pagar ?? []) as ContaPagar[], ...pagarMapped])
+      setVendasRaw([...(vendas ?? []) as VendaItem[], ...vendasMapped])
+      setFluxoCaixaImp((fluxoImp ?? []) as FluxoCaixaImpItem[])
       setUltimaSync(integ?.ultimo_sync_em ?? null)
     } finally {
       setLoading(false)
