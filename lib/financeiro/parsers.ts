@@ -32,6 +32,17 @@ export function parseClienteCNPJ(val: unknown): { cliente: string; cnpj: string 
   return { cliente: s, cnpj: '' }
 }
 
+// Detecta linhas de total/subtotal/resumo que não devem ser contadas como registro.
+// Ex: "Total", "Totais", "Subtotal", ou um rótulo puramente numérico (linha de soma sem nome).
+export function isLinhaTotal(rotulo: unknown): boolean {
+  const s = String(rotulo || '').trim().toLowerCase()
+  if (!s) return false
+  if (s === 'total' || s === 'totais' || s === 'subtotal' || s === 'total geral' || s.startsWith('total ')) return true
+  // Rótulo que é apenas um número (linha de soma sem texto) — ex: "157274.51"
+  if (/^[\d.,]+$/.test(s)) return true
+  return false
+}
+
 // ─── BALANCETE ────────────────────────────────────────────────────────────────
 // Formatos aceitos:
 //   Compacto: Tipo | Grupo | Categoria | Mai/26 | Total
@@ -124,6 +135,7 @@ export function parseVendas(rows: unknown[][]): Array<{
       // Formato detalhado: Pedido | Fonte de Receita | Cliente | Total Venda | Frete | Valor Vendido | Custo | Lucro | Margem
       const clienteRaw = String(row[2] || '').trim()
       if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      if (isLinhaTotal(clienteRaw) || isLinhaTotal(row[1])) continue
       const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
       const fonteRaw = String(row[1] || '').trim().toLowerCase()
       const segmento = fonteRaw.includes('corpo') ? 'corporativo'
@@ -145,6 +157,7 @@ export function parseVendas(rows: unknown[][]): Array<{
       // Formato completo: Cliente | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
       const clienteRaw = String(row[0] || '').trim()
       if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      if (isLinhaTotal(clienteRaw)) continue
       const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
       results.push({
         cliente, cnpj_cpf: cnpj,
@@ -160,6 +173,7 @@ export function parseVendas(rows: unknown[][]): Array<{
       // Formato simples: Cliente | Valor | Frete | Total
       const clienteRaw = String(row[0] || '').trim()
       if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      if (isLinhaTotal(clienteRaw)) continue
       const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
       results.push({
         cliente, cnpj_cpf: cnpj,
@@ -282,8 +296,13 @@ export function parseVendasProdutos(rows: unknown[][]): Array<{
     if (!row || row.length < 4) continue
     const col0 = String(row[0] || '').trim()
     const col1 = String(row[1] || '').trim()
-    if (!col1) continue // linha de grupo ou vazia
+    if (!col1) continue // linha de grupo ou vazia (col1 é o nome do produto no detalhe)
     if (col0 && !col1) continue // linha de grupo sem detalhe
+    if (isLinhaTotal(col1)) continue // linha de total/subtotal
+    // Linha de detalhe válida precisa ter SKU OU quantidade — senão é resumo
+    const skuVal = String(row[2] || '').trim()
+    const qtdVal = parseNum(row[3])
+    if (!skuVal && qtdVal === 0) continue
     const custoRaw = String(row[6] || '').trim()
     const lucroRaw = String(row[7] || '').trim()
     const pctRaw   = String(row[8] || '').trim()
