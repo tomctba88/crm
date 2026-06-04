@@ -57,8 +57,12 @@ export async function POST(request: Request) {
 
     const tabela = TABELAS[tipo]
 
-    // Deletar registros anteriores do mesmo período (idempotência)
-    await supabase.from(tabela).delete().eq('mes', mes).eq('ano', ano)
+    // Excluir registros anteriores do mesmo período — sempre substituir, nunca duplicar
+    const { error: deleteError } = await supabase.from(tabela).delete().eq('mes', mes).eq('ano', ano)
+    if (deleteError) {
+      console.error(`delete ${tabela} error:`, deleteError)
+      return NextResponse.json({ error: 'Erro ao limpar dados anteriores. Tente novamente.' }, { status: 500 })
+    }
 
     // Inserir em chunks de 500
     const records = parsed.map(r => ({ ...r, mes, ano }))
@@ -69,6 +73,11 @@ export async function POST(request: Request) {
       const { error } = await supabase.from(tabela).insert(chunk)
       if (error) { console.error(`insert ${tabela} error:`, error); erros += chunk.length }
       else importados += chunk.length
+    }
+
+    // Se houve erros de inserção, informar mas não deixar dados parciais
+    if (erros > 0 && importados === 0) {
+      return NextResponse.json({ error: 'Falha ao inserir os registros. Os dados anteriores foram removidos. Tente reimportar.' }, { status: 500 })
     }
 
     // Upsert log de upload
