@@ -71,6 +71,9 @@ export default function ImportadorRelatorios() {
   const [anoSel, setAnoSel] = useState(hoje.getFullYear())
   const [uploads, setUploads] = useState<Upload[]>([])
   const [carregandoUploads, setCarregandoUploads] = useState(true)
+  const [limpando, setLimpando] = useState(false)
+  const [confirmarLimpeza, setConfirmarLimpeza] = useState(false)
+  const [msgLimpeza, setMsgLimpeza] = useState('')
 
   const [cards, setCards] = useState<Record<Tipo, CardEstado>>({
     balancete: { ...ESTADO_VAZIO },
@@ -101,6 +104,44 @@ export default function ImportadorRelatorios() {
 
   function ultimaImport(tipo: Tipo) {
     return uploads.find(u => u.tipo === tipo && u.mes === mesSel && u.ano === anoSel) ?? null
+  }
+
+  // Quantos relatórios já foram importados no período selecionado
+  const importadosNoPeriodo = uploads.filter(u => u.mes === mesSel && u.ano === anoSel).length
+
+  async function limparMes() {
+    setLimpando(true)
+    setMsgLimpeza('')
+    try {
+      const res = await fetch('/api/financeiro/limpar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mes: mesSel, ano: anoSel }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMsgLimpeza(data.error ?? 'Erro ao limpar.')
+        return
+      }
+      setMsgLimpeza(`${data.totalRemovidos} registro(s) removido(s) de ${MESES_NOME[mesSel - 1]}/${anoSel}.`)
+      // Reseta os cards e recarrega o histórico
+      setCards({
+        balancete: { ...ESTADO_VAZIO },
+        fluxo_caixa: { ...ESTADO_VAZIO },
+        vendas: { ...ESTADO_VAZIO },
+        contas_receber: { ...ESTADO_VAZIO },
+        contas_pagar: { ...ESTADO_VAZIO },
+        recebimentos: { ...ESTADO_VAZIO },
+        pedidos: { ...ESTADO_VAZIO },
+        vendas_produtos: { ...ESTADO_VAZIO },
+      })
+      await carregarUploads()
+    } catch {
+      setMsgLimpeza('Erro de conexão.')
+    } finally {
+      setLimpando(false)
+      setConfirmarLimpeza(false)
+    }
   }
 
   function setCard(tipo: Tipo, patch: Partial<CardEstado>) {
@@ -201,6 +242,47 @@ export default function ImportadorRelatorios() {
               {MESES_NOME[mesSel - 1].toUpperCase()}/{anoSel}
             </span>
           </div>
+        </div>
+
+        {/* Limpar dados do mês */}
+        <div className="mt-4 border-t border-blue-200 pt-3">
+          {!confirmarLimpeza ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => setConfirmarLimpeza(true)}
+                disabled={importadosNoPeriodo === 0 || limpando}
+                className="rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Limpar dados de {MESES_NOME[mesSel - 1]}/{anoSel}
+              </button>
+              <span className="text-xs text-slate-500">
+                {importadosNoPeriodo > 0
+                  ? `${importadosNoPeriodo} relatório(s) importado(s) neste mês`
+                  : 'Nenhum relatório importado neste mês'}
+              </span>
+              {msgLimpeza && <span className="text-xs font-semibold text-green-600">{msgLimpeza}</span>}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-300 bg-red-50 p-3">
+              <span className="text-sm font-bold text-red-700">
+                Apagar TODOS os dados de {MESES_NOME[mesSel - 1]}/{anoSel}? Esta ação não pode ser desfeita.
+              </span>
+              <button
+                onClick={limparMes}
+                disabled={limpando}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 transition disabled:opacity-60"
+              >
+                {limpando ? 'Limpando...' : 'Sim, apagar tudo'}
+              </button>
+              <button
+                onClick={() => setConfirmarLimpeza(false)}
+                disabled={limpando}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition"
+              >
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
