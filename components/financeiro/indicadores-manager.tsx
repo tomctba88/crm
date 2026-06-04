@@ -22,6 +22,8 @@ const MES_ATUAL = new Date().getMonth() + 1
 const SEGMENTO_LABEL: Record<string, string> = { corporativo: 'Corporativo', decor: 'Decor', lojista: 'Lojista', outros: 'Outros' }
 const SEGMENTO_COR: Record<string, string> = { corporativo: '#1b4fd6', decor: '#16a34a', lojista: '#f59e0b', outros: '#94a3b8' }
 
+type Regime = 'competencia' | 'caixa'
+
 // Mapeamento de grupo Tiny → categoria de resultado
 const GRUPO_RESULTADO: Record<string, string> = {}
 function getResultadoLabel(grupo: string): string {
@@ -59,6 +61,7 @@ export default function IndicadoresManager() {
   const [vendasImport, setVendasImport] = useState<VendaItem[]>([])
   const [recebimentosImport, setRecebimentosImport] = useState<RecebimentoItem[]>([])
   const [loading, setLoading] = useState(true)
+  const [regime, setRegime] = useState<Regime>('competencia')
   const [filtro, setFiltro] = useState<FiltroTipo>('mes')
   const [ano, setAno] = useState(ANO_ATUAL)
   const [mes, setMes] = useState(MES_ATUAL)
@@ -126,12 +129,25 @@ export default function IndicadoresManager() {
       resultadoAgrupado[label] = (resultadoAgrupado[label] || 0) + v.total
     }
     const totalSaidas = Object.values(gruposMap).reduce((s, v) => s + v.total, 0)
-    const cmvTotal = resultadoAgrupado['CMV'] || 0
-    const lucroBrutoBalancete = totalEntradas - cmvTotal
-    const lucroLiquido = totalEntradas - totalSaidas
+    const cmvBalancete = resultadoAgrupado['CMV'] || 0 // compras pagas no mês (caixa)
+    const cmvVendas = vd.reduce((s, v) => s + v.custo, 0) // custo dos produtos vendidos (competência)
 
-    // EBIT = Entradas - CMV - Despesas Operacionais - Despesas Trabalhistas - Sócios
-    const ebit = totalEntradas - cmvTotal
+    // ── REGIME: alterna entre Competência e Caixa ──
+    // Competência: receita = vendas faturadas; CMV = custo do que foi vendido
+    // Caixa: receita = entradas recebidas; CMV = compras efetivamente pagas
+    const receita = regime === 'caixa' ? totalEntradas : totalVendas
+    const cmvTotal = regime === 'caixa' ? cmvBalancete : cmvVendas
+    const lucroBruto = receita - cmvTotal
+    const basePercentual = receita || 1
+
+    // Despesas não-CMV (operacionais, trabalhistas, etc.) vêm do balancete em ambos os regimes
+    const despesasNaoCMV = totalSaidas - cmvBalancete
+    const lucroLiquido = regime === 'caixa'
+      ? totalEntradas - totalSaidas
+      : totalVendas - cmvVendas - despesasNaoCMV
+
+    // EBIT = Receita - CMV - Despesas Operacionais - Despesas Trabalhistas - Sócios
+    const ebit = receita - cmvTotal
       - (resultadoAgrupado['Despesas Operacionais'] || 0)
       - (resultadoAgrupado['Despesas Trabalhistas'] || 0)
       - (resultadoAgrupado['Salários Sócios'] || 0)
@@ -158,12 +174,13 @@ export default function IndicadoresManager() {
     return {
       totalVendas, fretesCobrados, numPedidos, ticketMedio,
       lucroBrutoVendas, margemBruta, temSegmento, segmentos,
-      totalEntradas, totalSaidas, cmvTotal, lucroBrutoBalancete,
+      totalEntradas, totalSaidas, cmvTotal,
+      receita, lucroBruto, basePercentual,
       lucroLiquido, ebit, resultadoAgrupado, gruposMap, gruposOrdenados,
       despesasFretes, fretePagoEmpresa, fretesPctFaturamento,
       numClientes, totalRecebido,
     }
-  }, [balancete, vendasImport, recebimentosImport])
+  }, [balancete, vendasImport, recebimentosImport, regime])
 
   const clientesFiltrados = useMemo(() => {
     let r = [...vendasImport].sort((a, b) => b.valor - a.valor)
@@ -209,11 +226,33 @@ export default function IndicadoresManager() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#0b1733]">Fechamento do Mês</h1>
-          <p className="mt-1 text-sm text-slate-500">DRE completo · Faturamento por segmento · Custos · Fretes · Margem por cliente</p>
+          <p className="mt-1 text-sm text-slate-500">DRE por Competência ou Caixa · Faturamento por segmento · Custos · Margem por cliente</p>
         </div>
         <Link href="/financeiro/importacao" className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition self-start">
           Importar Relatórios
         </Link>
+      </div>
+
+      {/* Seletor de Regime */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xs font-semibold text-slate-500 shrink-0">Regime contábil:</span>
+          <div className="flex rounded-xl bg-slate-100 p-1">
+            <button onClick={() => setRegime('competencia')}
+              className={`rounded-lg px-4 py-2 text-sm font-bold transition ${regime === 'competencia' ? 'bg-[#1b4fd6] text-white shadow' : 'text-slate-600 hover:text-slate-800'}`}>
+              Competência
+            </button>
+            <button onClick={() => setRegime('caixa')}
+              className={`rounded-lg px-4 py-2 text-sm font-bold transition ${regime === 'caixa' ? 'bg-[#1b4fd6] text-white shadow' : 'text-slate-600 hover:text-slate-800'}`}>
+              Caixa
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 flex-1 min-w-[200px]">
+            {regime === 'competencia'
+              ? 'Mostra o que foi vendido e o lucro gerado no mês (independente de quando o dinheiro entra).'
+              : 'Mostra o dinheiro que efetivamente entrou e saiu no mês (movimentação real do caixa).'}
+          </p>
+        </div>
       </div>
 
       {/* Filtro período */}
@@ -363,7 +402,12 @@ export default function IndicadoresManager() {
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="mb-4">
                 <h2 className="text-xl font-black text-[#0b1733]">Resultado do Mês</h2>
-                <p className="text-xs text-slate-400">Base: Balancete Tiny · {periodoLabel}</p>
+                <p className="text-xs text-slate-400">
+                  {regime === 'competencia'
+                    ? 'Competência: receita = vendas faturadas · CMV = custo do que foi vendido'
+                    : 'Caixa: receita = entradas recebidas · CMV = compras pagas (Balancete Tiny)'}
+                  {' · '}{periodoLabel}
+                </p>
               </div>
               <table className="w-full text-sm">
                 <thead>
@@ -375,14 +419,14 @@ export default function IndicadoresManager() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   <tr className="bg-[#eef3fb] font-black">
-                    <td className="py-2 text-[#0b1733]">Total Vendas</td>
-                    <td className="py-2 text-right text-[#0b1733]">{formatBRL(dados.totalVendas)}</td>
+                    <td className="py-2 text-[#0b1733]">{regime === 'competencia' ? 'Total Vendas (faturado)' : 'Total Entradas (recebido)'}</td>
+                    <td className="py-2 text-right text-[#0b1733]">{formatBRL(dados.receita)}</td>
                     <td className="py-2 text-right text-slate-400">100%</td>
                   </tr>
                   <tr>
                     <td className="py-1.5 text-slate-500 text-xs pl-3">Fretes Cobrados</td>
                     <td className="py-1.5 text-right text-xs text-slate-500">{formatBRL(dados.fretesCobrados)}</td>
-                    <td className="py-1.5 text-right text-xs text-slate-400">{pct(dados.fretesCobrados, dados.totalVendas)}</td>
+                    <td className="py-1.5 text-right text-xs text-slate-400">{pct(dados.fretesCobrados, dados.basePercentual)}</td>
                   </tr>
                   <tr>
                     <td className="py-1.5 text-slate-500 text-xs pl-3">Pedidos Emitidos</td>
@@ -400,14 +444,14 @@ export default function IndicadoresManager() {
 
                   {/* CMV */}
                   <tr>
-                    <td className="py-1.5 font-semibold text-red-700">CMV</td>
+                    <td className="py-1.5 font-semibold text-red-700">CMV {regime === 'competencia' ? '(custo do vendido)' : '(compras pagas)'}</td>
                     <td className="py-1.5 text-right font-semibold text-red-700">{formatBRL(dados.cmvTotal)}</td>
-                    <td className="py-1.5 text-right text-red-600">{pct(dados.cmvTotal, dados.totalVendas)}</td>
+                    <td className="py-1.5 text-right text-red-600">{pct(dados.cmvTotal, dados.basePercentual)}</td>
                   </tr>
                   <tr className="bg-green-50">
                     <td className="py-1.5 font-bold text-green-800 pl-3">Lucro Bruto</td>
-                    <td className="py-1.5 text-right font-bold text-green-700">{formatBRL(dados.lucroBrutoBalancete)}</td>
-                    <td className="py-1.5 text-right text-green-600">{pct(dados.lucroBrutoBalancete, dados.totalVendas)}</td>
+                    <td className="py-1.5 text-right font-bold text-green-700">{formatBRL(dados.lucroBruto)}</td>
+                    <td className="py-1.5 text-right text-green-600">{pct(dados.lucroBruto, dados.basePercentual)}</td>
                   </tr>
 
                   {/* Grupos de despesa em ordem */}
@@ -418,7 +462,7 @@ export default function IndicadoresManager() {
                       <tr key={label}>
                         <td className="py-1.5 text-slate-600">{label}</td>
                         <td className="py-1.5 text-right text-slate-700 font-semibold">{formatBRL(val)}</td>
-                        <td className="py-1.5 text-right text-slate-400">{pct(val, dados.totalVendas)}</td>
+                        <td className="py-1.5 text-right text-slate-400">{pct(val, dados.basePercentual)}</td>
                       </tr>
                     )
                   })}
@@ -427,14 +471,16 @@ export default function IndicadoresManager() {
                   <tr className="border-t border-slate-200 bg-blue-50">
                     <td className="py-1.5 font-bold text-[#1b4fd6] pl-3">EBIT</td>
                     <td className={`py-1.5 text-right font-bold ${dados.ebit >= 0 ? 'text-[#1b4fd6]' : 'text-red-600'}`}>{formatBRL(dados.ebit)}</td>
-                    <td className="py-1.5 text-right text-slate-400">{pct(dados.ebit, dados.totalVendas)}</td>
+                    <td className="py-1.5 text-right text-slate-400">{pct(dados.ebit, dados.basePercentual)}</td>
                   </tr>
 
                   {/* Lucro Líquido */}
                   <tr className={`border-t-2 border-slate-300 font-black ${dados.lucroLiquido >= 0 ? 'bg-green-50' : 'bg-red-50'}`}>
-                    <td className={`py-2 ${dados.lucroLiquido >= 0 ? 'text-green-800' : 'text-red-700'}`}>Lucro Líquido</td>
+                    <td className={`py-2 ${dados.lucroLiquido >= 0 ? 'text-green-800' : 'text-red-700'}`}>
+                      {regime === 'competencia' ? 'Resultado (Competência)' : 'Resultado (Caixa)'}
+                    </td>
                     <td className={`py-2 text-right text-lg ${dados.lucroLiquido >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(dados.lucroLiquido)}</td>
-                    <td className={`py-2 text-right ${dados.lucroLiquido >= 0 ? 'text-green-600' : 'text-red-500'}`}>{pct(dados.lucroLiquido, dados.totalVendas)}</td>
+                    <td className={`py-2 text-right ${dados.lucroLiquido >= 0 ? 'text-green-600' : 'text-red-500'}`}>{pct(dados.lucroLiquido, dados.basePercentual)}</td>
                   </tr>
                 </tbody>
               </table>
