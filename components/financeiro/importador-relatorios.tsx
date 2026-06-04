@@ -25,7 +25,7 @@ type Upload = {
 const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string; dica: string }[] = [
   { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE completo por grupo e categoria, com valores diários e total', colunaValidacao: 'tipo', dica: 'Tiny → Relatórios → Financeiro → Balancete' },
   { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato e data', colunaValidacao: 'histórico', dica: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato' },
-  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento por cliente (inclui custo e margem se disponível)', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas' },
+  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento por pedido/cliente. Use o formato com "Fonte de Receita" para ver Corporativo / Decor / Lojista', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas (selecionar colunas: Fonte de Receita, Custo, Lucro)' },
   { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebidos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Receber' },
   { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
   { tipo: 'recebimentos', titulo: 'Recebimentos', descricao: 'O que foi recebido por cliente, com juros, taxas e descontos', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Financeiro → Recebimentos' },

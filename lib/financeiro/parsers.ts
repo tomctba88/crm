@@ -98,24 +98,54 @@ export function parseFluxoCaixa(rows: unknown[][]): Array<{
 }
 
 // ─── VENDAS ──────────────────────────────────────────────────────────────────
-// Formato completo (8 col): Cliente | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
-// Formato simples  (4 col): Cliente | Valor | Frete | Total
-// O parser detecta o formato automaticamente pelo número de colunas.
+// 3 formatos aceitos (detecção automática pelo header):
+//
+// Detalhado (9 col): Pedido | Fonte de Receita | Cliente | Total Venda | Frete | Valor Vendido | Custo | Lucro | Margem
+//   → Exportar do Tiny: Relatórios → Vendas → Relatório de Vendas (com Fonte de Receita)
+//   → Popula segmento: Corporativo/Decor/Lojista
+//
+// Completo  (7 col): Cliente | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+// Simples   (4 col): Cliente | Valor | Frete | Total
 export function parseVendas(rows: unknown[][]): Array<{
   cliente: string; cnpj_cpf: string; valor: number; frete: number
   custo: number; valor_lucro: number; percentual_lucro: number; total: number; segmento: string
 }> {
   if (!rows.length) return []
   const header = (rows[0] as unknown[]).map(h => String(h || '').trim().toLowerCase())
-  const temMargem = header.some(h => h.includes('custo') || h.includes('lucro'))
+  const temFonte = header.some(h => h.includes('fonte'))
+  const temMargem = !temFonte && header.some(h => h.includes('custo') || h.includes('lucro'))
+
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
     if (!row || row.length < 3) continue
-    const clienteRaw = String(row[0] || '').trim()
-    if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
-    const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
-    if (temMargem) {
+
+    if (temFonte) {
+      // Formato detalhado: Pedido | Fonte de Receita | Cliente | Total Venda | Frete | Valor Vendido | Custo | Lucro | Margem
+      const clienteRaw = String(row[2] || '').trim()
+      if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
+      const fonteRaw = String(row[1] || '').trim().toLowerCase()
+      const segmento = fonteRaw.includes('corpo') ? 'corporativo'
+        : fonteRaw.includes('decor') ? 'decor'
+        : fonteRaw.includes('lojist') ? 'lojista' : 'outros'
+      const margemDecimal = parseNum(row[8])
+      results.push({
+        cliente, cnpj_cpf: cnpj,
+        valor: parseNum(row[5]),
+        frete: parseNum(row[4]),
+        custo: parseNum(row[6]),
+        valor_lucro: parseNum(row[7]),
+        // margem vem como decimal (0.38) ou percentual (38) — normaliza para percentual
+        percentual_lucro: margemDecimal > 0 && margemDecimal <= 1 ? margemDecimal * 100 : margemDecimal,
+        total: parseNum(row[3]),
+        segmento,
+      })
+    } else if (temMargem) {
+      // Formato completo: Cliente | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+      const clienteRaw = String(row[0] || '').trim()
+      if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
       results.push({
         cliente, cnpj_cpf: cnpj,
         valor: parseNum(row[1]),
@@ -127,14 +157,15 @@ export function parseVendas(rows: unknown[][]): Array<{
         segmento: 'outros',
       })
     } else {
-      // Formato simples: sem custo/margem
+      // Formato simples: Cliente | Valor | Frete | Total
+      const clienteRaw = String(row[0] || '').trim()
+      if (!clienteRaw || clienteRaw.toLowerCase() === 'cliente') continue
+      const { cliente, cnpj } = parseClienteCNPJ(clienteRaw)
       results.push({
         cliente, cnpj_cpf: cnpj,
         valor: parseNum(row[1]),
         frete: parseNum(row[2]),
-        custo: 0,
-        valor_lucro: 0,
-        percentual_lucro: 0,
+        custo: 0, valor_lucro: 0, percentual_lucro: 0,
         total: parseNum(row[3]),
         segmento: 'outros',
       })
