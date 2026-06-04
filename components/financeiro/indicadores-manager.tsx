@@ -10,7 +10,6 @@ type VendaItem = {
   cliente: string; cnpj_cpf: string; valor: number; frete: number
   custo: number; valor_lucro: number; percentual_lucro: number; total: number; segmento: string
 }
-type PedidoItem = { valor_total: number }
 type RecebimentoItem = { valor_recebido: number }
 
 type FiltroTipo = 'mes' | 'trimestre' | 'ano'
@@ -58,7 +57,6 @@ function getMesesAno(tipo: FiltroTipo, ano: number, mes: number): number[] {
 export default function IndicadoresManager() {
   const [balancete, setBalancete] = useState<BalanceteItem[]>([])
   const [vendasImport, setVendasImport] = useState<VendaItem[]>([])
-  const [pedidosImport, setPedidosImport] = useState<PedidoItem[]>([])
   const [recebimentosImport, setRecebimentosImport] = useState<RecebimentoItem[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<FiltroTipo>('mes')
@@ -72,15 +70,13 @@ export default function IndicadoresManager() {
   const carregar = useCallback(async () => {
     setLoading(true)
     const meses = getMesesAno(filtro, ano, mes)
-    const [{ data: bal }, { data: vd }, { data: ped }, { data: rec }] = await Promise.all([
+    const [{ data: bal }, { data: vd }, { data: rec }] = await Promise.all([
       supabase.from('fin_balancete').select('tipo,grupo,categoria,valor').eq('ano', ano).in('mes', meses),
       supabase.from('fin_vendas_import').select('cliente,cnpj_cpf,valor,frete,custo,valor_lucro,percentual_lucro,total,segmento').eq('ano', ano).in('mes', meses),
-      supabase.from('fin_pedidos_import').select('valor_total').eq('ano', ano).in('mes', meses),
       supabase.from('fin_recebimentos_import').select('valor_recebido').eq('ano', ano).in('mes', meses),
     ])
     setBalancete((bal ?? []) as BalanceteItem[])
     setVendasImport((vd ?? []) as VendaItem[])
-    setPedidosImport((ped ?? []) as PedidoItem[])
     setRecebimentosImport((rec ?? []) as RecebimentoItem[])
     setPaginaClientes(1)
     setLoading(false)
@@ -95,7 +91,9 @@ export default function IndicadoresManager() {
     // ── FATURAMENTO ──
     const totalVendas = vd.reduce((s, v) => s + v.valor, 0)
     const fretesCobrados = vd.reduce((s, v) => s + v.frete, 0)
-    const numPedidos = pedidosImport.length > 0 ? pedidosImport.length : vd.length
+    // Pedidos e ticket médio usam a mesma fonte do faturamento (relatório de Vendas)
+    // para que o ticket médio seja matematicamente coerente com o Total Vendas.
+    const numPedidos = vd.length
     const ticketMedio = numPedidos > 0 ? totalVendas / numPedidos : 0
     const lucroBrutoVendas = vd.reduce((s, v) => s + v.valor_lucro, 0)
     const margemBruta = totalVendas > 0 ? (lucroBrutoVendas / totalVendas) * 100 : 0
@@ -165,7 +163,7 @@ export default function IndicadoresManager() {
       despesasFretes, fretePagoEmpresa, fretesPctFaturamento,
       numClientes, totalRecebido,
     }
-  }, [balancete, vendasImport, pedidosImport, recebimentosImport])
+  }, [balancete, vendasImport, recebimentosImport])
 
   const clientesFiltrados = useMemo(() => {
     let r = [...vendasImport].sort((a, b) => b.valor - a.valor)
