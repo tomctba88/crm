@@ -28,6 +28,7 @@ export default function ContasPagarManager() {
   const supabase = createClient()
   const hoje = new Date()
   const [contas, setContas] = useState<Conta[]>([])
+  const [kpiTotais, setKpiTotais] = useState<{ valor: number; pago: number; status: string; vencimento: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(0)
   const [total, setTotal] = useState(0)
@@ -44,30 +45,41 @@ export default function ContasPagarManager() {
   const carregar = useCallback(async () => {
     setLoading(true)
     const hojeStr = new Date().toISOString().slice(0, 10)
-    let q = supabase.from('fin_cp_import').select(
-      'id,numero_documento,fornecedor,historico,valor,saldo,pago,vencimento,data_emissao,status',
-      { count: 'exact' }
+
+    // Função auxiliar para aplicar filtros base
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    function aplicarFiltros(q: any) {
+      if (filtroStatus === 'vencido') q = q.eq('status', 'aberto').lt('vencimento', hojeStr)
+      else if (filtroStatus !== 'todos') q = q.eq('status', filtroStatus)
+      if (filtroFornecedor) q = q.ilike('fornecedor', `%${filtroFornecedor}%`)
+      if (filtroInicio) q = q.gte('vencimento', filtroInicio)
+      if (filtroFim) q = q.lte('vencimento', filtroFim)
+      if (mesSel > 0) q = q.eq('mes', mesSel).eq('ano', anoSel)
+      return q
+    }
+
+    // Query paginada para a tabela
+    let qTabela = aplicarFiltros(
+      supabase.from('fin_cp_import').select(
+        'id,numero_documento,fornecedor,historico,valor,saldo,pago,vencimento,data_emissao,status',
+        { count: 'exact' }
+      )
+    )
+    if (viewMode === 'tabela') {
+      qTabela = qTabela.order(ordenarPor, { ascending: asc }).range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
+    } else {
+      qTabela = qTabela.order('historico').order('vencimento')
+    }
+
+    // Query sem paginação para calcular KPIs com precisão
+    const qKpi = aplicarFiltros(
+      supabase.from('fin_cp_import').select('valor,pago,status,vencimento')
     )
 
-    if (filtroStatus === 'vencido') {
-      q = q.eq('status', 'aberto').lt('vencimento', hojeStr)
-    } else if (filtroStatus !== 'todos') {
-      q = q.eq('status', filtroStatus)
-    }
-    if (filtroFornecedor) q = q.ilike('fornecedor', `%${filtroFornecedor}%`)
-    if (filtroInicio) q = q.gte('vencimento', filtroInicio)
-    if (filtroFim) q = q.lte('vencimento', filtroFim)
-    if (mesSel > 0) q = q.eq('mes', mesSel).eq('ano', anoSel)
-
-    if (viewMode === 'tabela') {
-      q = q.order(ordenarPor, { ascending: asc }).range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
-    } else {
-      q = q.order('historico').order('vencimento')
-    }
-
-    const { data, count } = await q
+    const [{ data, count }, { data: totais }] = await Promise.all([qTabela, qKpi])
     setContas((data ?? []) as Conta[])
     setTotal(count ?? 0)
+    setKpiTotais((totais ?? []) as { valor: number; pago: number; status: string; vencimento: string | null }[])
     setLoading(false)
   }, [filtroStatus, filtroFornecedor, filtroInicio, filtroFim, mesSel, anoSel, ordenarPor, asc, pagina, viewMode])
 
@@ -85,10 +97,11 @@ export default function ContasPagarManager() {
   const em30 = new Date(); em30.setDate(em30.getDate() + 30)
   const em30Str = em30.toISOString().slice(0, 10)
 
-  const totalAberto = contas.filter(c => c.status === 'aberto').reduce((s, c) => s + c.valor, 0)
-  const totalVencido = contas.filter(c => isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.valor, 0)
-  const totalPago = contas.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((s, c) => s + c.pago, 0)
-  const vence30 = contas.filter(c => c.status === 'aberto' && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.valor, 0)
+  // KPIs calculados de todos os registros (sem paginação)
+  const totalAberto = kpiTotais.filter(c => c.status === 'aberto').reduce((s, c) => s + c.valor, 0)
+  const totalVencido = kpiTotais.filter(c => isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.valor, 0)
+  const totalPago = kpiTotais.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((s, c) => s + c.pago, 0)
+  const vence30 = kpiTotais.filter(c => c.status === 'aberto' && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.valor, 0)
 
   // Agrupamento por historico (aprox. de categoria) para view categoria
   const porHistorico = contas.reduce<Record<string, { total: number; contas: Conta[] }>>((acc, c) => {

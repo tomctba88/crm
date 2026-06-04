@@ -14,11 +14,13 @@ type ContaReceber = {
   id: string; cliente: string; historico: string; valor: number
   valor_recebido: number; data_vencimento: string | null
   data_recebimento: string | null; status: string; categoria: string
+  mes?: number; ano?: number
 }
 type ContaPagar = {
   id: string; fornecedor: string; historico: string; valor: number
   valor_pago: number; data_vencimento: string | null
   data_pagamento: string | null; status: string; categoria: string
+  mes?: number; ano?: number
 }
 type VendaItem = { data_venda: string | null; valor_liquido: number; valor_estofaria: number; valor_marcenaria: number }
 type FluxoCaixaImpItem = { tipo: string; valor: number; data_inicio: string | null; mes: number; ano: number }
@@ -74,8 +76,17 @@ export default function FinanceiroDashboard() {
     const em7 = new Date(); em7.setDate(new Date().getDate() + 7)
     const em7Str = em7.toISOString().slice(0, 10)
 
-    const crAberto = contasReceber.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
-    const cpAberto = contasPagar.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inVenc(r.data_vencimento))
+    // Filtro de período para "A Receber/Pagar": usa mes/ano para evitar contar a mesma
+    // conta múltiplas vezes (ela aparece em cada importação mensal enquanto estiver aberta)
+    const inPeriodoConta = (r: ContaReceber | ContaPagar): boolean => {
+      if (filtroTipo === 'mes') return r.mes === filtroMes && r.ano === filtroAno
+      if (filtroTipo === 'ano') return r.ano === filtroAno
+      if (filtroTipo === 'custom') return inVenc(r.data_vencimento)
+      return true // 'todos': mostra tudo (pode ter duplicatas, mas é o esperado)
+    }
+
+    const crAberto = contasReceber.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inPeriodoConta(r))
+    const cpAberto = contasPagar.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inPeriodoConta(r))
 
     // Recebido/Pago: usa fluxo de caixa importado quando disponível (mais preciso)
     const recebido = fluxoCaixaImp.length > 0
@@ -106,7 +117,7 @@ export default function FinanceiroDashboard() {
       ticketMedio,
       numVendas,
     }
-  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, range])
+  }, [contasReceber, contasPagar, vendasRaw, fluxoCaixaImp, filtroTipo, filtroMes, filtroAno, range])
 
   const charts = useMemo(() => {
     const hoje = new Date()
@@ -218,8 +229,8 @@ export default function FinanceiroDashboard() {
         { data: vendasImp },
         { data: fluxoImp },
       ] = await Promise.all([
-        supabase.from('fin_cr_import').select('id,cliente,historico,valor,recebido,vencimento,status'),
-        supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,pago,vencimento,status'),
+        supabase.from('fin_cr_import').select('id,cliente,historico,valor,recebido,vencimento,status,mes,ano'),
+        supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,pago,vencimento,status,mes,ano'),
         supabase.from('fin_vendas_import').select('valor,segmento,mes,ano'),
         supabase.from('fin_fluxo_caixa_import').select('tipo,valor,data_inicio,mes,ano'),
       ])
@@ -236,6 +247,8 @@ export default function FinanceiroDashboard() {
         data_recebimento: (r.status === 'recebido' || r.status === 'parcial') ? r.vencimento : null,
         status: r.status ?? 'aberto',
         categoria: '',
+        mes: r.mes,
+        ano: r.ano,
       }))
 
       // Mapeia import CP → ContaPagar
@@ -250,6 +263,8 @@ export default function FinanceiroDashboard() {
         data_pagamento: (r.status === 'pago' || r.status === 'parcial') ? r.vencimento : null,
         status: r.status ?? 'aberto',
         categoria: '',
+        mes: r.mes,
+        ano: r.ano,
       }))
 
       // Mapeia import vendas → VendaItem
