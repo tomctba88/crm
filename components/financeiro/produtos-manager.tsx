@@ -71,6 +71,7 @@ export default function ProdutosManager() {
   const [buscaRevisao, setBuscaRevisao] = useState('')
   const [segFiltroTabela, setSegFiltroTabela] = useState<Segmento | 'todos'>('todos')
   const [periodos, setPeriodos] = useState<{ ano: number; mes: number }[]>([])
+  const [receitaOficial, setReceitaOficial] = useState<number | null>(null)
   const supabase = createClient()
 
   const salvarOverride = useCallback((produto: string, seg: Segmento | null) => {
@@ -96,6 +97,12 @@ export default function ProdutosManager() {
       : null
     const data = ((comGrupo.error ? semGrupo?.data : comGrupo.data) ?? []) as Partial<ProdutoRow>[]
     setRows(data.map(r => ({ grupo: null, ...r })) as ProdutoRow[])
+
+    // Faturamento "oficial" do período (relatório de Vendas por cliente) para
+    // conferir se o relatório de produtos cobre todas as vendas.
+    const { data: vd } = await supabase.from('fin_vendas_import')
+      .select('valor').eq('ano', ano).in('mes', meses)
+    setReceitaOficial(vd ? vd.reduce((s, r) => s + Number((r as { valor: number }).valor || 0), 0) : null)
     setLoading(false)
   }, [filtro, ano, mes])
 
@@ -399,6 +406,28 @@ export default function ProdutosManager() {
         </div>
       ) : (
         <>
+          {/* Conferência de cobertura: o relatório de produtos cobre todo o faturamento? */}
+          {receitaOficial != null && receitaOficial > 0 && (() => {
+            const cobertura = (dados.consolidado.receita / receitaOficial) * 100
+            if (cobertura >= 90) return null
+            return (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                <p className="font-bold text-red-800">⚠️ O relatório de produtos não cobre todo o faturamento</p>
+                <p className="mt-1 text-sm text-red-700">
+                  Os produtos importados somam <strong>{formatBRL(dados.consolidado.receita)}</strong>, mas o
+                  faturamento do período (relatório de Vendas por cliente) foi <strong>{formatBRL(receitaOficial)}</strong>
+                  {' '}— cobertura de apenas <strong>{formatPct(cobertura)}</strong>. A análise abaixo reflete só os
+                  produtos importados.
+                </p>
+                <p className="mt-2 text-xs text-red-600">
+                  Causa provável: o relatório <strong>Vendas por Produto</strong> foi exportado incompleto/filtrado.
+                  Reexporte o relatório completo do Tiny (confira se o total bate com {formatBRL(receitaOficial)}) e
+                  reimporte na aba Importação para {MESES[mes - 1]}/{ano}.
+                </p>
+              </div>
+            )
+          })()}
+
           {/* KPIs executivos */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard titulo="Receita total" valor={formatBRL(dados.consolidado.receita)}
