@@ -303,47 +303,75 @@ export function parseRecebimentos(rows: unknown[][]): Array<{
 }
 
 // ─── VENDAS POR PRODUTO ───────────────────────────────────────────────────────
-// Formato: Produto (grupo) | Produto | Código SKU | Quantidade | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
-// Linhas de grupo têm col[0] preenchido e col[1] vazio → guardar como grupo atual.
-// Linhas de produto têm col[0] vazio e col[1] preenchido → processar (herdam o grupo atual).
+// O Tiny exporta este relatório em dois layouts:
+//   A) Produto | Código (SKU) | Quantidade | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
+//   B) (Grupo) | Produto | Código (SKU) | Quantidade | Valor | ...  (com coluna de grupo à esquerda)
+// Por isso lemos as colunas pelo NOME do cabeçalho, não por posição fixa.
 // Custo e Lucro podem ser "-" quando o produto não tem custo cadastrado.
+// Valor/Custo/Lucro já são o total da linha (não unitários).
 export function parseVendasProdutos(rows: unknown[][]): Array<{
   produto: string; sku: string; quantidade: number; valor: number
   frete: number; custo: number; valor_lucro: number | null; percentual_lucro: number | null
   total: number; tem_custo: boolean; grupo: string | null
 }> {
+  if (!rows.length) return []
+
+  const norm = (s: unknown) => String(s || '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+  // Localiza a linha de cabeçalho (a que tem "Produto" e "Valor")
+  let headerIdx = 0
+  for (let i = 0; i < Math.min(rows.length, 8); i++) {
+    const h = (rows[i] || []).map(norm)
+    if (h.includes('produto') && h.some(c => c === 'valor')) { headerIdx = i; break }
+  }
+  const header = (rows[headerIdx] || []).map(norm)
+  const acha = (pred: (h: string) => boolean) => header.findIndex(pred)
+
+  const idxProduto = acha(h => h === 'produto')
+  const idxSku     = acha(h => h.includes('sku') || h.includes('codigo'))
+  const idxQtd     = acha(h => h.includes('quantidade') || h === 'qtd')
+  const idxValor   = acha(h => h === 'valor')
+  const idxFrete   = acha(h => h.includes('frete'))
+  const idxCusto   = acha(h => h === 'custo' || (h.includes('custo') && !h.includes('%')))
+  const idxLucro   = acha(h => h.includes('lucro') && !h.includes('%'))
+  const idxPct     = acha(h => h.includes('%'))
+  const idxTotal   = acha(h => h === 'total')
+  // Coluna de grupo (layout B): qualquer coluna à esquerda do Produto
+  const idxGrupo   = idxProduto > 0 ? idxProduto - 1 : -1
+
+  if (idxProduto < 0 || idxValor < 0) return [] // cabeçalho não reconhecido
+
+  const cel = (row: unknown[], i: number) => (i >= 0 ? String(row[i] ?? '').trim() : '')
+
   const results = []
   let grupoAtual: string | null = null
-  for (let i = 1; i < rows.length; i++) {
+  for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || row.length < 4) continue
-    const col0 = String(row[0] || '').trim()
-    const col1 = String(row[1] || '').trim()
-    // Cabeçalho de grupo: col0 preenchido, col1 vazio → memoriza e segue (forward-fill)
-    if (col0 && !col1) {
-      if (!isLinhaTotal(col0)) grupoAtual = col0
+    if (!row || row.length === 0) continue
+    const produto = cel(row, idxProduto)
+    const grupoCel = cel(row, idxGrupo)
+
+    // Layout B: linha que é só cabeçalho de grupo (grupo preenchido, produto vazio)
+    if (!produto) {
+      if (grupoCel && !isLinhaTotal(grupoCel)) grupoAtual = grupoCel
       continue
     }
-    if (!col1) continue // linha vazia
-    if (isLinhaTotal(col1)) continue // linha de total/subtotal
-    // Linha de detalhe válida precisa ter SKU OU quantidade — senão é resumo
-    const skuVal = String(row[2] || '').trim()
-    const qtdVal = parseNum(row[3])
-    if (!skuVal && qtdVal === 0) continue
-    const custoRaw = String(row[6] || '').trim()
-    const lucroRaw = String(row[7] || '').trim()
-    const pctRaw   = String(row[8] || '').trim()
-    const temCusto = custoRaw !== '-' && custoRaw !== '' && custoRaw !== '0' && parseNum(row[6]) > 0
+    if (isLinhaTotal(produto)) continue
+
+    const custoRaw = cel(row, idxCusto)
+    const lucroRaw = cel(row, idxLucro)
+    const pctRaw   = cel(row, idxPct)
+    const temCusto = custoRaw !== '-' && custoRaw !== '' && custoRaw !== '0' && parseNum(custoRaw) > 0
     results.push({
-      produto: col1,
-      sku: String(row[2] || '').trim(),
-      quantidade: parseInt(String(row[3] || '1')) || 1,
-      valor: parseNum(row[4]),
-      frete: parseNum(row[5]),
-      custo: temCusto ? parseNum(row[6]) : 0,
-      valor_lucro: lucroRaw === '-' ? null : parseNum(row[7]),
-      percentual_lucro: pctRaw === '-' ? null : parsePct(row[8]),
-      total: parseNum(row[9]),
+      produto,
+      sku: cel(row, idxSku),
+      quantidade: parseInt(cel(row, idxQtd) || '1') || 1,
+      valor: parseNum(cel(row, idxValor)),
+      frete: parseNum(cel(row, idxFrete)),
+      custo: temCusto ? parseNum(custoRaw) : 0,
+      valor_lucro: lucroRaw === '-' || lucroRaw === '' ? null : parseNum(lucroRaw),
+      percentual_lucro: pctRaw === '-' || pctRaw === '' ? null : parsePct(pctRaw),
+      total: parseNum(cel(row, idxTotal)),
       tem_custo: temCusto,
       grupo: grupoAtual,
     })
