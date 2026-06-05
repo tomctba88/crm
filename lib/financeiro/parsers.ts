@@ -222,30 +222,52 @@ export function parseContasReceber(rows: unknown[][]): Array<{
 }
 
 // ─── CONTAS A PAGAR ──────────────────────────────────────────────────────────
-// Colunas: Vencimento | Fornecedor | Histórico | Nº documento | Data emissão | Valor | Saldo | Pago
+// Colunas detectadas pelo NOME do cabeçalho (a ordem varia entre exports do Tiny).
+// Layouts já vistos:
+//   Antigo:  Vencimento | Fornecedor | Histórico | Nº documento | Data emissão | Valor | Saldo | Pago
+//   Novo:    Fornecedor | Histórico | Categoria | Nº documento | Data de emissão | Vencimento | Valor | Saldo | Pago
 export function parseContasPagar(rows: unknown[][]): Array<{
-  vencimento: string | null; fornecedor: string; historico: string
+  vencimento: string | null; fornecedor: string; historico: string; categoria: string
   numero_documento: string; data_emissao: string | null
   valor: number; saldo: number; pago: number; status: string
 }> {
+  if (!rows.length) return []
+  const header = (rows[0] as unknown[]).map(h => String(h || '').trim().toLowerCase())
+  const col = (...nomes: string[]) => header.findIndex(h => nomes.some(n => h.includes(n)))
+  // Posições por nome; -1 quando a coluna não existe no export.
+  const iVenc = col('vencimento')
+  const iForn = col('fornecedor')
+  const iHist = col('histórico', 'historico')
+  const iCat = col('categoria')
+  const iDoc = col('documento')
+  const iEmis = col('emissão', 'emissao')
+  const iValor = col('valor')
+  const iSaldo = col('saldo')
+  const iPago = col('pago')
+
+  const at = (row: unknown[], i: number) => (i >= 0 ? row[i] : '')
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
-    if (!row || row.length < 6) continue
-    const vencimento = parseDateBR(row[0])
-    if (!vencimento) continue
-    const valor = parseNum(row[5])
-    const saldo = parseNum(row[6])
-    const pago = parseNum(row[7])
+    if (!row || row.length < 4) continue
+    const fornecedor = String(at(row, iForn) || '').trim()
+    const vencimento = parseDateBR(at(row, iVenc))
+    // Linha válida precisa ter ao menos fornecedor ou vencimento (ignora cabeçalho/totais).
+    if (!fornecedor && !vencimento) continue
+    if (fornecedor.toLowerCase() === 'fornecedor' || isLinhaTotal(fornecedor)) continue
+    const valor = parseNum(at(row, iValor))
+    const saldo = parseNum(at(row, iSaldo))
+    const pago = parseNum(at(row, iPago))
     let status = 'aberto'
     if (saldo === 0 && pago > 0) status = 'pago'
     else if (pago > 0 && saldo > 0) status = 'parcial'
     results.push({
       vencimento,
-      fornecedor: String(row[1] || '').trim(),
-      historico: String(row[2] || '').trim(),
-      numero_documento: String(row[3] || '').trim(),
-      data_emissao: parseDateBR(row[4]),
+      fornecedor,
+      historico: String(at(row, iHist) || '').trim(),
+      categoria: String(at(row, iCat) || '').trim(),
+      numero_documento: String(at(row, iDoc) || '').trim(),
+      data_emissao: parseDateBR(at(row, iEmis)),
       valor, saldo, pago, status,
     })
   }

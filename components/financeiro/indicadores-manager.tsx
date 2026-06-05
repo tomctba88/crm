@@ -4,7 +4,9 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatPct } from '@/lib/financeiro/formatters'
+import { getGrupoPorCategoria, CATEGORIAS_DESPESA } from '@/lib/tiny/categorias'
 import LancamentosDrawer, { type Lancamento } from './lancamentos-drawer'
+import ConciliacaoModal from './conciliacao-modal'
 
 type BalanceteItem = { tipo: string; grupo: string; categoria: string; valor: number }
 type VendaItem = {
@@ -75,6 +77,7 @@ export default function IndicadoresManager() {
   const [paginaClientes, setPaginaClientes] = useState(1)
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
   const [contaSelecionada, setContaSelecionada] = useState<string | null>(null)
+  const [mostrarConciliacao, setMostrarConciliacao] = useState(false)
   const supabase = createClient()
 
   const carregar = useCallback(async () => {
@@ -146,7 +149,8 @@ export default function IndicadoresManager() {
     if (despesasFluxo.length > 0) {
       for (const f of despesasFluxo) {
         const cat = f.categoria || 'Sem categoria'
-        addSaida(catGrupo[cat] || 'Sem grupo', cat, f.valor)
+        // Grupo: balancete (categorias originais) → mapa do plano de contas → Sem grupo.
+        addSaida(catGrupo[cat] || getGrupoPorCategoria(cat) || 'Sem grupo', cat, f.valor)
       }
     } else {
       for (const b of bal.filter(b => b.tipo === 'saida')) {
@@ -214,11 +218,12 @@ export default function IndicadoresManager() {
     }
   }, [balancete, vendasImport, recebimentosImport, fluxo, regime])
 
-  // Contas de saída disponíveis (para mover lançamentos entre elas)
-  const contasSaida = useMemo(
-    () => Object.values(dados.gruposMap).flatMap(g => Object.keys(g.categorias)),
-    [dados.gruposMap]
-  )
+  // Contas de saída disponíveis (para mover lançamentos entre elas): as presentes
+  // nos dados + todas as categorias conhecidas do plano de contas.
+  const contasSaida = useMemo(() => {
+    const presentes = Object.values(dados.gruposMap).flatMap(g => Object.keys(g.categorias))
+    return Array.from(new Set([...presentes, ...CATEGORIAS_DESPESA])).sort((a, b) => a.localeCompare(b))
+  }, [dados.gruposMap])
 
   // Lançamentos da conta selecionada (somente despesas do fluxo daquela categoria)
   const lancamentosConta: Lancamento[] = useMemo(() => {
@@ -538,17 +543,27 @@ export default function IndicadoresManager() {
             <div className="p-6 pb-3 flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-black text-[#0b1733]">DRE Detalhado por Grupo</h2>
-                <p className="text-xs text-slate-400">Todas as saídas do Balancete agrupadas · % do Total Vendas</p>
+                <p className="text-xs text-slate-400">Saídas por categoria · clique numa conta para ver os lançamentos</p>
               </div>
-              <button
-                onClick={() => {
-                  if (expandidos.size > 0) setExpandidos(new Set())
-                  else setExpandidos(new Set(dados.gruposOrdenados.map(([g]) => g)))
-                }}
-                className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
-              >
-                {expandidos.size > 0 ? 'Recolher tudo' : 'Expandir tudo'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {filtro === 'mes' && (
+                  <button
+                    onClick={() => setMostrarConciliacao(true)}
+                    className="rounded-xl bg-[#1b4fd6] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#0b1733] transition"
+                  >
+                    Corrigir categorias via Contas a Pagar
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (expandidos.size > 0) setExpandidos(new Set())
+                    else setExpandidos(new Set(dados.gruposOrdenados.map(([g]) => g)))
+                  }}
+                  className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50"
+                >
+                  {expandidos.size > 0 ? 'Recolher tudo' : 'Expandir tudo'}
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -706,6 +721,15 @@ export default function IndicadoresManager() {
           contas={contasSaida}
           onClose={() => setContaSelecionada(null)}
           onMoved={() => { setContaSelecionada(null); carregar() }}
+        />
+      )}
+
+      {mostrarConciliacao && (
+        <ConciliacaoModal
+          mes={mes}
+          ano={ano}
+          onClose={() => setMostrarConciliacao(false)}
+          onApplied={() => { setMostrarConciliacao(false); carregar() }}
         />
       )}
     </div>
