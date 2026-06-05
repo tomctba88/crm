@@ -70,6 +70,7 @@ export default function ProdutosManager() {
   const [mostrarRevisao, setMostrarRevisao] = useState(false)
   const [buscaRevisao, setBuscaRevisao] = useState('')
   const [segFiltroTabela, setSegFiltroTabela] = useState<Segmento | 'todos'>('todos')
+  const [periodos, setPeriodos] = useState<{ ano: number; mes: number }[]>([])
   const supabase = createClient()
 
   const salvarOverride = useCallback((produto: string, seg: Segmento | null) => {
@@ -85,15 +86,39 @@ export default function ProdutosManager() {
   const carregar = useCallback(async () => {
     setLoading(true)
     const meses = getMesesAno(filtro, mes)
-    const { data } = await supabase
-      .from('fin_vendas_produtos_import')
-      .select('produto,sku,quantidade,valor,frete,custo,valor_lucro,percentual_lucro,total,tem_custo,grupo')
-      .eq('ano', ano).in('mes', meses)
-    setRows((data ?? []) as ProdutoRow[])
+    const COLS = 'produto,sku,quantidade,valor,frete,custo,valor_lucro,percentual_lucro,total,tem_custo'
+    // Tenta incluir a coluna `grupo` (mais precisa). Se a migração ainda não
+    // foi aplicada, a coluna não existe e a query falha — então refaz sem ela.
+    const comGrupo = await supabase.from('fin_vendas_produtos_import')
+      .select(`${COLS},grupo`).eq('ano', ano).in('mes', meses)
+    const semGrupo = comGrupo.error
+      ? await supabase.from('fin_vendas_produtos_import').select(COLS).eq('ano', ano).in('mes', meses)
+      : null
+    const data = ((comGrupo.error ? semGrupo?.data : comGrupo.data) ?? []) as Partial<ProdutoRow>[]
+    setRows(data.map(r => ({ grupo: null, ...r })) as ProdutoRow[])
     setLoading(false)
   }, [filtro, ano, mes])
 
   useEffect(() => { carregar() }, [carregar])
+
+  // Descobre os períodos com dados e, na primeira carga, abre no mais recente
+  // (evita a tela "zerada" quando o mês atual ainda não tem importação).
+  useEffect(() => {
+    let cancelado = false
+    async function detectarPeriodos() {
+      const { data } = await supabase.from('fin_vendas_produtos_import').select('ano,mes')
+      if (cancelado || !data || data.length === 0) return
+      const vistos = new Map<string, { ano: number; mes: number }>()
+      for (const r of data as { ano: number; mes: number }[]) vistos.set(`${r.ano}-${r.mes}`, { ano: r.ano, mes: r.mes })
+      const lista = [...vistos.values()].sort((a, b) => b.ano - a.ano || b.mes - a.mes)
+      setPeriodos(lista)
+      const recente = lista[0]
+      const temAtual = lista.some(p => p.ano === ANO_ATUAL && p.mes === MES_ATUAL)
+      if (recente && !temAtual) { setAno(recente.ano); setMes(recente.mes); setFiltro('mes') }
+    }
+    detectarPeriodos()
+    return () => { cancelado = true }
+  }, [supabase])
 
   const dados = useMemo(() => {
     // 1. Agregar por produto (nome), somando linhas do período
@@ -351,11 +376,26 @@ export default function ProdutosManager() {
         <div className="rounded-3xl border border-slate-200 bg-white p-12 text-center text-slate-400">Carregando…</div>
       ) : !temDados ? (
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center">
-          <p className="font-semibold text-amber-800">Sem dados de produtos para o período.</p>
-          <p className="mt-1 text-sm text-amber-700">
-            Importe o relatório <strong>Vendas por Produto</strong> do Tiny na aba Importação
-            (com as colunas Custo, Valor Lucro e % Lucro).
-          </p>
+          <p className="font-semibold text-amber-800">Sem dados de produtos para o período selecionado.</p>
+          {periodos.length > 0 ? (
+            <div className="mt-3">
+              <p className="text-sm text-amber-700">Períodos com dados importados — clique para abrir:</p>
+              <div className="mt-2 flex flex-wrap justify-center gap-2">
+                {periodos.map(p => (
+                  <button key={`${p.ano}-${p.mes}`}
+                    onClick={() => { setFiltro('mes'); setAno(p.ano); setMes(p.mes) }}
+                    className="rounded-lg bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-200">
+                    {MESES[p.mes - 1]}/{p.ano}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-amber-700">
+              Importe o relatório <strong>Vendas por Produto</strong> do Tiny na aba Importação
+              (com as colunas Custo, Valor Lucro e % Lucro).
+            </p>
+          )}
         </div>
       ) : (
         <>
