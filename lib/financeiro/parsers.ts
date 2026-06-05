@@ -304,22 +304,27 @@ export function parseRecebimentos(rows: unknown[][]): Array<{
 
 // ─── VENDAS POR PRODUTO ───────────────────────────────────────────────────────
 // Formato: Produto (grupo) | Produto | Código SKU | Quantidade | Valor | Frete | Custo | Valor Lucro | % Lucro | Total
-// Linhas de grupo têm col[0] preenchido e col[1] vazio → ignorar.
-// Linhas de produto têm col[0] vazio e col[1] preenchido → processar.
+// Linhas de grupo têm col[0] preenchido e col[1] vazio → guardar como grupo atual.
+// Linhas de produto têm col[0] vazio e col[1] preenchido → processar (herdam o grupo atual).
 // Custo e Lucro podem ser "-" quando o produto não tem custo cadastrado.
 export function parseVendasProdutos(rows: unknown[][]): Array<{
   produto: string; sku: string; quantidade: number; valor: number
   frete: number; custo: number; valor_lucro: number | null; percentual_lucro: number | null
-  total: number; tem_custo: boolean
+  total: number; tem_custo: boolean; grupo: string | null
 }> {
   const results = []
+  let grupoAtual: string | null = null
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
     if (!row || row.length < 4) continue
     const col0 = String(row[0] || '').trim()
     const col1 = String(row[1] || '').trim()
-    if (!col1) continue // linha de grupo ou vazia (col1 é o nome do produto no detalhe)
-    if (col0 && !col1) continue // linha de grupo sem detalhe
+    // Cabeçalho de grupo: col0 preenchido, col1 vazio → memoriza e segue (forward-fill)
+    if (col0 && !col1) {
+      if (!isLinhaTotal(col0)) grupoAtual = col0
+      continue
+    }
+    if (!col1) continue // linha vazia
     if (isLinhaTotal(col1)) continue // linha de total/subtotal
     // Linha de detalhe válida precisa ter SKU OU quantidade — senão é resumo
     const skuVal = String(row[2] || '').trim()
@@ -340,6 +345,7 @@ export function parseVendasProdutos(rows: unknown[][]): Array<{
       percentual_lucro: pctRaw === '-' ? null : parsePct(row[8]),
       total: parseNum(row[9]),
       tem_custo: temCusto,
+      grupo: grupoAtual,
     })
   }
   return results
