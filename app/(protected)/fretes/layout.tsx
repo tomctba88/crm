@@ -10,6 +10,7 @@ const abas = [
   { href: '/fretes/produtos', label: 'Produtos' },
   { href: '/fretes/transportadoras', label: 'Transportadoras' },
   { href: '/fretes/cidades', label: 'Cidades' },
+  { href: '/fretes/tabela-shopify', label: 'Tabela Shopify' },
 ]
 
 export default function FretesLayout({ children }: { children: React.ReactNode }) {
