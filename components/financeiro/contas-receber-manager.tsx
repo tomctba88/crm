@@ -29,7 +29,7 @@ export default function ContasReceberManager() {
   const supabase = createClient()
   const hoje = new Date()
   const [contas, setContas] = useState<Conta[]>([])
-  const [kpiTotais, setKpiTotais] = useState<{ valor: number; recebido: number; status: string; vencimento: string | null }[]>([])
+  const [kpiTotais, setKpiTotais] = useState<{ valor: number; saldo: number; recebido: number; status: string; vencimento: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(0)
   const [total, setTotal] = useState(0)
@@ -65,13 +65,13 @@ export default function ContasReceberManager() {
     ).order(ordenarPor, { ascending: asc }).range(pagina * POR_PAGINA, (pagina + 1) * POR_PAGINA - 1)
 
     const qKpi = aplicarFiltros(
-      supabase.from('fin_cr_import').select('valor,recebido,status,vencimento')
+      supabase.from('fin_cr_import').select('valor,saldo,recebido,status,vencimento')
     )
 
     const [{ data, count }, { data: totais }] = await Promise.all([qTabela, qKpi])
     setContas((data ?? []) as Conta[])
     setTotal(count ?? 0)
-    setKpiTotais((totais ?? []) as { valor: number; recebido: number; status: string; vencimento: string | null }[])
+    setKpiTotais((totais ?? []) as { valor: number; saldo: number; recebido: number; status: string; vencimento: string | null }[])
     setLoading(false)
   }, [filtroStatus, filtroCliente, filtroInicio, filtroFim, mesSel, anoSel, ordenarPor, asc, pagina])
 
@@ -90,11 +90,15 @@ export default function ContasReceberManager() {
   const em30Str = em30.toISOString().slice(0, 10)
 
   // KPIs calculados de todos os registros (sem paginação)
-  const totalAberto = kpiTotais.filter(c => c.status === 'aberto').reduce((s, c) => s + c.valor, 0)
-  const totalVencido = kpiTotais.filter(c => isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.valor, 0)
+  // "Em aberto/vencido" usa SALDO (o que falta receber) e ignora títulos fantasma
+  // (saldo 0) e placeholders de R$0,01.
+  const emAberto = (c: { status: string; saldo: number; valor: number }) =>
+    c.status === 'aberto' && c.saldo >= 0.01 && c.valor >= 1
+  const totalAberto = kpiTotais.filter(emAberto).reduce((s, c) => s + c.saldo, 0)
+  const totalVencido = kpiTotais.filter(c => emAberto(c) && isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.saldo, 0)
   const totalRecebido = kpiTotais.filter(c => c.status === 'recebido' || c.status === 'parcial').reduce((s, c) => s + c.recebido, 0)
-  const vence7 = kpiTotais.filter(c => c.status === 'aberto' && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em7Str).reduce((s, c) => s + c.valor, 0)
-  const vence30 = kpiTotais.filter(c => c.status === 'aberto' && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.valor, 0)
+  const vence7 = kpiTotais.filter(c => emAberto(c) && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em7Str).reduce((s, c) => s + c.saldo, 0)
+  const vence30 = kpiTotais.filter(c => emAberto(c) && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.saldo, 0)
 
   const totalPaginas = Math.ceil(total / POR_PAGINA)
 

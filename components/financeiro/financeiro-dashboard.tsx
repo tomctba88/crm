@@ -11,13 +11,13 @@ import { formatBRL, formatData, isVencido, diasParaVencer } from '@/lib/financei
 import StatusBadge from './status-badge'
 
 type ContaReceber = {
-  id: string; cliente: string; historico: string; valor: number
+  id: string; cliente: string; historico: string; valor: number; saldo: number
   valor_recebido: number; data_vencimento: string | null
   data_recebimento: string | null; status: string; categoria: string
   mes?: number; ano?: number
 }
 type ContaPagar = {
-  id: string; fornecedor: string; historico: string; valor: number
+  id: string; fornecedor: string; historico: string; valor: number; saldo: number
   valor_pago: number; data_vencimento: string | null
   data_pagamento: string | null; status: string; categoria: string
   mes?: number; ano?: number
@@ -85,8 +85,12 @@ export default function FinanceiroDashboard() {
       return true // 'todos': mostra tudo (pode ter duplicatas, mas é o esperado)
     }
 
-    const crAberto = contasReceber.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inPeriodoConta(r))
-    const cpAberto = contasPagar.filter(r => (r.status === 'aberto' || r.status === 'vencido') && inPeriodoConta(r))
+    // "Em aberto de verdade": exclui títulos fantasma (saldo 0 = nada a pagar/receber,
+    // ex.: cancelados/baixados sem pagamento) e placeholders de R$0,01.
+    const emAberto = (r: ContaReceber | ContaPagar) =>
+      (r.status === 'aberto' || r.status === 'vencido') && r.saldo >= 0.01 && r.valor >= 1
+    const crAberto = contasReceber.filter(r => emAberto(r) && inPeriodoConta(r))
+    const cpAberto = contasPagar.filter(r => emAberto(r) && inPeriodoConta(r))
 
     // Recebido/Pago: usa fluxo de caixa importado quando disponível (mais preciso)
     const recebido = fluxoCaixaImp.length > 0
@@ -104,14 +108,15 @@ export default function FinanceiroDashboard() {
     const ticketMedio = numVendas > 0 ? faturamento / numVendas : 0
 
     return {
-      totalReceber: crAberto.reduce((s, r) => s + r.valor, 0),
-      totalPagar: cpAberto.reduce((s, r) => s + r.valor, 0),
+      // "A Receber/A Pagar" = SALDO em aberto (o que falta), não o valor de face.
+      totalReceber: crAberto.reduce((s, r) => s + r.saldo, 0),
+      totalPagar: cpAberto.reduce((s, r) => s + r.saldo, 0),
       recebido,
       pago,
-      vencidosReceber: crAberto.filter(r => isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.valor, 0),
-      vencidosPagar: cpAberto.filter(r => isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.valor, 0),
-      vence7Receber: crAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
-      vence7Pagar: cpAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.valor, 0),
+      vencidosReceber: crAberto.filter(r => isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.saldo, 0),
+      vencidosPagar: cpAberto.filter(r => isVencido(r.data_vencimento, r.status)).reduce((s, r) => s + r.saldo, 0),
+      vence7Receber: crAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.saldo, 0),
+      vence7Pagar: cpAberto.filter(r => r.data_vencimento && r.data_vencimento >= hoje && r.data_vencimento <= em7Str).reduce((s, r) => s + r.saldo, 0),
       resultado: recebido - pago,
       faturamento,
       ticketMedio,
@@ -189,13 +194,16 @@ export default function FinanceiroDashboard() {
       return true
     }
 
-    // Pizza contas a receber por status
-    const crFiltradas = contasReceber.filter(r => r.status === 'aberto' && inPeriodoGrafico(r) && inVenc(r.data_vencimento))
+    // Em aberto de verdade (exclui fantasmas saldo 0 e placeholders R$0,01)
+    const aberto = (r: ContaReceber | ContaPagar) => r.status === 'aberto' && r.saldo >= 0.01 && r.valor >= 1
+
+    // Pizza contas a receber por status (por saldo em aberto)
+    const crFiltradas = contasReceber.filter(r => aberto(r) && inPeriodoGrafico(r) && inVenc(r.data_vencimento))
     let emDia = 0, vencidas = 0
     const hoje2 = new Date().toISOString().slice(0, 10)
     for (const r of crFiltradas) {
-      if (r.data_vencimento && r.data_vencimento < hoje2) vencidas += r.valor
-      else emDia += r.valor
+      if (r.data_vencimento && r.data_vencimento < hoje2) vencidas += r.saldo
+      else emDia += r.saldo
     }
     const statusPizza = [
       { name: 'Em dia', value: emDia, color: '#1b4fd6' },
@@ -206,11 +214,11 @@ export default function FinanceiroDashboard() {
     const em30Str = new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10)
     const hojeStr = new Date().toISOString().slice(0, 10)
     const crOpen = contasReceber.filter(r =>
-      r.status === 'aberto' && r.data_vencimento && inPeriodoGrafico(r) &&
+      aberto(r) && r.data_vencimento && inPeriodoGrafico(r) &&
       (filtroTipo === 'todos' ? r.data_vencimento <= em30Str : inVenc(r.data_vencimento))
     )
     const cpOpen = contasPagar.filter(r =>
-      r.status === 'aberto' && r.data_vencimento && inPeriodoGrafico(r) &&
+      aberto(r) && r.data_vencimento && inPeriodoGrafico(r) &&
       (filtroTipo === 'todos' ? r.data_vencimento <= em30Str : inVenc(r.data_vencimento))
     )
     const vencimentos = [
@@ -237,8 +245,8 @@ export default function FinanceiroDashboard() {
         { data: vendasImp },
         { data: fluxoImp },
       ] = await Promise.all([
-        supabase.from('fin_cr_import').select('id,cliente,historico,valor,recebido,vencimento,status,mes,ano'),
-        supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,pago,vencimento,status,mes,ano'),
+        supabase.from('fin_cr_import').select('id,cliente,historico,valor,saldo,recebido,vencimento,status,mes,ano'),
+        supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,saldo,pago,vencimento,status,mes,ano'),
         supabase.from('fin_vendas_import').select('valor,segmento,mes,ano'),
         supabase.from('fin_fluxo_caixa_import').select('tipo,valor,data_inicio,mes,ano'),
       ])
@@ -250,6 +258,7 @@ export default function FinanceiroDashboard() {
         cliente: r.cliente ?? '',
         historico: r.historico ?? '',
         valor: r.valor ?? 0,
+        saldo: r.saldo ?? 0,
         valor_recebido: r.recebido ?? 0,
         data_vencimento: r.vencimento ?? null,
         data_recebimento: (r.status === 'recebido' || r.status === 'parcial') ? r.vencimento : null,
@@ -266,6 +275,7 @@ export default function FinanceiroDashboard() {
         fornecedor: r.fornecedor ?? '',
         historico: r.historico ?? '',
         valor: r.valor ?? 0,
+        saldo: r.saldo ?? 0,
         valor_pago: r.pago ?? 0,
         data_vencimento: r.vencimento ?? null,
         data_pagamento: (r.status === 'pago' || r.status === 'parcial') ? r.vencimento : null,
@@ -567,7 +577,7 @@ export default function FinanceiroDashboard() {
                             <span>{v.data_vencimento ? formatData(v.data_vencimento) : '—'}</span>
                             {dias !== null && dias <= 3 && <span className="ml-1 text-xs text-red-500">({dias}d)</span>}
                           </td>
-                          <td className="py-2 text-right font-bold text-[#0b1733]">{formatBRL(v.valor)}</td>
+                          <td className="py-2 text-right font-bold text-[#0b1733]">{formatBRL(v.saldo)}</td>
                         </tr>
                       )
                     })}

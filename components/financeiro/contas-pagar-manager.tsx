@@ -28,7 +28,7 @@ export default function ContasPagarManager() {
   const supabase = createClient()
   const hoje = new Date()
   const [contas, setContas] = useState<Conta[]>([])
-  const [kpiTotais, setKpiTotais] = useState<{ valor: number; pago: number; status: string; vencimento: string | null }[]>([])
+  const [kpiTotais, setKpiTotais] = useState<{ valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(0)
   const [total, setTotal] = useState(0)
@@ -73,13 +73,13 @@ export default function ContasPagarManager() {
 
     // Query sem paginação para calcular KPIs com precisão
     const qKpi = aplicarFiltros(
-      supabase.from('fin_cp_import').select('valor,pago,status,vencimento')
+      supabase.from('fin_cp_import').select('valor,saldo,pago,status,vencimento')
     )
 
     const [{ data, count }, { data: totais }] = await Promise.all([qTabela, qKpi])
     setContas((data ?? []) as Conta[])
     setTotal(count ?? 0)
-    setKpiTotais((totais ?? []) as { valor: number; pago: number; status: string; vencimento: string | null }[])
+    setKpiTotais((totais ?? []) as { valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[])
     setLoading(false)
   }, [filtroStatus, filtroFornecedor, filtroInicio, filtroFim, mesSel, anoSel, ordenarPor, asc, pagina, viewMode])
 
@@ -97,11 +97,15 @@ export default function ContasPagarManager() {
   const em30 = new Date(); em30.setDate(em30.getDate() + 30)
   const em30Str = em30.toISOString().slice(0, 10)
 
-  // KPIs calculados de todos os registros (sem paginação)
-  const totalAberto = kpiTotais.filter(c => c.status === 'aberto').reduce((s, c) => s + c.valor, 0)
-  const totalVencido = kpiTotais.filter(c => isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.valor, 0)
+  // KPIs calculados de todos os registros (sem paginação).
+  // "Em aberto/vencido" usa SALDO (o que falta pagar) e ignora títulos fantasma
+  // (saldo 0 = cancelado/baixado) e placeholders de R$0,01.
+  const emAberto = (c: { status: string; saldo: number; valor: number }) =>
+    c.status === 'aberto' && c.saldo >= 0.01 && c.valor >= 1
+  const totalAberto = kpiTotais.filter(emAberto).reduce((s, c) => s + c.saldo, 0)
+  const totalVencido = kpiTotais.filter(c => emAberto(c) && isVencido(c.vencimento, c.status)).reduce((s, c) => s + c.saldo, 0)
   const totalPago = kpiTotais.filter(c => c.status === 'pago' || c.status === 'parcial').reduce((s, c) => s + c.pago, 0)
-  const vence30 = kpiTotais.filter(c => c.status === 'aberto' && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.valor, 0)
+  const vence30 = kpiTotais.filter(c => emAberto(c) && c.vencimento && c.vencimento >= hojeStr && c.vencimento <= em30Str).reduce((s, c) => s + c.saldo, 0)
 
   // Agrupamento por historico (aprox. de categoria) para view categoria
   const porHistorico = contas.reduce<Record<string, { total: number; contas: Conta[] }>>((acc, c) => {
