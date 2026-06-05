@@ -28,7 +28,7 @@ export default function ContasPagarManager() {
   const supabase = createClient()
   const hoje = new Date()
   const [contas, setContas] = useState<Conta[]>([])
-  const [kpiTotais, setKpiTotais] = useState<{ valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[]>([])
+  const [kpiTotais, setKpiTotais] = useState<{ id: string; fornecedor: string; historico: string; valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [pagina, setPagina] = useState(0)
   const [total, setTotal] = useState(0)
@@ -41,6 +41,7 @@ export default function ContasPagarManager() {
   const [ordenarPor, setOrdenarPor] = useState<'vencimento' | 'valor' | 'fornecedor'>('vencimento')
   const [asc, setAsc] = useState(true)
   const [viewMode, setViewMode] = useState<'tabela' | 'categoria'>('tabela')
+  const [mostrarDup, setMostrarDup] = useState(false)
 
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -73,13 +74,13 @@ export default function ContasPagarManager() {
 
     // Query sem paginação para calcular KPIs com precisão
     const qKpi = aplicarFiltros(
-      supabase.from('fin_cp_import').select('valor,saldo,pago,status,vencimento')
+      supabase.from('fin_cp_import').select('id,fornecedor,historico,valor,saldo,pago,status,vencimento')
     )
 
     const [{ data, count }, { data: totais }] = await Promise.all([qTabela, qKpi])
     setContas((data ?? []) as Conta[])
     setTotal(count ?? 0)
-    setKpiTotais((totais ?? []) as { valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[])
+    setKpiTotais((totais ?? []) as { id: string; fornecedor: string; historico: string; valor: number; saldo: number; pago: number; status: string; vencimento: string | null }[])
     setLoading(false)
   }, [filtroStatus, filtroFornecedor, filtroInicio, filtroFim, mesSel, anoSel, ordenarPor, asc, pagina, viewMode])
 
@@ -119,6 +120,19 @@ export default function ContasPagarManager() {
 
   const totalPaginas = Math.ceil(total / POR_PAGINA)
 
+  // Possíveis duplicatas: títulos EM ABERTO (de verdade) com mesmo fornecedor + valor
+  // + vencimento. É um aviso de revisão — pode haver casos legítimos (parcelas, ordens
+  // diferentes), então não removemos nada automaticamente.
+  const gruposDup = kpiTotais.filter(emAberto).reduce<Record<string, typeof kpiTotais>>((acc, c) => {
+    const k = `${(c.fornecedor || '').trim().toLowerCase()}|${c.valor.toFixed(2)}|${c.vencimento ?? ''}`
+    ;(acc[k] ||= []).push(c)
+    return acc
+  }, {})
+  const duplicatas = Object.values(gruposDup)
+    .filter(g => g.length > 1)
+    .sort((a, b) => b[0].valor * b.length - a[0].valor * a.length)
+  const totalDuplicado = duplicatas.reduce((s, g) => s + g[0].valor * (g.length - 1), 0)
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -143,6 +157,44 @@ export default function ContasPagarManager() {
           </div>
         ))}
       </div>
+
+      {/* Aviso de possíveis duplicatas */}
+      {duplicatas.length > 0 && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+          <button onClick={() => setMostrarDup(v => !v)} className="flex w-full items-center justify-between gap-3 text-left">
+            <div>
+              <p className="text-sm font-black text-orange-700">
+                ⚠️ {duplicatas.length} possível(is) duplicata(s) em aberto
+              </p>
+              <p className="text-xs text-orange-600">
+                Mesmo fornecedor, valor e vencimento · ~{formatBRL(totalDuplicado)} em cópias.
+                Revise no Tiny — alguns podem ser legítimos (parcelas, ordens diferentes).
+              </p>
+            </div>
+            <span className="shrink-0 rounded-lg border border-orange-300 px-2 py-1 text-xs font-semibold text-orange-700">
+              {mostrarDup ? 'Ocultar' : 'Ver lista'}
+            </span>
+          </button>
+          {mostrarDup && (
+            <div className="mt-3 space-y-2">
+              {duplicatas.map((g, i) => (
+                <div key={i} className="rounded-xl border border-orange-200 bg-white p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-[#0b1733]">{g[0].fornecedor || '—'}</p>
+                    <p className="text-sm font-black text-red-600">{formatBRL(g[0].valor)} · {g.length}×</p>
+                  </div>
+                  <p className="text-[11px] text-slate-400">venc {g[0].vencimento ? formatData(g[0].vencimento) : '—'}</p>
+                  <ul className="mt-1 space-y-0.5">
+                    {g.map((c, j) => (
+                      <li key={j} className="text-xs text-slate-600 truncate">• {c.historico || 'sem histórico'}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtro mes/ano + filtros adicionais */}
       <div className="space-y-3 rounded-2xl bg-white p-4 shadow-sm border border-slate-200">
