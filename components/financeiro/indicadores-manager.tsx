@@ -38,7 +38,7 @@ function getResultadoLabel(grupo: string): string {
   if (g.includes('custo')) return 'CMV'
   if (g.includes('sócios') || g.includes('socios')) return 'Salários Sócios'
   if (g.includes('financeira')) return 'Despesas Financeiras'
-  if (g.includes('operacional')) return 'Despesas Operacionais'
+  if (g.includes('operacion')) return 'Despesas Operacionais' // pega "operacional" e "operacionais"
   if (g.includes('trabalhista')) return 'Despesas Trabalhistas'
   if (g.includes('tributária') || g.includes('tributaria')) return 'Despesas Tributárias'
   if (g.includes('imobilizado')) return 'Imobilizado'
@@ -131,12 +131,12 @@ export default function IndicadoresManager() {
     // lançamentos do fluxo no DRE quando recalculamos a partir dele.
     const catGrupo: Record<string, string> = {}
     for (const b of bal.filter(b => b.tipo === 'saida')) {
-      if (b.categoria) catGrupo[b.categoria] = b.grupo || 'Sem grupo'
+      if (b.categoria) catGrupo[b.categoria] = b.grupo || 'Sem Grupo'
     }
 
     const gruposMap: Record<string, { categorias: Record<string, number>; total: number; isCusto: boolean }> = {}
     const addSaida = (grupoRaw: string, catRaw: string, valor: number) => {
-      const g = grupoRaw || 'Sem grupo'
+      const g = grupoRaw || 'Sem Grupo'
       if (!gruposMap[g]) gruposMap[g] = { categorias: {}, total: 0, isCusto: g.toLowerCase().includes('custo') }
       const cat = catRaw || 'Sem categoria'
       gruposMap[g].categorias[cat] = (gruposMap[g].categorias[cat] || 0) + valor
@@ -150,11 +150,11 @@ export default function IndicadoresManager() {
       for (const f of despesasFluxo) {
         const cat = f.categoria || 'Sem categoria'
         // Grupo: balancete (categorias originais) → mapa do plano de contas → Sem grupo.
-        addSaida(catGrupo[cat] || getGrupoPorCategoria(cat) || 'Sem grupo', cat, f.valor)
+        addSaida(catGrupo[cat] || getGrupoPorCategoria(cat) || 'Sem Grupo', cat, f.valor)
       }
     } else {
       for (const b of bal.filter(b => b.tipo === 'saida')) {
-        addSaida(b.grupo || 'Sem grupo', b.categoria || 'Sem categoria', b.valor)
+        addSaida(b.grupo || 'Sem Grupo', b.categoria || 'Sem categoria', b.valor)
       }
     }
 
