@@ -300,6 +300,11 @@ export default function ImportadorRelatorios() {
                   <p className="font-black text-[#0b1733]">{card.titulo}</p>
                   <p className="text-xs text-slate-400 mt-0.5">{card.descricao}</p>
                   <p className="text-[10px] text-slate-300 mt-1 italic">{card.dica}</p>
+                  {card.tipo === 'fluxo_caixa' && (
+                    <p className="text-[10px] text-orange-500 mt-1 font-semibold">
+                      ⚠ Reimportar este mês sobrescreve reclassificações manuais de lançamentos feitas nos Indicadores.
+                    </p>
+                  )}
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap ${
                   ultima ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'

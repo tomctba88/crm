@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/browser-client'
 import { formatBRL, formatPct } from '@/lib/financeiro/formatters'
+import LancamentosDrawer, { type Lancamento } from './lancamentos-drawer'
 
 type BalanceteItem = { tipo: string; grupo: string; categoria: string; valor: number }
 type VendaItem = {
@@ -11,6 +12,10 @@ type VendaItem = {
   custo: number; valor_lucro: number; percentual_lucro: number; total: number; segmento: string
 }
 type RecebimentoItem = { valor_recebido: number }
+type FluxoItem = {
+  id: string | number; tipo: string; grupo: string; categoria: string
+  periodo_label: string; data_inicio: string | null; valor: number
+}
 
 type FiltroTipo = 'mes' | 'trimestre' | 'ano'
 
@@ -60,6 +65,7 @@ export default function IndicadoresManager() {
   const [balancete, setBalancete] = useState<BalanceteItem[]>([])
   const [vendasImport, setVendasImport] = useState<VendaItem[]>([])
   const [recebimentosImport, setRecebimentosImport] = useState<RecebimentoItem[]>([])
+  const [fluxo, setFluxo] = useState<FluxoItem[]>([])
   const [loading, setLoading] = useState(true)
   const [regime, setRegime] = useState<Regime>('competencia')
   const [filtro, setFiltro] = useState<FiltroTipo>('mes')
@@ -68,19 +74,22 @@ export default function IndicadoresManager() {
   const [filtroBusca, setFiltroBusca] = useState('')
   const [paginaClientes, setPaginaClientes] = useState(1)
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set())
+  const [contaSelecionada, setContaSelecionada] = useState<string | null>(null)
   const supabase = createClient()
 
   const carregar = useCallback(async () => {
     setLoading(true)
     const meses = getMesesAno(filtro, ano, mes)
-    const [{ data: bal }, { data: vd }, { data: rec }] = await Promise.all([
+    const [{ data: bal }, { data: vd }, { data: rec }, { data: fx }] = await Promise.all([
       supabase.from('fin_balancete').select('tipo,grupo,categoria,valor').eq('ano', ano).in('mes', meses),
       supabase.from('fin_vendas_import').select('cliente,cnpj_cpf,valor,frete,custo,valor_lucro,percentual_lucro,total,segmento').eq('ano', ano).in('mes', meses),
       supabase.from('fin_recebimentos_import').select('valor_recebido').eq('ano', ano).in('mes', meses),
+      supabase.from('fin_fluxo_caixa_import').select('id,tipo,grupo,categoria,periodo_label,data_inicio,valor').eq('ano', ano).in('mes', meses),
     ])
     setBalancete((bal ?? []) as BalanceteItem[])
     setVendasImport((vd ?? []) as VendaItem[])
     setRecebimentosImport((rec ?? []) as RecebimentoItem[])
+    setFluxo((fx ?? []) as FluxoItem[])
     setPaginaClientes(1)
     setLoading(false)
   }, [filtro, ano, mes])
@@ -111,15 +120,38 @@ export default function IndicadoresManager() {
       return { segmento: seg, label: SEGMENTO_LABEL[seg], total, lucro, margem, cor: SEGMENTO_COR[seg] }
     }).filter(s => s.total > 0)
 
-    // ── BALANCETE: agrupado por grupo/categoria ──
+    // ── SAÍDAS: agrupado por grupo/categoria ──
+    // Entradas continuam vindo do balancete.
     const totalEntradas = bal.filter(b => b.tipo === 'entrada').reduce((s, b) => s + b.valor, 0)
-    const gruposMap: Record<string, { categorias: Record<string, number>; total: number; isCusto: boolean }> = {}
+
+    // Mapa categoria → grupo derivado do balancete (saída). Usado para classificar os
+    // lançamentos do fluxo no DRE quando recalculamos a partir dele.
+    const catGrupo: Record<string, string> = {}
     for (const b of bal.filter(b => b.tipo === 'saida')) {
-      const g = b.grupo || 'Sem grupo'
+      if (b.categoria) catGrupo[b.categoria] = b.grupo || 'Sem grupo'
+    }
+
+    const gruposMap: Record<string, { categorias: Record<string, number>; total: number; isCusto: boolean }> = {}
+    const addSaida = (grupoRaw: string, catRaw: string, valor: number) => {
+      const g = grupoRaw || 'Sem grupo'
       if (!gruposMap[g]) gruposMap[g] = { categorias: {}, total: 0, isCusto: g.toLowerCase().includes('custo') }
-      const cat = b.categoria || 'Sem categoria'
-      gruposMap[g].categorias[cat] = (gruposMap[g].categorias[cat] || 0) + b.valor
-      gruposMap[g].total += b.valor
+      const cat = catRaw || 'Sem categoria'
+      gruposMap[g].categorias[cat] = (gruposMap[g].categorias[cat] || 0) + valor
+      gruposMap[g].total += valor
+    }
+
+    // Fonte das saídas: fluxo de caixa (lançamento a lançamento, editável). Se não houver
+    // lançamentos de fluxo no período, cai para o balancete agregado (meses antigos).
+    const despesasFluxo = fluxo.filter(f => f.tipo === 'despesa')
+    if (despesasFluxo.length > 0) {
+      for (const f of despesasFluxo) {
+        const cat = f.categoria || 'Sem categoria'
+        addSaida(catGrupo[cat] || 'Sem grupo', cat, f.valor)
+      }
+    } else {
+      for (const b of bal.filter(b => b.tipo === 'saida')) {
+        addSaida(b.grupo || 'Sem grupo', b.categoria || 'Sem categoria', b.valor)
+      }
     }
 
     // ── RESULTADO DO MÊS: agrupa grupos no painel de resultado ──
@@ -180,7 +212,21 @@ export default function IndicadoresManager() {
       despesasFretes, fretePagoEmpresa, fretesPctFaturamento,
       numClientes, totalRecebido,
     }
-  }, [balancete, vendasImport, recebimentosImport, regime])
+  }, [balancete, vendasImport, recebimentosImport, fluxo, regime])
+
+  // Contas de saída disponíveis (para mover lançamentos entre elas)
+  const contasSaida = useMemo(
+    () => Object.values(dados.gruposMap).flatMap(g => Object.keys(g.categorias)),
+    [dados.gruposMap]
+  )
+
+  // Lançamentos da conta selecionada (somente despesas do fluxo daquela categoria)
+  const lancamentosConta: Lancamento[] = useMemo(() => {
+    if (!contaSelecionada) return []
+    return fluxo
+      .filter(f => f.tipo === 'despesa' && (f.categoria || 'Sem categoria') === contaSelecionada)
+      .map(f => ({ id: f.id, data_inicio: f.data_inicio, periodo_label: f.periodo_label, grupo: f.grupo, valor: f.valor }))
+  }, [fluxo, contaSelecionada])
 
   const clientesFiltrados = useMemo(() => {
     let r = [...vendasImport].sort((a, b) => b.valor - a.valor)
@@ -532,8 +578,13 @@ export default function IndicadoresManager() {
                         <td className={`px-4 py-3 text-right font-bold ${isCusto ? 'text-red-600' : 'text-slate-600'}`}>{pct(gDados.total, dados.totalVendas)}</td>
                       </tr>,
                       ...(isExpanded ? cats.map(([cat, val]) => (
-                        <tr key={`c-${grupo}-${cat}`} className="border-b border-slate-50 hover:bg-slate-50">
-                          <td className="px-6 py-2 pl-12 text-slate-600">{cat}</td>
+                        <tr key={`c-${grupo}-${cat}`}
+                          onClick={() => setContaSelecionada(cat)}
+                          className="border-b border-slate-50 hover:bg-[#eef3fb] cursor-pointer group/cat">
+                          <td className="px-6 py-2 pl-12 text-slate-600">
+                            {cat}
+                            <span className="ml-2 text-[10px] font-semibold text-[#1b4fd6] opacity-0 group-hover/cat:opacity-100 transition">ver lançamentos →</span>
+                          </td>
                           <td className="px-4 py-2 text-right text-slate-700">{formatBRL(val)}</td>
                           <td className="px-4 py-2 text-right text-slate-400 text-xs">{pct(val, dados.totalVendas)}</td>
                         </tr>
@@ -646,6 +697,16 @@ export default function IndicadoresManager() {
             )}
           </div>
         </>
+      )}
+
+      {contaSelecionada && (
+        <LancamentosDrawer
+          categoria={contaSelecionada}
+          lancamentos={lancamentosConta}
+          contas={contasSaida}
+          onClose={() => setContaSelecionada(null)}
+          onMoved={() => { setContaSelecionada(null); carregar() }}
+        />
       )}
     </div>
   )
