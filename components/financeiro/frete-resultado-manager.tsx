@@ -25,13 +25,15 @@ function getMesesAno(tipo: FiltroTipo, mes: number): number[] {
   return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 }
 
-type VendaRow = { mes: number; valor: number; frete: number }
+type VendaRow = { mes: number; valor: number; frete: number; total: number }
 type ContaRow = { mes: number; categoria: string; valor: number; tipo: string }
+type RecebimentoRow = { mes: number; valor_recebido: number }
 
 export default function FreteResultadoManager() {
   const [vendas, setVendas] = useState<VendaRow[]>([])
   const [balancete, setBalancete] = useState<ContaRow[]>([])
   const [fluxo, setFluxo] = useState<ContaRow[]>([])
+  const [recebimentos, setRecebimentos] = useState<RecebimentoRow[]>([])
   const [loading, setLoading] = useState(true)
   const [filtro, setFiltro] = useState<FiltroTipo>('mes')
   const [ano, setAno] = useState(ANO_ATUAL)
@@ -43,14 +45,16 @@ export default function FreteResultadoManager() {
   const carregar = useCallback(async () => {
     setLoading(true)
     // Carrega o ano inteiro (para a tendência mensal); o período só filtra a visão
-    const [{ data: vd }, { data: bal }, { data: fx }] = await Promise.all([
-      supabase.from('fin_vendas_import').select('mes,valor,frete').eq('ano', ano),
+    const [{ data: vd }, { data: bal }, { data: fx }, { data: rec }] = await Promise.all([
+      supabase.from('fin_vendas_import').select('mes,valor,frete,total').eq('ano', ano),
       supabase.from('fin_balancete').select('mes,categoria,valor,tipo').eq('ano', ano).ilike('categoria', '%frete%'),
       supabase.from('fin_fluxo_caixa_import').select('mes,categoria,valor,tipo').eq('ano', ano).ilike('categoria', '%frete%'),
+      supabase.from('fin_recebimentos_import').select('mes,valor_recebido').eq('ano', ano),
     ])
     setVendas((vd ?? []) as VendaRow[])
     setBalancete((bal ?? []) as ContaRow[])
     setFluxo((fx ?? []) as ContaRow[])
+    setRecebimentos((rec ?? []) as RecebimentoRow[])
     setLoading(false)
   }, [ano])
 
@@ -83,17 +87,46 @@ export default function FreteResultadoManager() {
     return m
   }, [balancete, fluxo, regime])
 
-  const cobradoPorMes = useMemo(() => {
-    const m: Record<number, number> = {}
-    for (const r of vendas) m[r.mes] = (m[r.mes] ?? 0) + Number(r.frete || 0)
-    return m
+  // Fração do faturamento que é frete (frete / total faturado) — usada para
+  // estimar o frete recebido no regime de caixa.
+  const freteShare = useMemo(() => {
+    let frete = 0, base = 0
+    for (const r of vendas) {
+      frete += Number(r.frete || 0)
+      base += Number(r.total || 0) || (Number(r.valor || 0) + Number(r.frete || 0))
+    }
+    return base > 0 ? frete / base : 0
   }, [vendas])
 
+  const recebidoPorMes = useMemo(() => {
+    const m: Record<number, number> = {}
+    for (const r of recebimentos) m[r.mes] = (m[r.mes] ?? 0) + Number(r.valor_recebido || 0)
+    return m
+  }, [recebimentos])
+
+  // Frete cobrado por mês conforme o regime:
+  //  - competência: frete faturado nas vendas
+  //  - caixa: frete proporcional ao que foi efetivamente recebido dos clientes
+  const cobradoPorMes = useMemo(() => {
+    const m: Record<number, number> = {}
+    if (regime === 'competencia') {
+      for (const r of vendas) m[r.mes] = (m[r.mes] ?? 0) + Number(r.frete || 0)
+    } else {
+      for (const mes of Object.keys(recebidoPorMes).map(Number)) m[mes] = recebidoPorMes[mes] * freteShare
+    }
+    return m
+  }, [vendas, regime, recebidoPorMes, freteShare])
+
+  // Receita-base do impacto na margem: faturado (competência) ou recebido (caixa)
   const receitaPorMes = useMemo(() => {
     const m: Record<number, number> = {}
-    for (const r of vendas) m[r.mes] = (m[r.mes] ?? 0) + Number(r.valor || 0)
+    if (regime === 'competencia') {
+      for (const r of vendas) m[r.mes] = (m[r.mes] ?? 0) + Number(r.valor || 0)
+    } else {
+      for (const mes of Object.keys(recebidoPorMes).map(Number)) m[mes] = recebidoPorMes[mes]
+    }
     return m
-  }, [vendas])
+  }, [vendas, regime, recebidoPorMes])
 
   // Agregados do período selecionado
   const dados = useMemo(() => {
@@ -153,7 +186,7 @@ export default function FreteResultadoManager() {
               {t === 'mes' ? 'Mês' : t === 'trimestre' ? 'Trimestre' : 'Ano'}
             </button>
           ))}
-          <span className="ml-4 shrink-0 text-xs font-semibold text-slate-500">Frete pago por:</span>
+          <span className="ml-4 shrink-0 text-xs font-semibold text-slate-500">Regime:</span>
           {(['competencia', 'caixa'] as Regime[]).map(r => (
             <button key={r} onClick={() => setRegime(r)}
               className={`rounded-xl px-4 py-1.5 text-sm font-semibold transition ${
@@ -187,9 +220,8 @@ export default function FreteResultadoManager() {
         )}
         <p className="text-xs text-slate-400">
           {regime === 'competencia'
-            ? 'Frete pago = despesa "Fretes e Carretos" do DRE (regime de competência).'
-            : 'Frete pago = saídas de caixa em "Fretes e Carretos" (regime de caixa).'}
-          {' '}Frete cobrado = soma do frete das vendas do período.
+            ? 'Competência: frete cobrado = frete faturado nas vendas · frete pago = despesa "Fretes e Carretos" do DRE.'
+            : `Caixa: frete cobrado = estimado pelo recebido dos clientes × ${formatPct(freteShare * 100)} (fração de frete no faturamento) · frete pago = saídas de caixa em "Fretes e Carretos".`}
         </p>
       </div>
 
@@ -207,7 +239,7 @@ export default function FreteResultadoManager() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Frete cobrado</p>
               <p className="mt-1 text-2xl font-bold text-[#1b4fd6]">{formatBRL(dados.cobrado)}</p>
-              <p className="mt-0.5 text-xs text-slate-500">Recebido dos clientes nas vendas</p>
+              <p className="mt-0.5 text-xs text-slate-500">{regime === 'competencia' ? 'Frete faturado nas vendas' : 'Estimado pelo recebido dos clientes'}</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Frete pago</p>
