@@ -7,6 +7,7 @@ const abas = [
   { href: '/financeiro', label: 'Dashboard', exact: true },
   { href: '/financeiro/indicadores', label: 'Indicadores' },
   { href: '/financeiro/produtos', label: 'Produtos' },
+  { href: '/financeiro/frete', label: 'Frete' },
   { href: '/financeiro/contas-receber', label: 'Contas a Receber' },
   { href: '/financeiro/contas-pagar', label: 'Contas a Pagar' },
   { href: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa' },
