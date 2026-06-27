@@ -23,15 +23,43 @@ type Upload = {
   importado_em: string
 }
 
-const CARDS: { tipo: Tipo; titulo: string; descricao: string; colunaValidacao: string; dica: string }[] = [
-  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE completo por grupo e categoria, com valores diários e total', colunaValidacao: 'tipo', dica: 'Tiny → Relatórios → Financeiro → Balancete' },
-  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato e data', colunaValidacao: 'histórico', dica: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato' },
-  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento por pedido/cliente. Use o formato com "Fonte de Receita" para ver Corporativo / Decor / Lojista', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas (selecionar colunas: Fonte de Receita, Custo, Lucro)' },
-  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebidos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Receber' },
-  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagos com vencimentos', colunaValidacao: 'vencimento', dica: 'Tiny → Relatórios → Financeiro → Contas a Pagar' },
-  { tipo: 'recebimentos', titulo: 'Recebimentos', descricao: 'O que foi recebido por cliente, com juros, taxas e descontos', colunaValidacao: 'cliente', dica: 'Tiny → Relatórios → Financeiro → Recebimentos' },
-  { tipo: 'pedidos', titulo: 'Pedidos / NFs', descricao: 'Pedidos com forma de pagamento, taxas e status de entrega', colunaValidacao: 'número', dica: 'Tiny → Relatórios → Vendas → Relatório Financeiro de Vendas' },
-  { tipo: 'vendas_produtos', titulo: 'Vendas por Produto', descricao: 'Custo e margem por produto/SKU — análise de CMV por item', colunaValidacao: 'código', dica: 'Tiny → Relatórios → Vendas → Relatório de Vendas (por produto)' },
+type Card = {
+  tipo: Tipo
+  titulo: string
+  descricao: string
+  colunaValidacao: string
+  caminho: string        // onde achar no Tiny (menu → submenu)
+  colunas: string        // colunas obrigatórias a marcar na exportação
+  fonteCusto?: boolean   // relatório que carrega o custo/margem
+}
+
+const CARDS: Card[] = [
+  { tipo: 'balancete', titulo: 'Balancete', descricao: 'DRE completo por grupo e categoria, com valores diários e total', colunaValidacao: 'tipo',
+    caminho: 'Tiny → Relatórios → Financeiro → Balancete',
+    colunas: 'Colunas: Tipo · Grupo · Categoria · Total (formato diário também funciona)' },
+  { tipo: 'fluxo_caixa', titulo: 'Fluxo de Caixa', descricao: 'Extrato completo de lançamentos por contato e data', colunaValidacao: 'histórico',
+    caminho: 'Tiny → Relatórios → Financeiro → Entradas e Saídas por Contato',
+    colunas: 'Colunas: Contato · Data · Histórico · Categoria · Valor' },
+  { tipo: 'vendas', titulo: 'Relatório de Vendas', descricao: 'Faturamento e margem por cliente. Use o formato com "Fonte de Receita" para ver Corporativo / Decor / Lojista', colunaValidacao: 'cliente',
+    caminho: 'Tiny → Relatórios → Vendas → Relatório de Vendas (por cliente)',
+    colunas: '⚙ Marcar colunas: Fonte de Receita · Custo · Valor Lucro · % Lucro — sem elas a margem por cliente fica vazia',
+    fonteCusto: true },
+  { tipo: 'contas_receber', titulo: 'Contas a Receber', descricao: 'Títulos em aberto e recebidos com vencimentos', colunaValidacao: 'vencimento',
+    caminho: 'Tiny → Relatórios → Financeiro → Contas a Receber',
+    colunas: 'Coluna-chave: Vencimento' },
+  { tipo: 'contas_pagar', titulo: 'Contas a Pagar', descricao: 'Títulos em aberto e pagos com vencimentos', colunaValidacao: 'vencimento',
+    caminho: 'Tiny → Relatórios → Financeiro → Contas a Pagar',
+    colunas: '⚙ Incluir a coluna Categoria (usada para corrigir as categorias do DRE)' },
+  { tipo: 'recebimentos', titulo: 'Recebimentos', descricao: 'O que foi recebido por cliente, com juros, taxas e descontos', colunaValidacao: 'cliente',
+    caminho: 'Tiny → Relatórios → Financeiro → Recebimentos',
+    colunas: 'Colunas: Cliente · Juros · Taxas · Acréscimos · Descontos · Valor Original · Valor Recebido' },
+  { tipo: 'pedidos', titulo: 'Pedidos / NFs', descricao: 'Pedidos com forma de pagamento, taxas e status de entrega', colunaValidacao: 'número',
+    caminho: 'Tiny → Relatórios → Vendas → Relatório Financeiro de Vendas',
+    colunas: 'Traz forma de pagamento, taxas e situação' },
+  { tipo: 'vendas_produtos', titulo: 'Vendas por Produto', descricao: 'Custo e margem por produto/SKU — análise de CMV por item', colunaValidacao: 'código',
+    caminho: 'Tiny → Relatórios → Vendas → Relatório de Vendas (por produto)',
+    colunas: '⚙ Marcar colunas: Quantidade · Valor · Frete · Custo · Valor Lucro · % Lucro',
+    fonteCusto: true },
 ]
 
 const MESES_NOME = [
@@ -297,9 +325,17 @@ export default function ImportadorRelatorios() {
               {/* Header do card */}
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <p className="font-black text-[#0b1733]">{card.titulo}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-black text-[#0b1733]">{card.titulo}</p>
+                    {card.fonteCusto && (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700">
+                        Fonte de custo
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-400 mt-0.5">{card.descricao}</p>
-                  <p className="text-[10px] text-slate-300 mt-1 italic">{card.dica}</p>
+                  <p className="text-[11px] text-slate-500 mt-1.5 font-semibold">{card.caminho}</p>
+                  <p className={`text-[10px] mt-0.5 ${card.fonteCusto ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>{card.colunas}</p>
                   {card.tipo === 'fluxo_caixa' && (
                     <p className="text-[10px] text-orange-500 mt-1 font-semibold">
                       ⚠ Reimportar este mês sobrescreve reclassificações manuais de lançamentos feitas nos Indicadores.
