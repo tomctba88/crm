@@ -189,32 +189,50 @@ export function parseVendas(rows: unknown[][]): Array<{
 }
 
 // ─── CONTAS A RECEBER ────────────────────────────────────────────────────────
-// Colunas: Vencimento | Cliente | Histórico | Nº banco | Nº documento | Data emissão | Valor | Saldo | Recebido | Antecipada
+// Colunas lidas pelo NOME do cabeçalho (a ordem varia entre exports do Tiny).
+// Layouts já vistos:
+//   Antigo:  Vencimento | Cliente | Histórico | Nº banco | Nº documento | Data emissão | Valor | Saldo | Recebido | Antecipada
+//   Novo:    Cliente | Histórico | Categoria | Nº banco | Nº documento | Data de emissão | Vencimento | Valor | Saldo | Recebido | Antecipada
 export function parseContasReceber(rows: unknown[][]): Array<{
   vencimento: string | null; cliente: string; historico: string
   numero_banco: string; numero_documento: string; data_emissao: string | null
   valor: number; saldo: number; recebido: number; antecipada: boolean; status: string
 }> {
+  if (!rows.length) return []
+  const header = (rows[0] as unknown[]).map(h => String(h || '').trim().toLowerCase())
+  const col = (...nomes: string[]) => header.findIndex(h => nomes.some(n => h.includes(n)))
+  const iVenc = col('vencimento')
+  const iCli = col('cliente')
+  const iHist = col('histórico', 'historico')
+  const iBanco = col('banco')
+  const iDoc = col('documento')
+  const iEmis = col('emissão', 'emissao')
+  const iValor = col('valor')
+  const iSaldo = col('saldo')
+  const iReceb = col('recebido')
+  const iAntec = col('antecipada')
+
+  const at = (row: unknown[], i: number) => (i >= 0 ? row[i] : '')
   const results = []
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i]
     if (!row || row.length < 7) continue
-    const vencimento = parseDateBR(row[0])
+    const vencimento = parseDateBR(at(row, iVenc))
     if (!vencimento) continue
-    const valor = parseNum(row[6])
-    const saldo = parseNum(row[7])
-    const recebido = parseNum(row[8])
-    const antecipada = String(row[9] || '').trim().toLowerCase() === 'sim'
+    const valor = parseNum(at(row, iValor))
+    const saldo = parseNum(at(row, iSaldo))
+    const recebido = parseNum(at(row, iReceb))
+    const antecipada = String(at(row, iAntec) || '').trim().toLowerCase() === 'sim'
     let status = 'aberto'
     if (saldo === 0 && recebido > 0) status = 'recebido'
     else if (recebido > 0 && saldo > 0) status = 'parcial'
     results.push({
       vencimento,
-      cliente: String(row[1] || '').trim(),
-      historico: String(row[2] || '').trim(),
-      numero_banco: String(row[3] || '').trim(),
-      numero_documento: String(row[4] || '').trim(),
-      data_emissao: parseDateBR(row[5]),
+      cliente: String(at(row, iCli) || '').trim(),
+      historico: String(at(row, iHist) || '').trim(),
+      numero_banco: String(at(row, iBanco) || '').trim(),
+      numero_documento: String(at(row, iDoc) || '').trim(),
+      data_emissao: parseDateBR(at(row, iEmis)),
       valor, saldo, recebido, antecipada, status,
     })
   }
