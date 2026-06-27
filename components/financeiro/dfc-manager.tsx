@@ -228,8 +228,17 @@ export default function DFCManager() {
   const saldoFinal = saldoInicial + dfc.variacao
   const semDados = !loading && itens.length === 0
 
+  // Exporta a DFC como PDF via diálogo de impressão (Salvar como PDF).
+  // Usa as regras @media print do globals.css (escopo body.imprimindo + #area-impressao).
+  function exportarPDF() {
+    document.body.classList.add('imprimindo')
+    const limpar = () => { document.body.classList.remove('imprimindo'); window.removeEventListener('afterprint', limpar) }
+    window.addEventListener('afterprint', limpar)
+    window.print()
+  }
+
   return (
-    <div className="space-y-6">
+    <div id="area-impressao" className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -239,14 +248,28 @@ export default function DFCManager() {
             Fonte: relatório <em>Entradas e Saídas por Cliente</em> do Tiny.
           </p>
         </div>
-        <Link href="/financeiro/importacao"
-          className="shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
-          Importar Relatório
-        </Link>
+        <div className="no-print flex shrink-0 gap-2">
+          {!semDados && !loading && (
+            <button onClick={exportarPDF}
+              className="rounded-2xl bg-[#0b1733] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1b4fd6] transition">
+              Exportar PDF
+            </button>
+          )}
+          <Link href="/financeiro/importacao"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+            Importar Relatório
+          </Link>
+        </div>
+      </div>
+
+      {/* Cabeçalho que aparece SÓ no PDF */}
+      <div className="only-print">
+        <p className="text-lg font-black text-[#0b1733]">Ergotex · DFC — {periodoLabel}</p>
+        <p className="text-xs text-slate-500">Método direto (regime de caixa) · Gerado em {new Date().toLocaleDateString('pt-BR')}</p>
       </div>
 
       {/* Seletor de período */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-500 shrink-0">Período:</span>
           {(['mes', 'ano'] as const).map(e => (
@@ -409,8 +432,9 @@ export default function DFCManager() {
                         value={saldoInicial || ''}
                         onChange={e => salvarSaldoInicial(periodoKey, Number(e.target.value) || 0)}
                         placeholder="0,00"
-                        className="w-36 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm outline-none focus:border-[#1b4fd6]"
+                        className="no-print w-36 rounded-lg border border-slate-200 px-2 py-1 text-right text-sm outline-none focus:border-[#1b4fd6]"
                       />
+                      <span className="only-print text-right text-slate-700">{formatBRL(saldoInicial)}</span>
                     </td>
                   </tr>
                   <tr className="border-t-2 border-[#0b1733] bg-slate-50">
@@ -431,7 +455,7 @@ export default function DFCManager() {
           </div>
 
           {/* Revisão de classificação */}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="no-print rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <button onClick={() => setMostrarRevisao(v => !v)} className="flex w-full items-center justify-between text-left">
               <div>
                 <h3 className="text-lg font-bold text-[#0b1733]">Revisar classificação das categorias</h3>

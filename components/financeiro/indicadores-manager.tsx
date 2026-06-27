@@ -29,6 +29,17 @@ const MES_ATUAL = new Date().getMonth() + 1
 const SEGMENTO_LABEL: Record<string, string> = { corporativo: 'Corporativo', decor: 'Decor', lojista: 'Lojista', outros: 'Outros' }
 const SEGMENTO_COR: Record<string, string> = { corporativo: '#1b4fd6', decor: '#16a34a', lojista: '#f59e0b', outros: '#94a3b8' }
 
+// Clientes cujo custo está fora do padrão em relação ao valor faturado.
+// Classificação pela razão custo/faturamento (robusta — não depende da coluna
+// de lucro do Tiny, que vem zerada quando o custo é parcial).
+type TipoAtipico = 'prejuizo' | 'margem_baixa' | 'sem_custo' | 'custo_suspeito'
+const ATIPICO_INFO: Record<TipoAtipico, { label: string; classe: string; rank: number }> = {
+  prejuizo:       { label: 'Prejuízo (custo > venda)',                  classe: 'bg-red-100 text-red-700',       rank: 0 },
+  margem_baixa:   { label: 'Margem crítica (custo > 85%)',              classe: 'bg-orange-100 text-orange-700', rank: 1 },
+  custo_suspeito: { label: 'Custo muito baixo — cadastro incompleto?',  classe: 'bg-blue-100 text-blue-700',     rank: 2 },
+  sem_custo:      { label: 'Sem custo cadastrado',                      classe: 'bg-amber-100 text-amber-700',   rank: 3 },
+}
+
 type Regime = 'competencia' | 'caixa'
 
 // Mapeamento de grupo Tiny → categoria de resultado
@@ -242,6 +253,26 @@ export default function IndicadoresManager() {
     // NÃO é PMR/aging — para prazo real de recebimento usar o Contas a Receber.
     const recebidoVsFaturado = totalVendas > 0 ? (totalRecebido / totalVendas) * 100 : 0
 
+    // ── CLIENTES COM CUSTO ATÍPICO vs FATURAMENTO ──
+    // Classifica pela razão custo/faturamento (cf), que mede direto o quanto o
+    // custo destoa do valor vendido. A margem exibida é derivada do custo da
+    // própria linha (não da coluna de lucro do Tiny, que vem 0 com custo parcial).
+    const clientesAtipicos: { cliente: string; valor: number; custo: number; margem: number | null; tipo: TipoAtipico }[] = []
+    for (const v of vd) {
+      if (v.valor <= 0) continue
+      const cf = v.custo / v.valor // custo como fração do faturamento
+      const margem = v.custo > 0 ? ((v.valor - v.custo) / v.valor) * 100 : null
+      let tipo: TipoAtipico | null = null
+      if (v.custo === 0) tipo = 'sem_custo'
+      else if (cf > 1) tipo = 'prejuizo'          // custo maior que a venda
+      else if (cf >= 0.85) tipo = 'margem_baixa'  // custo consome >85% da venda
+      else if (cf < 0.05) tipo = 'custo_suspeito' // custo < 5% da venda (provável cadastro incompleto)
+      if (tipo) clientesAtipicos.push({ cliente: v.cliente || '—', valor: v.valor, custo: v.custo, margem, tipo })
+    }
+    clientesAtipicos.sort((a, b) => ATIPICO_INFO[a.tipo].rank - ATIPICO_INFO[b.tipo].rank || b.valor - a.valor)
+    const faturamentoSemCusto = clientesAtipicos.filter(c => c.tipo === 'sem_custo' || c.tipo === 'custo_suspeito').reduce((s, c) => s + c.valor, 0)
+    const faturamentoRisco = clientesAtipicos.filter(c => c.tipo === 'prejuizo' || c.tipo === 'margem_baixa').reduce((s, c) => s + c.valor, 0)
+
     // ── BLOCO 8: ESTRUTURA DE CUSTOS (análise vertical) ──
     const rankingCustos = Object.entries(gruposMap)
       .map(([grupo, g]) => ({
@@ -271,6 +302,8 @@ export default function IndicadoresManager() {
       top5Clientes, concentracaoTop5Pct, top1Pct, recebidoVsFaturado,
       // Bloco 8
       rankingCustos, maxPctReceita, indiceEficiencia,
+      // Clientes com custo atípico
+      clientesAtipicos, faturamentoSemCusto, faturamentoRisco,
     }
   }, [balancete, vendasImport, recebimentosImport, fluxo, regime])
 
@@ -829,6 +862,78 @@ export default function IndicadoresManager() {
               </div>
             )}
           </div>
+
+          {/* ═══ CLIENTES COM CUSTO ATÍPICO vs FATURAMENTO ═══ */}
+          {dados.clientesAtipicos.length > 0 && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <h2 className="text-xl font-black text-[#0b1733]">Clientes com Custo Atípico</h2>
+                <p className="text-xs text-slate-400">
+                  Onde o custo está desproporcional ao valor faturado — prejuízo, margem crítica, sem custo ou margem alta demais · {periodoLabel}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl bg-[#eef3fb] p-3">
+                  <p className="text-[10px] font-semibold text-slate-500">Clientes sinalizados</p>
+                  <p className="mt-1 text-base font-black text-[#0b1733]">{dados.clientesAtipicos.length}</p>
+                </div>
+                <div className="rounded-2xl bg-red-50 p-3">
+                  <p className="text-[10px] font-semibold text-slate-500">Faturamento em risco</p>
+                  <p className="mt-1 text-base font-black text-red-600">{formatBRL(dados.faturamentoRisco)}</p>
+                  <p className="text-[9px] text-slate-400">prejuízo + margem crítica</p>
+                </div>
+                <div className="rounded-2xl bg-amber-50 p-3">
+                  <p className="text-[10px] font-semibold text-slate-500">Faturamento sem custo</p>
+                  <p className="mt-1 text-base font-black text-amber-600">{formatBRL(dados.faturamentoSemCusto)}</p>
+                  <p className="text-[9px] text-slate-400">custo ausente ou &lt; 5% da venda</p>
+                </div>
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-left text-[10px] font-semibold text-slate-400">
+                      <th className="pb-1.5">Cliente</th>
+                      <th className="pb-1.5 text-right">Faturamento</th>
+                      <th className="pb-1.5 text-right">Custo</th>
+                      <th className="pb-1.5 text-right">Custo/Fat.</th>
+                      <th className="pb-1.5 text-right">Margem</th>
+                      <th className="pb-1.5">Situação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dados.clientesAtipicos.slice(0, 30).map((c, i) => {
+                      const custoFat = c.valor > 0 ? (c.custo / c.valor) * 100 : 0
+                      return (
+                        <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                          <td className="py-1.5 font-medium text-[#0b1733] max-w-[220px] truncate">{c.cliente}</td>
+                          <td className="py-1.5 text-right">{formatBRL(c.valor)}</td>
+                          <td className="py-1.5 text-right text-slate-500">{c.custo > 0 ? formatBRL(c.custo) : '—'}</td>
+                          <td className={`py-1.5 text-right font-semibold ${custoFat > 100 ? 'text-red-600' : custoFat > 85 ? 'text-orange-600' : 'text-slate-500'}`}>
+                            {c.custo > 0 ? `${custoFat.toFixed(0)}%` : '—'}
+                          </td>
+                          <td className={`py-1.5 text-right font-black ${c.margem === null ? 'text-slate-400' : c.margem < 0 ? 'text-red-600' : c.margem < 15 ? 'text-orange-600' : 'text-blue-600'}`}>
+                            {c.margem === null ? '—' : `${c.margem.toFixed(1)}%`}
+                          </td>
+                          <td className="py-1.5">
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${ATIPICO_INFO[c.tipo].classe}`}>{ATIPICO_INFO[c.tipo].label}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {dados.clientesAtipicos.length > 30 && (
+                <p className="mt-2 text-center text-xs text-slate-400">Mostrando os 30 de {dados.clientesAtipicos.length} clientes sinalizados.</p>
+              )}
+              <p className="mt-3 text-[11px] text-slate-400">
+                <strong>Custo/Fat.</strong> = quanto o custo representa do valor faturado. Acima de 100% = prejuízo; abaixo de 5% costuma ser
+                custo não cadastrado no Tiny (margem superestimada). Classificação pela razão custo/faturamento.
+              </p>
+            </div>
+          )}
 
           {/* ═══ BLOCO 5: PONTO DE EQUILÍBRIO ═══ */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
