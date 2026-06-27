@@ -95,6 +95,16 @@ export async function POST(request: Request) {
           .map(r => r.sku ? `${r.produto} (SKU: ${r.sku})` : r.produto)
       : []
 
+    // Para o Relatório de Vendas (por cliente): se NENHUMA linha trouxe custo,
+    // o arquivo foi exportado sem as colunas Custo/Lucro — a margem por cliente
+    // ficará vazia. Avisa para o usuário reexportar com as colunas certas.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const avisoVendasSemCusto = tipo === 'vendas'
+      && parsed.length > 0
+      && (parsed as any[]).every(r => Number(r.custo) === 0)
+      ? 'Este arquivo foi importado SEM a coluna de Custo — a margem por cliente ficará vazia. Reexporte no Tiny marcando as colunas Custo, Valor Lucro e % Lucro (⚙ selecionar colunas) e reimporte.'
+      : null
+
     // Upsert log de upload
     await supabase.from('fin_uploads').upsert({
       tipo, mes, ano,
@@ -104,7 +114,7 @@ export async function POST(request: Request) {
       importado_em: new Date().toISOString(),
     }, { onConflict: 'tipo,mes,ano' })
 
-    return NextResponse.json({ importados, erros, tipo, mes, ano, sem_custo: semCusto })
+    return NextResponse.json({ importados, erros, tipo, mes, ano, sem_custo: semCusto, aviso: avisoVendasSemCusto })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erro inesperado.' },

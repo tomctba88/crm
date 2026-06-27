@@ -12,6 +12,7 @@ type CardEstado = {
   estado: 'idle' | 'preview' | 'loading' | 'sucesso' | 'erro'
   mensagem: string
   alertas?: string[] // produtos/itens que precisam de atenção (ex: sem custo cadastrado)
+  aviso?: string     // aviso geral da importação (ex: arquivo de vendas sem coluna de custo)
 }
 
 type Upload = {
@@ -216,13 +217,15 @@ export default function ImportadorRelatorios() {
       }
 
       const alertas: string[] = data.sem_custo?.length > 0 ? data.sem_custo : []
-      const temAlerta = alertas.length > 0
+      const aviso: string | undefined = data.aviso ?? undefined
+      const temAlerta = alertas.length > 0 || !!aviso
       setCard(tipo, {
         arquivo: null,
         linhas: data.importados,
         estado: 'sucesso',
         mensagem: `${data.importados} linhas importadas com sucesso.`,
         alertas,
+        aviso,
       })
       await carregarUploads()
       // Cards com alerta ficam visíveis por mais tempo para o usuário ler
@@ -421,6 +424,12 @@ export default function ImportadorRelatorios() {
               {est.estado === 'sucesso' && (
                 <div className="space-y-2">
                   <p className="text-sm font-semibold text-green-600">✓ {est.mensagem}</p>
+                  {est.aviso && (
+                    <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+                      <p className="text-xs font-black text-amber-700">⚠️ Importado sem custo</p>
+                      <p className="mt-1 text-xs text-amber-600">{est.aviso}</p>
+                    </div>
+                  )}
                   {est.alertas && est.alertas.length > 0 && (
                     <div className="rounded-xl border border-orange-200 bg-orange-50 p-3">
                       <p className="text-xs font-black text-orange-700">
