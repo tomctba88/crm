@@ -426,7 +426,7 @@ export default function ImportadorRelatorios() {
                   <p className="text-sm font-semibold text-green-600">✓ {est.mensagem}</p>
                   {est.aviso && (
                     <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
-                      <p className="text-xs font-black text-amber-700">⚠️ Importado sem custo</p>
+                      <p className="text-xs font-black text-amber-700">⚠️ Atenção</p>
                       <p className="mt-1 text-xs text-amber-600">{est.aviso}</p>
                     </div>
                   )}

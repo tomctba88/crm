@@ -105,6 +105,24 @@ export async function POST(request: Request) {
       ? 'Este arquivo foi importado SEM a coluna de Custo — a margem por cliente ficará vazia. Reexporte no Tiny marcando as colunas Custo, Valor Lucro e % Lucro (⚙ selecionar colunas) e reimporte.'
       : null
 
+    // Rede de segurança de layout: nos relatórios de títulos (linha a linha,
+    // sem pulos intencionais), se o parser aproveitou bem menos linhas do que
+    // o arquivo tinha, é sinal de que as colunas vieram em ordem/nome inesperado.
+    // (Foi o que aconteceu com o Contas a Receber: o Tiny mudou a ordem das
+    // colunas e o parser antigo descartava tudo silenciosamente.)
+    const tiposTitulos: Tipo[] = ['contas_receber', 'contas_pagar', 'recebimentos', 'pedidos']
+    const linhasComDados = rows.slice(1).filter(
+      r => Array.isArray(r) && r.some(c => String(c ?? '').trim() !== '')
+    ).length
+    const avisoLayout = tiposTitulos.includes(tipo)
+      && parsed.length > 0
+      && linhasComDados > 10
+      && parsed.length < linhasComDados * 0.5
+      ? `Só ${parsed.length} de ~${linhasComDados} linhas foram reconhecidas. O arquivo pode estar com colunas em ordem/nome diferente do esperado — confira se exportou o relatório certo no Tiny.`
+      : null
+
+    const aviso = avisoVendasSemCusto ?? avisoLayout
+
     // Upsert log de upload
     await supabase.from('fin_uploads').upsert({
       tipo, mes, ano,
@@ -114,7 +132,7 @@ export async function POST(request: Request) {
       importado_em: new Date().toISOString(),
     }, { onConflict: 'tipo,mes,ano' })
 
-    return NextResponse.json({ importados, erros, tipo, mes, ano, sem_custo: semCusto, aviso: avisoVendasSemCusto })
+    return NextResponse.json({ importados, erros, tipo, mes, ano, sem_custo: semCusto, aviso })
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Erro inesperado.' },
