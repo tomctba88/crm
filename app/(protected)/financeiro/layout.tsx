@@ -11,6 +11,7 @@ const abas = [
   { href: '/financeiro/contas-receber', label: 'Contas a Receber' },
   { href: '/financeiro/contas-pagar', label: 'Contas a Pagar' },
   { href: '/financeiro/fluxo-caixa', label: 'Fluxo de Caixa' },
+  { href: '/financeiro/dfc', label: 'DFC' },
   { href: '/financeiro/pedidos', label: 'Pedidos' },
   { href: '/financeiro/importacao', label: 'Importação' },
 ]
