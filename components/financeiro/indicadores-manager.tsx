@@ -205,6 +205,54 @@ export default function IndicadoresManager() {
     const numClientes = vd.length
     const totalRecebido = recebimentosImport.reduce((s, r) => s + r.valor_recebido, 0)
 
+    // ── BLOCO 5: PONTO DE EQUILÍBRIO ──
+    // Fixas: não variam com a venda (trabalhistas, sócios, operacionais).
+    // Variáveis: acompanham a venda (CMV, tributos sobre venda, taxas financeiras).
+    const despesasFixas =
+      (resultadoAgrupado['Despesas Trabalhistas'] || 0)
+      + (resultadoAgrupado['Salários Sócios'] || 0)
+      + (resultadoAgrupado['Despesas Operacionais'] || 0)
+    const despesasVariaveis =
+      cmvTotal
+      + (resultadoAgrupado['Despesas Tributárias'] || 0)
+      + (resultadoAgrupado['Despesas Financeiras'] || 0)
+    const margemContribuicaoPct = receita > 0 ? ((receita - despesasVariaveis) / receita) * 100 : 0
+    const pontoEquilibrio = margemContribuicaoPct > 0 ? despesasFixas / (margemContribuicaoPct / 100) : 0
+    const folgaPE = receita - pontoEquilibrio
+
+    // ── BLOCO 6: EBITDA E MARGENS ──
+    // Proxy de depreciação: lançamentos de Imobilizado (na falta da depreciação real do Tiny).
+    const depreciacao = resultadoAgrupado['Imobilizado'] || 0
+    const ebitda = ebit + depreciacao
+    const margemEbitda = receita > 0 ? (ebitda / receita) * 100 : 0
+    const margemEbit = receita > 0 ? (ebit / receita) * 100 : 0
+    const margemBrutaCalc = receita > 0 ? (lucroBruto / receita) * 100 : 0
+    const margemLiquida = receita > 0 ? (lucroLiquido / receita) * 100 : 0
+
+    // ── BLOCO 7: CONCENTRAÇÃO E RECEBÍVEIS ──
+    const top5Clientes = [...vd].sort((a, b) => b.valor - a.valor).slice(0, 5).map(v => ({
+      cliente: v.cliente || '—',
+      valor: v.valor,
+      pctTotal: totalVendas > 0 ? (v.valor / totalVendas) * 100 : 0,
+      margem: v.valor > 0 && v.valor_lucro !== 0 ? (v.valor_lucro / v.valor) * 100 : 0,
+    }))
+    const concentracaoTop5Pct = top5Clientes.reduce((s, c) => s + c.pctTotal, 0)
+    const top1Pct = top5Clientes[0]?.pctTotal ?? 0
+    // Honesto: razão entre o que entrou (Recebimentos) e o que foi faturado no mês.
+    // NÃO é PMR/aging — para prazo real de recebimento usar o Contas a Receber.
+    const recebidoVsFaturado = totalVendas > 0 ? (totalRecebido / totalVendas) * 100 : 0
+
+    // ── BLOCO 8: ESTRUTURA DE CUSTOS (análise vertical) ──
+    const rankingCustos = Object.entries(gruposMap)
+      .map(([grupo, g]) => ({
+        grupo, valor: g.total, isCusto: g.isCusto,
+        pctReceita: receita > 0 ? (g.total / receita) * 100 : 0,
+      }))
+      .filter(g => g.valor > 0)
+      .sort((a, b) => b.valor - a.valor)
+    const maxPctReceita = rankingCustos[0]?.pctReceita || 1
+    const indiceEficiencia = receita > 0 ? ((resultadoAgrupado['Despesas Operacionais'] || 0) / receita) * 100 : 0
+
     void GRUPO_RESULTADO
 
     return {
@@ -215,6 +263,14 @@ export default function IndicadoresManager() {
       lucroLiquido, ebit, resultadoAgrupado, gruposMap, gruposOrdenados,
       despesasFretes, fretePagoEmpresa, fretesPctFaturamento,
       numClientes, totalRecebido,
+      // Bloco 5
+      despesasFixas, despesasVariaveis, margemContribuicaoPct, pontoEquilibrio, folgaPE,
+      // Bloco 6
+      depreciacao, ebitda, margemEbitda, margemEbit, margemBrutaCalc, margemLiquida,
+      // Bloco 7
+      top5Clientes, concentracaoTop5Pct, top1Pct, recebidoVsFaturado,
+      // Bloco 8
+      rankingCustos, maxPctReceita, indiceEficiencia,
     }
   }, [balancete, vendasImport, recebimentosImport, fluxo, regime])
 
@@ -251,6 +307,43 @@ export default function IndicadoresManager() {
     : filtro === 'trimestre' ? `T${Math.ceil(mes / 3)}/${ano}` : `${ano}`
 
   const pct = (v: number, base: number) => base > 0 ? formatPct((v / base) * 100) : '—'
+
+  // ── BLOCO 9: Painel Executivo (semáforos derivados de `dados`) ──
+  type Sinal = 'verde' | 'amarelo' | 'vermelho'
+  const painel: { nome: string; valor: string; sinal: Sinal; acao?: string }[] = (() => {
+    if (loading || semDados) return []
+    const d = dados
+    const out: { nome: string; valor: string; sinal: Sinal; acao?: string }[] = []
+
+    const resSinal: Sinal = d.lucroLiquido > 0 ? 'verde' : d.lucroLiquido >= -0.05 * d.receita ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Resultado do período', valor: formatBRL(d.lucroLiquido), sinal: resSinal,
+      acao: resSinal === 'vermelho' ? 'Prejuízo acima de 5% da receita — revisar custos e despesas com urgência.' : resSinal === 'amarelo' ? 'Resultado próximo de zero — margem de segurança baixa.' : undefined })
+
+    const mbS: Sinal = d.margemBrutaCalc > 35 ? 'verde' : d.margemBrutaCalc >= 25 ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Margem bruta', valor: `${d.margemBrutaCalc.toFixed(1)}%`, sinal: mbS,
+      acao: mbS === 'vermelho' ? 'Margem bruta abaixo de 25%: revisar política de desconto ou custo dos produtos.' : mbS === 'amarelo' ? 'Margem bruta entre 25–35%: há espaço para melhorar preço/custo.' : undefined })
+
+    const mlS: Sinal = d.margemLiquida > 8 ? 'verde' : d.margemLiquida >= 3 ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Margem líquida', valor: `${d.margemLiquida.toFixed(1)}%`, sinal: mlS,
+      acao: mlS === 'vermelho' ? 'Margem líquida abaixo de 3%: resultado apertado, atenção às despesas fixas.' : mlS === 'amarelo' ? 'Margem líquida entre 3–8%: monitorar despesas.' : undefined })
+
+    const peS: Sinal = d.pontoEquilibrio <= 0 ? 'amarelo'
+      : d.receita > d.pontoEquilibrio * 1.1 ? 'verde' : d.receita >= d.pontoEquilibrio ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Ponto de equilíbrio', valor: peS === 'vermelho' ? `Faltam ${formatBRL(d.pontoEquilibrio - d.receita)}` : peS === 'verde' ? 'Acima do PE' : 'No limite',
+      sinal: peS,
+      acao: peS === 'vermelho' ? `Receita abaixo do ponto de equilíbrio: faturar mais ${formatBRL(d.pontoEquilibrio - d.receita)} para cobrir os custos fixos.` : peS === 'amarelo' && d.pontoEquilibrio > 0 ? 'Receita pouco acima do ponto de equilíbrio — pouca folga.' : undefined })
+
+    const cS: Sinal = d.top1Pct < 20 ? 'verde' : d.top1Pct <= 30 ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Concentração de receita', valor: `Top 1: ${d.top1Pct.toFixed(1)}%`, sinal: cS,
+      acao: cS !== 'verde' && d.top5Clientes[0] ? `${d.top5Clientes[0].cliente} concentra ${d.top1Pct.toFixed(1)}% da receita — risco de dependência de um cliente.` : undefined })
+
+    const rS: Sinal = d.recebidoVsFaturado > 80 ? 'verde' : d.recebidoVsFaturado >= 60 ? 'amarelo' : 'vermelho'
+    out.push({ nome: 'Recebido vs faturado', valor: `${d.recebidoVsFaturado.toFixed(0)}%`, sinal: rS,
+      acao: rS !== 'verde' ? `Entrou menos caixa (${formatBRL(d.totalRecebido)}) do que o faturado no mês — acompanhar recebimentos e inadimplência.` : undefined })
+
+    return out
+  })()
+  const alertasPainel = painel.filter(p => p.sinal !== 'verde')
 
   function toggleExpandido(grupo: string) {
     setExpandidos(prev => {
@@ -708,6 +801,275 @@ export default function IndicadoresManager() {
                   <button disabled={paginaClientes === totalPaginasClientes} onClick={() => setPaginaClientes(p => p + 1)}
                     className="rounded-lg border px-3 py-1 text-xs disabled:opacity-40 hover:bg-slate-100">Próxima</button>
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* ═══ BLOCO 5: PONTO DE EQUILÍBRIO ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-black text-[#0b1733]">Ponto de Equilíbrio</h2>
+              <p className="text-xs text-slate-400">Faturamento mínimo para cobrir todos os custos do período · {periodoLabel}</p>
+            </div>
+            {dados.pontoEquilibrio === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-400">
+                Não foi possível calcular — importe os dados de despesas e vendas do período.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={`rounded-2xl p-3 ${dados.receita >= dados.pontoEquilibrio ? 'bg-green-50' : 'bg-amber-50'}`}>
+                    <p className="text-[10px] font-semibold text-slate-500">Ponto de Equilíbrio</p>
+                    <p className={`mt-1 text-base font-black ${dados.receita >= dados.pontoEquilibrio ? 'text-green-700' : 'text-amber-700'}`}>{formatBRL(dados.pontoEquilibrio)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[#eef3fb] p-3">
+                    <p className="text-[10px] font-semibold text-slate-500">Receita Atual</p>
+                    <p className="mt-1 text-base font-black text-[#0b1733]">{formatBRL(dados.receita)}</p>
+                  </div>
+                  <div className="rounded-2xl bg-[#eef3fb] p-3">
+                    <p className="text-[10px] font-semibold text-slate-500">Margem de Contribuição</p>
+                    <p className="mt-1 text-base font-black text-[#1b4fd6]">{dados.margemContribuicaoPct.toFixed(1)}%</p>
+                  </div>
+                  <div className="rounded-2xl bg-[#eef3fb] p-3">
+                    <p className="text-[10px] font-semibold text-slate-500">{dados.folgaPE >= 0 ? 'Folga' : 'Déficit'}</p>
+                    <p className={`mt-1 text-base font-black ${dados.folgaPE >= 0 ? 'text-green-700' : 'text-red-600'}`}>{formatBRL(dados.folgaPE)}</p>
+                  </div>
+                </div>
+                {/* Barra: 0 → 150% do PE, com marcador no PE */}
+                {(() => {
+                  const scaleMax = dados.pontoEquilibrio * 1.5
+                  const posPE = 100 / 1.5 // PE fica a 66,7% da barra
+                  const posReceita = Math.min(100, (dados.receita / scaleMax) * 100)
+                  const acima = dados.receita >= dados.pontoEquilibrio
+                  return (
+                    <div className="mt-5">
+                      <div className="relative h-7 w-full rounded-full bg-slate-100">
+                        <div className={`absolute left-0 top-0 h-7 rounded-full ${acima ? 'bg-green-400' : 'bg-amber-400'}`} style={{ width: `${posReceita}%` }} />
+                        <div className="absolute top-0 h-7 w-0.5 bg-[#0b1733]" style={{ left: `${posPE}%` }} />
+                        <span className="absolute -top-5 -translate-x-1/2 text-[10px] font-bold text-[#0b1733]" style={{ left: `${posPE}%` }}>PE</span>
+                      </div>
+                      <div className="mt-1 flex justify-between text-[10px] text-slate-400">
+                        <span>R$ 0</span>
+                        <span>{formatBRL(scaleMax)}</span>
+                      </div>
+                      <p className={`mt-2 text-xs font-semibold ${acima ? 'text-green-700' : 'text-amber-700'}`}>
+                        {acima
+                          ? `Receita ${((dados.receita / dados.pontoEquilibrio - 1) * 100).toFixed(0)}% acima do ponto de equilíbrio.`
+                          : `Receita ${((1 - dados.receita / dados.pontoEquilibrio) * 100).toFixed(0)}% abaixo do ponto de equilíbrio.`}
+                      </p>
+                    </div>
+                  )
+                })()}
+                <p className="mt-3 text-[11px] text-slate-400">
+                  Fixas: Trabalhistas + Sócios + Operacionais ({formatBRL(dados.despesasFixas)}).
+                  Variáveis: CMV + Tributárias + Financeiras ({formatBRL(dados.despesasVariaveis)}).
+                  Receita por competência; despesas do caixa do período.
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* ═══ BLOCO 6: EBITDA E MARGENS ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-black text-[#0b1733]">EBITDA e Margens</h2>
+              <p className="text-xs text-slate-400">Indicadores de rentabilidade — padrão CFO/investidor · {periodoLabel}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-[10px] font-semibold text-slate-400">
+                    <th className="pb-1.5">Indicador</th>
+                    <th className="pb-1.5 text-right">Valor</th>
+                    <th className="pb-1.5 text-right">Margem</th>
+                    <th className="pb-1.5 text-right">Referência</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {[
+                    { nome: 'Margem Bruta', valor: dados.lucroBruto, margem: dados.margemBrutaCalc, ref: 35 },
+                    { nome: 'EBIT (Margem Operacional)', valor: dados.ebit, margem: dados.margemEbit, ref: 10 },
+                    { nome: 'EBITDA', valor: dados.ebitda, margem: dados.margemEbitda, ref: 15 },
+                    { nome: 'Margem Líquida', valor: dados.lucroLiquido, margem: dados.margemLiquida, ref: 8 },
+                  ].map(l => {
+                    const cor = l.margem >= l.ref ? 'bg-green-100 text-green-700'
+                      : l.margem >= l.ref * 0.5 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                    return (
+                      <tr key={l.nome}>
+                        <td className="py-2 font-semibold text-[#0b1733]">{l.nome}</td>
+                        <td className={`py-2 text-right font-semibold ${l.valor >= 0 ? 'text-slate-700' : 'text-red-600'}`}>{formatBRL(l.valor)}</td>
+                        <td className={`py-2 text-right font-black ${l.margem >= l.ref ? 'text-green-700' : l.margem >= l.ref * 0.5 ? 'text-amber-600' : 'text-red-600'}`}>{l.margem.toFixed(1)}%</td>
+                        <td className="py-2 text-right">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${cor}`}>&gt; {l.ref}%</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-[11px] text-slate-400">
+              EBITDA estimado usando lançamentos de Imobilizado como proxy de depreciação ({formatBRL(dados.depreciacao)}) — para o valor exato, some a depreciação real.
+              {dados.margemBrutaCalc > 50 && ' A margem bruta pode estar superestimada se houver produtos vendidos sem custo cadastrado (a parte sem custo entra como 100% de margem).'}
+            </p>
+          </div>
+
+          {/* ═══ BLOCO 7: RECEBÍVEIS E CONCENTRAÇÃO ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-black text-[#0b1733]">Recebíveis e Concentração</h2>
+              <p className="text-xs text-slate-400">Risco de crédito e dependência de clientes · {periodoLabel}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {(() => {
+                const rv = dados.recebidoVsFaturado
+                const corRv = rv > 80 ? 'text-green-700' : rv >= 60 ? 'text-amber-600' : 'text-red-600'
+                const conc = dados.concentracaoTop5Pct
+                const corConc = conc < 30 ? 'text-green-700' : conc <= 50 ? 'text-amber-600' : 'text-red-600'
+                const corTop1 = dados.top1Pct < 20 ? 'text-green-700' : dados.top1Pct <= 30 ? 'text-amber-600' : 'text-red-600'
+                return (
+                  <>
+                    <div className="rounded-2xl bg-[#eef3fb] p-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Recebido vs Faturado</p>
+                      <p className={`mt-1 text-base font-black ${corRv}`}>{rv.toFixed(0)}%</p>
+                      <p className="text-[9px] text-slate-400">{formatBRL(dados.totalRecebido)} recebidos no mês</p>
+                    </div>
+                    <div className="rounded-2xl bg-[#eef3fb] p-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Concentração Top 5</p>
+                      <p className={`mt-1 text-base font-black ${corConc}`}>{conc.toFixed(1)}%</p>
+                      <p className="text-[9px] text-slate-400">da receita nos 5 maiores</p>
+                    </div>
+                    <div className="rounded-2xl bg-[#eef3fb] p-3">
+                      <p className="text-[10px] font-semibold text-slate-500">Maior Cliente</p>
+                      <p className={`mt-1 text-base font-black ${corTop1}`}>{dados.top1Pct.toFixed(1)}%</p>
+                      <p className="text-[9px] text-slate-400 truncate">{dados.top5Clientes[0]?.cliente ?? '—'}</p>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+
+            {dados.top1Pct > 25 && dados.top5Clientes[0] && (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-700">
+                ⚠ {dados.top5Clientes[0].cliente} representa {dados.top1Pct.toFixed(1)}% da receita — risco de concentração elevado.
+              </div>
+            )}
+
+            {dados.top5Clientes.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-left text-[10px] font-semibold text-slate-400">
+                      <th className="pb-1.5">Cliente</th>
+                      <th className="pb-1.5 text-right">Faturamento</th>
+                      <th className="pb-1.5 text-right">% do Total</th>
+                      <th className="pb-1.5 text-right">Margem</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dados.top5Clientes.map((c, i) => (
+                      <tr key={i} className="border-b border-slate-50">
+                        <td className="py-1.5 font-medium text-[#0b1733] max-w-[220px] truncate">{c.cliente}</td>
+                        <td className="py-1.5 text-right">{formatBRL(c.valor)}</td>
+                        <td className="py-1.5 text-right text-slate-500">{c.pctTotal.toFixed(1)}%</td>
+                        <td className={`py-1.5 text-right font-semibold ${c.margem === 0 ? 'text-slate-400' : c.margem < 20 ? 'text-red-600' : c.margem < 35 ? 'text-orange-600' : 'text-green-700'}`}>
+                          {c.margem !== 0 ? `${c.margem.toFixed(1)}%` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-slate-300 font-black bg-[#eef3fb]">
+                      <td className="py-1.5 text-[#0b1733]">Top 5</td>
+                      <td className="py-1.5 text-right text-[#0b1733]">{formatBRL(dados.top5Clientes.reduce((s, c) => s + c.valor, 0))}</td>
+                      <td className="py-1.5 text-right text-[#0b1733]">{dados.concentracaoTop5Pct.toFixed(1)}%</td>
+                      <td className="py-1.5" />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <p className="mt-3 text-[11px] text-slate-400">
+              &quot;Recebido vs Faturado&quot; compara o que entrou (Recebimentos) com o que foi faturado no mês — não é prazo médio (PMR).
+              Para PMR/aging e inadimplência real, use a aba <strong>Contas a Receber</strong> (títulos por vencimento).
+            </p>
+          </div>
+
+          {/* ═══ BLOCO 8: ESTRUTURA DE CUSTOS ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-black text-[#0b1733]">Estrutura de Custos</h2>
+              <p className="text-xs text-slate-400">Peso de cada grupo de despesa sobre a receita · {periodoLabel}</p>
+            </div>
+            <div className="space-y-2.5">
+              {dados.rankingCustos.map(g => {
+                const gl = g.grupo.toLowerCase()
+                const cor = gl.includes('custo') ? '#dc2626'
+                  : gl.includes('trabalhista') || gl.includes('sócio') || gl.includes('socio') ? '#1b4fd6'
+                  : gl.includes('operacion') ? '#f59e0b'
+                  : gl.includes('tributár') || gl.includes('tributar') ? '#8b5cf6'
+                  : gl.includes('financeira') ? '#ec4899' : '#94a3b8'
+                return (
+                  <div key={g.grupo}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-[#0b1733]">{g.grupo}</span>
+                      <span className="text-slate-500">{formatBRL(g.valor)} · <span className="font-bold">{g.pctReceita.toFixed(1)}%</span></span>
+                    </div>
+                    <div className="mt-1 h-2.5 w-full rounded-full bg-slate-100">
+                      <div className="h-2.5 rounded-full" style={{ width: `${(g.pctReceita / dados.maxPctReceita) * 100}%`, background: cor }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+              <span className="text-sm font-black text-[#0b1733]">Total Saídas: {formatBRL(dados.totalSaidas)} · {pct(dados.totalSaidas, dados.receita)} da receita</span>
+              {(() => {
+                const ie = dados.indiceEficiencia
+                const cor = ie < 15 ? 'bg-green-100 text-green-700' : ie <= 25 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                return <span className={`rounded-full px-3 py-1 text-xs font-bold ${cor}`}>Eficiência operacional: {ie.toFixed(1)}% da receita</span>
+              })()}
+            </div>
+          </div>
+
+          {/* ═══ BLOCO 9: PAINEL EXECUTIVO ═══ */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4">
+              <h2 className="text-xl font-black text-[#0b1733]">Painel Executivo</h2>
+              <p className="text-xs text-slate-400">Resumo de saúde financeira · {periodoLabel}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {painel.map(p => (
+                <div key={p.nome} className={`rounded-2xl border p-4 ${
+                  p.sinal === 'verde' ? 'border-green-200 bg-green-50'
+                  : p.sinal === 'amarelo' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{p.sinal === 'verde' ? '🟢' : p.sinal === 'amarelo' ? '🟡' : '🔴'}</span>
+                    <p className="text-xs font-semibold text-slate-600">{p.nome}</p>
+                  </div>
+                  <p className={`mt-1.5 text-lg font-black ${
+                    p.sinal === 'verde' ? 'text-green-700' : p.sinal === 'amarelo' ? 'text-amber-700' : 'text-red-700'
+                  }`}>{p.valor}</p>
+                </div>
+              ))}
+            </div>
+
+            {alertasPainel.length > 0 ? (
+              <div className="mt-4">
+                <p className="text-sm font-black text-[#0b1733]">Alertas do período</p>
+                <ul className="mt-2 space-y-2">
+                  {alertasPainel.map(p => (
+                    <li key={p.nome} className={`flex gap-2 rounded-xl border p-3 text-sm ${
+                      p.sinal === 'vermelho' ? 'border-red-200 bg-red-50 text-red-800' : 'border-amber-200 bg-amber-50 text-amber-800'
+                    }`}>
+                      <span>{p.sinal === 'vermelho' ? '🔴' : '🟡'}</span>
+                      <span>{p.acao ?? `${p.nome}: ${p.valor}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-green-200 bg-green-50 p-4 text-center text-sm font-bold text-green-800">
+                ✅ Todos os indicadores em zona saudável no período {periodoLabel}
               </div>
             )}
           </div>
