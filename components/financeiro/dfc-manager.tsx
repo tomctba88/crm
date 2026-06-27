@@ -31,6 +31,13 @@ const ANOS = Array.from({ length: 5 }, (_, i) => ANO_ATUAL - 3 + i).filter(a => 
 const OVERRIDE_KEY = 'ergotex_dfc_overrides_v1'
 const SALDO_KEY = 'ergotex_dfc_saldos_v1'
 
+// O que cada atividade significa, em linguagem de gestão (mostrado ao clicar no KPI).
+const DEFINICAO: Record<Atividade, string> = {
+  operacional: 'Caixa gerado (ou consumido) pela atividade-fim: vendas recebidas menos pagamentos a fornecedores, salários, impostos e despesas do dia a dia. É o motor do negócio — o indicador mais importante para a sustentabilidade.',
+  investimento: 'Caixa usado para comprar — ou obtido ao vender — ativos de longo prazo: máquinas, veículos, imóveis, aplicações. Valor negativo (compra) normalmente indica expansão de capacidade.',
+  financiamento: 'Caixa trocado com bancos e sócios: empréstimos e consórcios captados ou pagos, aportes de capital e distribuição de lucros. Mostra como a empresa se financia.',
+}
+
 export default function DFCManager() {
   const supabase = createClient()
   const hoje = new Date()
@@ -41,6 +48,7 @@ export default function DFCManager() {
   const [loading, setLoading] = useState(true)
   const [mostrarRevisao, setMostrarRevisao] = useState(false)
   const [buscaRevisao, setBuscaRevisao] = useState('')
+  const [kpiAberto, setKpiAberto] = useState<Atividade | null>(null)
 
   const [overrides, setOverrides] = useState<Record<string, Atividade>>(() => {
     if (typeof window === 'undefined') return {}
@@ -132,6 +140,68 @@ export default function DFCManager() {
     return { ativAggs, porAtiv, variacao, totalEntradas, totalSaidas }
   }, [itens, overrides])
 
+  // ── Parecer técnico automático: lê os números e interpreta ──
+  const parecer = useMemo(() => {
+    const op = dfc.porAtiv.operacional, inv = dfc.porAtiv.investimento, fin = dfc.porAtiv.financiamento
+    const O = op.liquido, I = inv.liquido, F = fin.liquido
+    const variacao = dfc.variacao
+    const fcf = O + I // fluxo de caixa livre (operacional após investimentos)
+    if (dfc.totalEntradas === 0 && dfc.totalSaidas === 0) return null
+
+    // Diagnóstico-título (regime de caixa: a operação se sustenta sozinha?)
+    let diagnostico: { titulo: string; texto: string; tom: 'bom' | 'alerta' | 'neutro' }
+    if (O > 0 && fcf >= 0 && variacao >= 0) {
+      diagnostico = {
+        tom: 'bom', titulo: 'Geração de caixa saudável',
+        texto: `A operação gerou ${formatBRL(O)} de caixa, cobriu os investimentos do período e o caixa total cresceu ${formatBRL(variacao)}. A empresa se autofinancia.`,
+      }
+    } else if (O > 0) {
+      diagnostico = {
+        tom: 'neutro', titulo: 'Operação gera caixa, mas houve consumo no período',
+        texto: `A operação gerou ${formatBRL(O)}, porém investimentos e/ou financiamento consumiram caixa e a variação do período fechou em ${formatBRL(variacao)}.`,
+      }
+    } else {
+      diagnostico = {
+        tom: 'alerta', titulo: 'A operação não gerou caixa no período',
+        texto: `A atividade-fim consumiu ${formatBRL(Math.abs(O))} de caixa — o negócio não se autofinanciou. Prioridade: acelerar recebimentos e cortar saídas operacionais.`,
+      }
+    }
+
+    const insights: { tipo: 'positivo' | 'alerta' | 'info'; texto: string }[] = []
+
+    // Margem de caixa operacional
+    if (op.entradas > 0) {
+      const margem = (O / op.entradas) * 100
+      if (O > 0) insights.push({ tipo: 'positivo', texto: `Margem de caixa operacional de ${margem.toFixed(1)}%: de cada R$ 100 recebidos da operação, sobraram R$ ${margem.toFixed(0)} depois de pagar fornecedores, salários e despesas.` })
+      else insights.push({ tipo: 'alerta', texto: `As saídas operacionais (${formatBRL(op.saidas)}) superaram os recebimentos (${formatBRL(op.entradas)}) — queima de caixa na operação.` })
+    }
+    // Investimento
+    if (I < 0) insights.push({ tipo: 'info', texto: `Investimento (CAPEX) de ${formatBRL(Math.abs(I))} em ativos de longo prazo — sinal de expansão de capacidade.` })
+    else if (I > 0) insights.push({ tipo: 'alerta', texto: `Entrada de ${formatBRL(I)} por venda de ativos/resgate de aplicações: gera caixa, mas não é receita recorrente — não confunda com melhora operacional.` })
+    // Fluxo de caixa livre
+    if (O > 0) {
+      if (fcf >= 0) insights.push({ tipo: 'positivo', texto: `Fluxo de caixa livre positivo (${formatBRL(fcf)}): a operação cobriu os investimentos com recurso próprio.` })
+      else insights.push({ tipo: 'alerta', texto: `Fluxo de caixa livre negativo (${formatBRL(fcf)}): os investimentos superaram o caixa gerado pela operação; a diferença foi bancada por reserva ou financiamento.` })
+    }
+    // Financiamento
+    if (F < 0) insights.push({ tipo: 'positivo', texto: `Financiamento líquido de −${formatBRL(Math.abs(F))}: a empresa amortizou dívidas/consórcios ou remunerou sócios, reduzindo a alavancagem.` })
+    else if (F > 0) {
+      if (O <= 0) insights.push({ tipo: 'alerta', texto: `Captou ${formatBRL(F)} de terceiros enquanto a operação não gerou caixa — dependência de dinheiro externo para funcionar. Risco se a captação cessar.` })
+      else insights.push({ tipo: 'info', texto: `Captou ${formatBRL(F)} de terceiros (empréstimos/aportes) — saudável se o destino for investimento produtivo.` })
+    }
+    // Sustentabilidade da variação
+    if (variacao > 0 && O <= 0) insights.push({ tipo: 'alerta', texto: `O caixa cresceu ${formatBRL(variacao)}, mas a melhora NÃO veio da operação (e sim de financiamento/venda de ativos) — não sustentável.` })
+    if (variacao < 0) insights.push({ tipo: 'info', texto: `O caixa encolheu ${formatBRL(Math.abs(variacao))} no período. Confirme se foi investimento planejado (ok) ou queima operacional (atenção).` })
+    // Maior saída operacional
+    const maiorSaida = op.categorias.filter(c => c.saidas > 0).sort((a, b) => b.saidas - a.saidas)[0]
+    if (maiorSaida && op.saidas > 0) {
+      const pct = (maiorSaida.saidas / op.saidas) * 100
+      insights.push({ tipo: 'info', texto: `Maior saída de caixa operacional: "${maiorSaida.categoria}" com ${formatBRL(maiorSaida.saidas)} (${pct.toFixed(0)}% das saídas da operação).` })
+    }
+
+    return { diagnostico, insights }
+  }, [dfc])
+
   // Lista de categorias para revisão de classificação
   const listaRevisao = useMemo(() => {
     const map = new Map<string, { categoria: string; movimento: number; atividade: Atividade; fonte: 'override' | 'auto' }>()
@@ -222,19 +292,24 @@ export default function DFCManager() {
         </div>
       ) : (
         <>
-          {/* KPIs das 3 atividades + variação */}
+          {/* KPIs das 3 atividades + variação — clique para ver a definição */}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {dfc.ativAggs.map(a => (
-              <div key={a.atividade} className="rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
+              <button key={a.atividade} type="button" onClick={() => setKpiAberto(p => p === a.atividade ? null : a.atividade)}
+                className={`rounded-3xl bg-white p-6 shadow-sm border text-left transition hover:border-[#1b4fd6] ${kpiAberto === a.atividade ? 'border-[#1b4fd6] ring-1 ring-[#1b4fd6]' : 'border-slate-200'}`}>
                 <div className="flex items-center gap-2">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: ATIVIDADE_COR[a.atividade] }} />
                   <p className="text-sm font-semibold text-slate-500">Caixa {ATIVIDADE_LABEL[a.atividade]}</p>
+                  <span className="ml-auto text-xs text-slate-300">{kpiAberto === a.atividade ? '×' : 'ⓘ'}</span>
                 </div>
                 <p className={`mt-3 text-2xl font-black ${a.liquido >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatBRL(a.liquido)}</p>
                 <p className="mt-1 text-[11px] text-slate-400">
                   +{formatBRL(a.entradas)} entradas · −{formatBRL(a.saidas)} saídas
                 </p>
-              </div>
+                {kpiAberto === a.atividade && (
+                  <p className="mt-3 border-t border-slate-100 pt-2 text-xs leading-relaxed text-slate-500">{DEFINICAO[a.atividade]}</p>
+                )}
+              </button>
             ))}
             <div className="rounded-3xl bg-[#0b1733] p-6 shadow-sm text-white">
               <p className="text-sm font-semibold text-blue-100">Variação Líquida de Caixa</p>
@@ -242,6 +317,45 @@ export default function DFCManager() {
               <p className="mt-1 text-[11px] text-blue-200">Operacional + Investimento + Financiamento</p>
             </div>
           </div>
+
+          {/* Parecer Técnico — interpretação automática dos números */}
+          {parecer && (
+            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xl font-black text-[#0b1733]">Parecer Técnico</h3>
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">automático · {periodoLabel}</span>
+              </div>
+              <div className={`mt-3 rounded-2xl border p-4 ${
+                parecer.diagnostico.tom === 'bom' ? 'border-emerald-200 bg-emerald-50'
+                : parecer.diagnostico.tom === 'alerta' ? 'border-red-200 bg-red-50'
+                : 'border-blue-200 bg-blue-50'
+              }`}>
+                <p className={`text-sm font-black ${
+                  parecer.diagnostico.tom === 'bom' ? 'text-emerald-800'
+                  : parecer.diagnostico.tom === 'alerta' ? 'text-red-800' : 'text-blue-800'
+                }`}>
+                  {parecer.diagnostico.tom === 'bom' ? '✓ ' : parecer.diagnostico.tom === 'alerta' ? '⚠️ ' : 'ℹ️ '}
+                  {parecer.diagnostico.titulo}
+                </p>
+                <p className="mt-1 text-sm text-slate-700">{parecer.diagnostico.texto}</p>
+              </div>
+              <ul className="mt-4 space-y-2.5">
+                {parecer.insights.map((ins, i) => (
+                  <li key={i} className={`flex gap-2.5 rounded-xl border p-3 text-sm ${
+                    ins.tipo === 'positivo' ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                    : ins.tipo === 'alerta' ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-blue-200 bg-blue-50 text-blue-900'
+                  }`}>
+                    <span className="mt-0.5 font-bold">{ins.tipo === 'positivo' ? '↑' : ins.tipo === 'alerta' ? '!' : 'i'}</span>
+                    <span>{ins.texto}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-3 text-[11px] text-slate-400">
+                Parecer gerado automaticamente a partir dos números do período. Não substitui a análise de um contador.
+              </p>
+            </div>
+          )}
 
           {/* Gráfico ponte */}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
