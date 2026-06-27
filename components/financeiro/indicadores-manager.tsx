@@ -364,21 +364,46 @@ export default function IndicadoresManager() {
     a.download = `fechamento-${periodoLabel}.csv`; a.click()
   }
 
+  // Exporta o relatório como PDF via diálogo de impressão do navegador
+  // (Salvar como PDF). A classe no body ativa as regras @media print do globals.css.
+  function exportarPDF() {
+    document.body.classList.add('imprimindo')
+    const limpar = () => { document.body.classList.remove('imprimindo'); window.removeEventListener('afterprint', limpar) }
+    window.addEventListener('afterprint', limpar)
+    window.print()
+  }
+
   return (
-    <div className="space-y-8">
+    <div id="area-impressao" className="space-y-8">
       {/* Header */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-3xl font-black text-[#0b1733]">Fechamento do Mês</h1>
           <p className="mt-1 text-sm text-slate-500">DRE por Competência ou Caixa · Faturamento por segmento · Custos · Margem por cliente</p>
         </div>
-        <Link href="/financeiro/importacao" className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition self-start">
-          Importar Relatórios
-        </Link>
+        <div className="no-print flex gap-2 self-start">
+          {!semDados && !loading && (
+            <button onClick={exportarPDF}
+              className="rounded-2xl bg-[#0b1733] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1b4fd6] transition">
+              Exportar PDF
+            </button>
+          )}
+          <Link href="/financeiro/importacao" className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+            Importar Relatórios
+          </Link>
+        </div>
+      </div>
+
+      {/* Cabeçalho que aparece SÓ no PDF */}
+      <div className="only-print">
+        <p className="text-lg font-black text-[#0b1733]">Ergotex · Fechamento do Mês — {periodoLabel}</p>
+        <p className="text-xs text-slate-500">
+          Regime: {regime === 'competencia' ? 'Competência' : 'Caixa'} · Gerado em {new Date().toLocaleDateString('pt-BR')}
+        </p>
       </div>
 
       {/* Seletor de Regime */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs font-semibold text-slate-500 shrink-0">Regime contábil:</span>
           <div className="flex rounded-xl bg-slate-100 p-1">
@@ -400,7 +425,7 @@ export default function IndicadoresManager() {
       </div>
 
       {/* Filtro período */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="no-print rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-semibold text-slate-500 shrink-0">Período:</span>
           {(['mes', 'trimestre', 'ano'] as FiltroTipo[]).map(t => (
@@ -449,7 +474,7 @@ export default function IndicadoresManager() {
         </div>
       ) : (
         <>
-          <p className="text-xs text-slate-400">
+          <p className="no-print text-xs text-slate-400">
             Base: relatórios Tiny · <span className="font-semibold text-[#1b4fd6]">{periodoLabel}</span>{' · '}
             <Link href="/financeiro/importacao" className="underline">Reimportar</Link>
           </p>
@@ -638,7 +663,7 @@ export default function IndicadoresManager() {
                 <h2 className="text-xl font-black text-[#0b1733]">DRE Detalhado por Grupo</h2>
                 <p className="text-xs text-slate-400">Saídas por categoria · clique numa conta para ver os lançamentos</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="no-print flex flex-wrap items-center gap-2">
                 {filtro === 'mes' && (
                   <button
                     onClick={() => setMostrarConciliacao(true)}
@@ -719,7 +744,7 @@ export default function IndicadoresManager() {
           <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <h2 className="text-xl font-black text-[#0b1733]">Margem por Cliente</h2>
-              <div className="flex flex-wrap gap-3 items-center">
+              <div className="no-print flex flex-wrap gap-3 items-center">
                 <input type="text" placeholder="Buscar cliente ou CNPJ" value={filtroBusca}
                   onChange={e => { setFiltroBusca(e.target.value); setPaginaClientes(1) }}
                   className="rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1b4fd6] w-52" />
@@ -792,7 +817,7 @@ export default function IndicadoresManager() {
               </table>
             </div>
             {totalPaginasClientes > 1 && (
-              <div className="mt-4 flex items-center justify-between">
+              <div className="no-print mt-4 flex items-center justify-between">
                 <span className="text-xs text-slate-500">{clientesFiltrados.length} clientes</span>
                 <div className="flex gap-2">
                   <button disabled={paginaClientes === 1} onClick={() => setPaginaClientes(p => p - 1)}

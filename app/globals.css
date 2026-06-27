@@ -24,3 +24,31 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Impressão / Exportar PDF ──────────────────────────────────────────────
+   Ativada por document.body.classList.add('imprimindo'). O escopo pela classe
+   garante que outras telas continuem imprimindo normalmente. */
+.only-print { display: none; }
+
+@media print {
+  /* Esconde tudo e revela apenas a área marcada com #area-impressao */
+  body.imprimindo * { visibility: hidden; }
+  body.imprimindo #area-impressao,
+  body.imprimindo #area-impressao * { visibility: visible; }
+  body.imprimindo #area-impressao {
+    position: absolute; left: 0; top: 0; width: 100%;
+    padding: 0; margin: 0;
+  }
+  /* Controles interativos não vão para o PDF */
+  body.imprimindo .no-print { display: none !important; }
+  body.imprimindo .only-print { display: block; visibility: visible; }
+  /* Mantém as cores dos cards/badges/barras no PDF */
+  body.imprimindo #area-impressao {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Evita cortar cards e tabelas no meio da página */
+  body.imprimindo #area-impressao > div,
+  body.imprimindo #area-impressao table { break-inside: avoid; }
+  @page { margin: 12mm; }
+}
