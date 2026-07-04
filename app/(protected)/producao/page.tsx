@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser-client'
 import Link from 'next/link'
 
 type OrdemResumo = { id: number; numero: string; status: string; produto: string | null; responsavel: string | null; data_prevista: string | null; updated_at: string }
+type AlertaEstoque = { insumo_id: number; quantidade_atual: number; ponto_reposicao: number; producao_insumos: { nome: string; unidade: string } | null }
 
 const STATUS_COR: Record<string, string> = {
   AGUARDANDO: 'bg-amber-100 text-amber-800',
@@ -17,15 +18,24 @@ const STATUS_COR: Record<string, string> = {
 export default function ProducaoDashboard() {
   const supabase = useMemo(() => createClient(), [])
   const [ordens, setOrdens] = useState<OrdemResumo[]>([])
+  const [alertas, setAlertas] = useState<AlertaEstoque[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function carregar() {
-      const { data } = await supabase
-        .from('producao_ordens')
-        .select('id,numero,status,produto,responsavel,data_prevista,updated_at')
-        .order('id', { ascending: false })
+      const [{ data }, { data: estoque }] = await Promise.all([
+        supabase
+          .from('producao_ordens')
+          .select('id,numero,status,produto,responsavel,data_prevista,updated_at')
+          .order('id', { ascending: false }),
+        supabase
+          .from('producao_estoque_insumos')
+          .select('insumo_id,quantidade_atual,ponto_reposicao,producao_insumos(nome,unidade)'),
+      ])
       setOrdens(data || [])
+      const baixos = ((estoque || []) as unknown as AlertaEstoque[])
+        .filter((e) => Number(e.quantidade_atual) < Number(e.ponto_reposicao))
+      setAlertas(baixos)
       setLoading(false)
     }
     carregar()
@@ -97,6 +107,27 @@ export default function ProducaoDashboard() {
           </div>
         )}
       </div>
+
+      {!loading && alertas.length > 0 && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 shadow-sm">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-orange-800">⚠ Insumos com estoque baixo</h2>
+            <Link href="/producao/estoque" className="text-sm font-semibold text-[#1b4fd6] hover:underline">Ir para Estoque →</Link>
+          </div>
+          <div className="space-y-1.5">
+            {alertas.map((a) => (
+              <div key={a.insumo_id} className="flex items-center justify-between rounded-xl bg-white/70 px-4 py-2 text-sm">
+                <span className="font-semibold text-slate-700">{a.producao_insumos?.nome || `Insumo #${a.insumo_id}`}</span>
+                <span className="text-slate-600">
+                  atual: <span className="font-bold text-red-600">{Number(a.quantidade_atual).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {a.producao_insumos?.unidade || ''}</span>
+                  <span className="mx-2 text-slate-300">·</span>
+                  mín: {Number(a.ponto_reposicao).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} {a.producao_insumos?.unidade || ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

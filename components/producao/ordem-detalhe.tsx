@@ -3,13 +3,30 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/browser-client'
 import Link from 'next/link'
+import { calcularQuantidade } from '@/lib/producao/calcular-materiais'
 
 type Etapa = { id: number; nome: string; sequencia: number; status: string; responsavel: string | null; data_inicio: string | null; data_conclusao: string | null; observacoes: string | null }
 type Ordem = {
   id: number; numero: string; status: string; produto: string | null; responsavel: string | null
   data_prevista: string | null; data_conclusao: string | null; observacoes: string | null; created_at: string
+  produto_id: number | null; comprimento_pedido: number | null; largura_pedido: number | null; altura_pedido: number | null
+  materiais_calculados: MaterialSnapshot[] | null
   leads: { id: number; nome_cliente: string; nome_empresa: string | null; telefone: string | null; vendedor: string | null; produto_interesse: string | null; valor_orcamento: number | null } | null
   pos_vendas: { id: number; status_pos_venda: string } | null
+}
+
+type MaterialSnapshot = { insumo_id: number; nome: string; quantidade_calculada: number }
+
+type ProdutoOpcao = {
+  id: number; nome: string; comprimento_padrao: number | null; largura_padrao: number | null
+  altura_padrao: number | null; tem_dimensao_variavel: boolean
+}
+
+type MaterialCalculado = {
+  insumo_id: number
+  nome: string
+  unidade: string
+  quantidade_calculada: number
 }
 
 const STATUS_ORDEM = ['AGUARDANDO', 'EM_ANDAMENTO', 'QUALIDADE', 'CONCLUIDO', 'CANCELADO']
@@ -35,13 +52,16 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [editando, setEditando] = useState(false)
-  const [form, setForm] = useState({ responsavel: '', data_prevista: '', observacoes: '' })
+  const [form, setForm] = useState({ responsavel: '', data_prevista: '', observacoes: '', produto_id: '', comprimento_pedido: '', largura_pedido: '', altura_pedido: '' })
   const [msg, setMsg] = useState('')
+  const [produtos, setProdutos] = useState<ProdutoOpcao[]>([])
+  const [materiais, setMateriais] = useState<MaterialCalculado[]>([])
+  const [baixando, setBaixando] = useState(false)
 
   async function carregar() {
     const { data: ordemData } = await supabase
       .from('producao_ordens')
-      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
+      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,produto_id,comprimento_pedido,largura_pedido,altura_pedido,materiais_calculados,leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
       .eq('id', ordemId)
       .single()
 
@@ -51,13 +71,49 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
       .eq('ordem_id', ordemId)
       .order('sequencia')
 
-    setOrdem(ordemData as unknown as Ordem)
+    const { data: produtosData } = await supabase
+      .from('producao_produtos')
+      .select('id,nome,comprimento_padrao,largura_padrao,altura_padrao,tem_dimensao_variavel')
+      .eq('ativo', true)
+      .order('nome')
+
+    const ordemTyped = ordemData as unknown as Ordem
+    setOrdem(ordemTyped)
     setEtapas(etapasData || [])
+    setProdutos((produtosData || []) as ProdutoOpcao[])
+
+    // Calcula materiais da ordem a partir da ficha técnica do produto vinculado
+    if (ordemTyped?.produto_id) {
+      const { data: ficha } = await supabase
+        .from('producao_ficha_tecnica')
+        .select('*, producao_insumos(nome, unidade), producao_produtos(nome, comprimento_padrao, largura_padrao, tem_dimensao_variavel)')
+        .eq('produto_id', ordemTyped.produto_id)
+
+      const calc: MaterialCalculado[] = (ficha || []).map((item: any) => ({
+        insumo_id: item.insumo_id,
+        nome: item.producao_insumos?.nome || `#${item.insumo_id}`,
+        unidade: item.producao_insumos?.unidade || '',
+        quantidade_calculada: calcularQuantidade(
+          item,
+          ordemTyped.comprimento_pedido,
+          ordemTyped.largura_pedido,
+          item.producao_produtos || { comprimento_padrao: null, largura_padrao: null, tem_dimensao_variavel: false }
+        ),
+      }))
+      setMateriais(calc)
+    } else {
+      setMateriais([])
+    }
+
     if (ordemData) {
       setForm({
         responsavel: ordemData.responsavel || '',
         data_prevista: ordemData.data_prevista || '',
         observacoes: ordemData.observacoes || '',
+        produto_id: ordemTyped.produto_id != null ? String(ordemTyped.produto_id) : '',
+        comprimento_pedido: ordemTyped.comprimento_pedido != null ? String(ordemTyped.comprimento_pedido) : '',
+        largura_pedido: ordemTyped.largura_pedido != null ? String(ordemTyped.largura_pedido) : '',
+        altura_pedido: ordemTyped.altura_pedido != null ? String(ordemTyped.altura_pedido) : '',
       })
     }
     setLoading(false)
@@ -89,13 +145,63 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
     setSalvando(false)
   }
 
+  const produtoSelecionado = produtos.find((p) => String(p.id) === form.produto_id) || null
+
   async function salvarEdicao() {
     setSalvando(true)
-    await supabase.from('producao_ordens').update({ ...form, updated_at: new Date().toISOString() }).eq('id', ordemId)
+    const temDim = produtoSelecionado?.tem_dimensao_variavel
+    await supabase.from('producao_ordens').update({
+      responsavel: form.responsavel,
+      data_prevista: form.data_prevista || null,
+      observacoes: form.observacoes,
+      produto_id: form.produto_id ? Number(form.produto_id) : null,
+      comprimento_pedido: temDim && form.comprimento_pedido ? Number(form.comprimento_pedido) : null,
+      largura_pedido: temDim && form.largura_pedido ? Number(form.largura_pedido) : null,
+      altura_pedido: temDim && form.altura_pedido ? Number(form.altura_pedido) : null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', ordemId)
     setEditando(false)
     setMsg('Ordem atualizada!')
     await carregar()
     setSalvando(false)
+  }
+
+  function selecionarProduto(idStr: string) {
+    const p = produtos.find((x) => String(x.id) === idStr) || null
+    setForm((f) => ({
+      ...f,
+      produto_id: idStr,
+      comprimento_pedido: p?.tem_dimensao_variavel && p.comprimento_padrao != null ? String(p.comprimento_padrao) : '',
+      largura_pedido: p?.tem_dimensao_variavel && p.largura_padrao != null ? String(p.largura_padrao) : '',
+      altura_pedido: p?.tem_dimensao_variavel && p.altura_padrao != null ? String(p.altura_padrao) : '',
+    }))
+  }
+
+  async function baixarEstoque() {
+    if (!ordem || materiais.length === 0) return
+    if (!confirm(`Deseja baixar ${materiais.length} insumo(s) do estoque? Esta ação não pode ser desfeita.`)) return
+    setBaixando(true)
+    setMsg('')
+    const res = await fetch(`/api/producao/ordens/${ordemId}/baixar-estoque`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        materiais: materiais.map((m) => ({ insumo_id: m.insumo_id, quantidade: m.quantidade_calculada, nome: m.nome })),
+      }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (res.ok) {
+      setMsg('Estoque baixado com sucesso!')
+      await carregar()
+    } else if (json.insuficientes) {
+      const lista = json.insuficientes
+        .map((i: any) => `• ${i.nome}: precisa ${Number(i.precisa).toFixed(3)}, disponível ${Number(i.disponivel).toFixed(3)}`)
+        .join('\n')
+      setMsg(`⚠ Saldo insuficiente:\n${lista}`)
+    } else {
+      setMsg(json.error || 'Erro ao baixar estoque.')
+    }
+    setBaixando(false)
   }
 
   if (loading) return <div className="p-8 text-slate-400">Carregando...</div>
@@ -127,7 +233,7 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
         </div>
       </div>
 
-      {msg && <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-700">{msg}</div>}
+      {msg && <div className={`whitespace-pre-line rounded-xl border px-4 py-2 text-sm ${msg.startsWith('⚠') ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700'}`}>{msg}</div>}
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
@@ -217,6 +323,33 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
                   <textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} rows={3}
                     className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 resize-none" />
                 </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Produto fabricado</label>
+                  <select value={form.produto_id} onChange={(e) => selecionarProduto(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                    <option value="">—</option>
+                    {produtos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
+                {produtoSelecionado?.tem_dimensao_variavel && (
+                  <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Compr. (m)</label>
+                      <input type="number" step="0.01" value={form.comprimento_pedido} onChange={(e) => setForm({ ...form, comprimento_pedido: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Largura (m)</label>
+                      <input type="number" step="0.01" value={form.largura_pedido} onChange={(e) => setForm({ ...form, largura_pedido: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Altura (m)</label>
+                      <input type="number" step="0.01" value={form.altura_pedido} onChange={(e) => setForm({ ...form, altura_pedido: e.target.value })}
+                        className="w-full rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500" />
+                    </div>
+                  </div>
+                )}
                 <button onClick={salvarEdicao} disabled={salvando} className="w-full rounded-xl bg-[#0b1733] py-2 text-sm font-semibold text-white hover:bg-[#1b4fd6] disabled:opacity-60">
                   {salvando ? 'Salvando...' : 'Salvar alterações'}
                 </button>
@@ -244,6 +377,62 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
                 {lead.valor_orcamento && <div><dt className="text-slate-500">Valor orçamento</dt><dd className="font-semibold text-green-700">{Number(lead.valor_orcamento).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</dd></div>}
               </dl>
               <Link href={`/leads`} className="mt-3 block text-xs font-semibold text-[#1b4fd6] hover:underline">Ver lead no CRM →</Link>
+            </div>
+          )}
+
+          {/* Materiais da Ordem */}
+          {ordem.produto_id && (
+            <div className={card}>
+              <h2 className="mb-3 text-base font-bold text-[#0b1733]">Materiais da Ordem</h2>
+              {(() => {
+                const prod = produtos.find((p) => p.id === ordem.produto_id)
+                const temDim = prod?.tem_dimensao_variavel
+                return (
+                  <>
+                    {prod && <p className="text-sm text-slate-700"><span className="text-slate-500">Produto:</span> {prod.nome}</p>}
+                    {temDim && ordem.comprimento_pedido && ordem.largura_pedido && (
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Dimensões: {Number(ordem.comprimento_pedido).toLocaleString('pt-BR')}m × {Number(ordem.largura_pedido).toLocaleString('pt-BR')}m
+                        {prod.comprimento_padrao && prod.largura_padrao && (
+                          <span className="text-slate-400"> (padrão: {Number(prod.comprimento_padrao).toLocaleString('pt-BR')}m × {Number(prod.largura_padrao).toLocaleString('pt-BR')}m)</span>
+                        )}
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
+
+              {materiais.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-400">Nenhum insumo na ficha técnica deste produto.</p>
+              ) : (
+                <table className="mt-3 w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs font-bold text-slate-500">
+                      <th className="py-1.5 pr-2">Insumo</th>
+                      <th className="py-1.5 pr-2 text-right">Qtd</th>
+                      <th className="py-1.5">Un.</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {materiais.map((m) => (
+                      <tr key={m.insumo_id} className="border-b border-slate-100">
+                        <td className="py-1.5 pr-2 font-medium text-[#0b1733]">{m.nome}</td>
+                        <td className="py-1.5 pr-2 text-right text-slate-700">{m.quantidade_calculada.toFixed(3)}</td>
+                        <td className="py-1.5 text-slate-500">{m.unidade}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {ordem.materiais_calculados ? (
+                <p className="mt-3 rounded-xl bg-green-50 border border-green-200 px-3 py-2 text-xs font-semibold text-green-700">✓ Estoque baixado para esta ordem</p>
+              ) : ordem.status !== 'CONCLUIDO' && materiais.length > 0 ? (
+                <button onClick={baixarEstoque} disabled={baixando}
+                  className="mt-3 w-full rounded-xl bg-[#0b1733] py-2 text-sm font-semibold text-white hover:bg-[#1b4fd6] disabled:opacity-60">
+                  {baixando ? 'Baixando...' : 'Baixar Estoque desta Ordem'}
+                </button>
+              ) : null}
             </div>
           )}
         </div>

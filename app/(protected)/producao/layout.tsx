@@ -6,6 +6,8 @@ import { usePathname } from 'next/navigation'
 const abas = [
   { href: '/producao', label: 'Dashboard', exact: true },
   { href: '/producao/ordens', label: 'Ordens' },
+  { href: '/producao/produtos', label: 'Produtos' },
+  { href: '/producao/estoque', label: 'Estoque' },
   { href: '/producao/cadastros', label: 'Cadastros' },
 ]
 
