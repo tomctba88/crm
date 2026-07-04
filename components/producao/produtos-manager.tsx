@@ -6,8 +6,18 @@ import { calcularQuantidade, ESCALONAMENTO_LABEL } from '@/lib/producao/calcular
 
 type TipoProduto = { id: number; nome: string; ativo: boolean }
 
+type Insumo = {
+  id: number
+  sku: string | null
+  nome: string
+  descricao: string | null
+  unidade: string
+  ativo: boolean
+}
+
 type Produto = {
   id: number
+  sku: string | null
   nome: string
   descricao: string | null
   tipo_produto_id: number | null
@@ -31,12 +41,14 @@ type FichaTecnicaItem = {
   producao_insumos: { id: number; nome: string; unidade: string }
 }
 
-type Insumo = { id: number; nome: string; unidade: string; ativo: boolean }
+type Linha = { kind: 'insumo'; ins: Insumo } | { kind: 'fabricado'; prod: Produto }
 
 const card = 'bg-white border border-slate-200 rounded-2xl p-5 shadow-sm'
 const input = 'rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500'
 const btnPrimario = 'rounded-xl bg-[#0b1733] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1b4fd6] disabled:opacity-50'
 const btnSecundario = 'rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50'
+
+const UNIDADES = ['un', 'm', 'm²', 'kg', 'l', 'cm', 'par']
 
 const ESCALONAMENTOS = [
   { valor: 'fixo', label: 'Fixo (não escala)' },
@@ -48,39 +60,47 @@ const ESCALONAMENTOS = [
 function fmt(n: number) {
   return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
 }
-
 function brl(n: number) {
   return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-const PRODUTO_VAZIO = {
-  nome: '', descricao: '', tipo_produto_id: '' as string,
-  tem_dimensao_variavel: false, comprimento_padrao: '', largura_padrao: '', altura_padrao: '',
-  custo_mao_obra: '', margem_lucro_pct: '',
+const FORM_VAZIO = {
+  tipo: 'fabricado' as 'insumo' | 'fabricado',
+  sku: '',
+  nome: '',
+  descricao: '',
+  unidade: 'un',
+  tipo_produto_id: '' as string,
+  tem_dimensao_variavel: false,
+  comprimento_padrao: '',
+  largura_padrao: '',
+  altura_padrao: '',
+  custo_mao_obra: '',
+  margem_lucro_pct: '',
 }
 
 export default function ProdutosManager() {
   const supabase = useMemo(() => createClient(), [])
+  const [insumos, setInsumos] = useState<Insumo[]>([])
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [tipos, setTipos] = useState<TipoProduto[]>([])
-  const [insumos, setInsumos] = useState<Insumo[]>([])
   const [contagens, setContagens] = useState<Record<number, number>>({})
   const [custosInsumo, setCustosInsumo] = useState<Record<number, number>>({})
   const [custoMateriaisProduto, setCustoMateriaisProduto] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
+  const [filtro, setFiltro] = useState<'todos' | 'insumo' | 'fabricado'>('todos')
 
-  // Modal de produto
+  // Modal de cadastro
   const [modalAberto, setModalAberto] = useState(false)
-  const [editandoId, setEditandoId] = useState<number | null>(null)
-  const [form, setForm] = useState({ ...PRODUTO_VAZIO })
+  const [editando, setEditando] = useState<{ kind: 'insumo' | 'fabricado'; id: number } | null>(null)
+  const [form, setForm] = useState({ ...FORM_VAZIO })
 
   // Painel ficha técnica
   const [fichaProduto, setFichaProduto] = useState<Produto | null>(null)
   const [ficha, setFicha] = useState<FichaTecnicaItem[]>([])
   const [novoItem, setNovoItem] = useState({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', custo_unitario: '', observacao: '' })
-  // Custos do produto na ficha (mão de obra + margem, editáveis inline)
   const [maoObra, setMaoObra] = useState('')
   const [margem, setMargem] = useState('')
 
@@ -91,16 +111,16 @@ export default function ProdutosManager() {
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
-    const [{ data: prods }, { data: tp }, { data: ins }, { data: fichas }, { data: est }] = await Promise.all([
+    const [{ data: ins }, { data: prods }, { data: tp }, { data: fichas }, { data: est }] = await Promise.all([
+      supabase.from('producao_insumos').select('id, sku, nome, descricao, unidade, ativo').order('nome'),
       supabase.from('producao_produtos').select('*, producao_tipos_produto(nome)').order('nome'),
       supabase.from('producao_tipos_produto').select('*').eq('ativo', true).order('nome'),
-      supabase.from('producao_insumos').select('id, nome, unidade, ativo').order('nome'),
       supabase.from('producao_ficha_tecnica').select('produto_id, insumo_id, quantidade_padrao, custo_unitario'),
       supabase.from('producao_estoque_insumos').select('insumo_id, custo_unitario'),
     ])
+    setInsumos((ins || []) as Insumo[])
     setProdutos((prods || []) as unknown as Produto[])
     setTipos(tp || [])
-    setInsumos(ins || [])
 
     const custos: Record<number, number> = {}
     for (const e of est || []) {
@@ -122,35 +142,60 @@ export default function ProdutosManager() {
     setLoading(false)
   }
 
-  // Custo unitário efetivo de um item da ficha (override do item ou custo do estoque)
+  function flash(tipo: 'ok' | 'erro', texto: string) {
+    setMsg({ tipo, texto })
+    setTimeout(() => setMsg(null), 4000)
+  }
+
   function custoUnitItem(it: FichaTecnicaItem): number {
     return it.custo_unitario != null ? Number(it.custo_unitario) : (custosInsumo[it.insumo_id] ?? 0)
   }
 
-  // Preço final de venda de um produto (materiais + mão de obra + margem)
   function precoFinalProduto(p: Produto): number {
     const materiais = custoMateriaisProduto[p.id] || 0
     const total = materiais + (Number(p.custo_mao_obra) || 0)
     return total * (1 + (Number(p.margem_lucro_pct) || 0) / 100)
   }
 
-  function flash(tipo: 'ok' | 'erro', texto: string) {
-    setMsg({ tipo, texto })
-    setTimeout(() => setMsg(null), 4000)
+  // Gera o próximo SKU: INS-0001 para insumo, PRD-0001 para fabricado
+  function proximoSku(tipo: 'insumo' | 'fabricado'): string {
+    const prefix = tipo === 'insumo' ? 'INS-' : 'PRD-'
+    const skus = (tipo === 'insumo' ? insumos.map((i) => i.sku) : produtos.map((p) => p.sku))
+    let max = 0
+    for (const s of skus) {
+      if (s && s.startsWith(prefix)) {
+        const n = parseInt(s.slice(prefix.length), 10)
+        if (!isNaN(n) && n > max) max = n
+      }
+    }
+    return prefix + String(max + 1).padStart(4, '0')
   }
 
-  // ---- Modal de produto ---------------------------------------------------
+  // ---- Modal de cadastro --------------------------------------------------
   function abrirNovo() {
-    setEditandoId(null)
-    setForm({ ...PRODUTO_VAZIO })
+    setEditando(null)
+    setForm({ ...FORM_VAZIO, tipo: 'fabricado', sku: proximoSku('fabricado') })
     setModalAberto(true)
   }
 
-  function abrirEdicao(p: Produto) {
-    setEditandoId(p.id)
+  function trocarTipo(t: 'insumo' | 'fabricado') {
+    setForm((f) => ({ ...f, tipo: t, sku: proximoSku(t) }))
+  }
+
+  function abrirEdicaoInsumo(ins: Insumo) {
+    setEditando({ kind: 'insumo', id: ins.id })
+    setForm({ ...FORM_VAZIO, tipo: 'insumo', sku: ins.sku || '', nome: ins.nome, descricao: ins.descricao || '', unidade: ins.unidade })
+    setModalAberto(true)
+  }
+
+  function abrirEdicaoProduto(p: Produto) {
+    setEditando({ kind: 'fabricado', id: p.id })
     setForm({
+      tipo: 'fabricado',
+      sku: p.sku || '',
       nome: p.nome,
       descricao: p.descricao || '',
+      unidade: 'un',
       tipo_produto_id: p.tipo_produto_id != null ? String(p.tipo_produto_id) : '',
       tem_dimensao_variavel: p.tem_dimensao_variavel,
       comprimento_padrao: p.comprimento_padrao != null ? String(p.comprimento_padrao) : '',
@@ -162,41 +207,62 @@ export default function ProdutosManager() {
     setModalAberto(true)
   }
 
-  async function salvarProduto() {
+  async function salvar() {
     if (!form.nome.trim()) { flash('erro', 'Nome é obrigatório.'); return }
-    if (form.tem_dimensao_variavel) {
-      const c = Number(form.comprimento_padrao)
-      const l = Number(form.largura_padrao)
-      if (!c || c <= 0 || !l || l <= 0) { flash('erro', 'Comprimento e largura padrão são obrigatórios (> 0) para produtos com dimensão variável.'); return }
-    }
     setSalvando(true)
-    const payload = {
-      nome: form.nome.trim(),
-      descricao: form.descricao.trim() || null,
-      tipo_produto_id: form.tipo_produto_id ? Number(form.tipo_produto_id) : null,
-      tem_dimensao_variavel: form.tem_dimensao_variavel,
-      comprimento_padrao: form.tem_dimensao_variavel && form.comprimento_padrao ? Number(form.comprimento_padrao) : null,
-      largura_padrao: form.tem_dimensao_variavel && form.largura_padrao ? Number(form.largura_padrao) : null,
-      altura_padrao: form.tem_dimensao_variavel && form.altura_padrao ? Number(form.altura_padrao) : null,
-      custo_mao_obra: form.custo_mao_obra ? Number(form.custo_mao_obra) : 0,
-      margem_lucro_pct: form.margem_lucro_pct ? Number(form.margem_lucro_pct) : 0,
-      updated_at: new Date().toISOString(),
-    }
-    let error
-    if (editandoId) {
-      ({ error } = await supabase.from('producao_produtos').update(payload).eq('id', editandoId))
+
+    if (form.tipo === 'insumo') {
+      const payload = {
+        sku: form.sku.trim() || null,
+        nome: form.nome.trim(),
+        descricao: form.descricao.trim() || null,
+        unidade: form.unidade,
+        updated_at: new Date().toISOString(),
+      }
+      if (editando) {
+        const { error } = await supabase.from('producao_insumos').update(payload).eq('id', editando.id)
+        if (error) { flash('erro', error.code === '23505' ? 'SKU já existe.' : 'Erro ao salvar insumo.'); setSalvando(false); return }
+      } else {
+        const { data: novo, error } = await supabase.from('producao_insumos').insert(payload).select().single()
+        if (error || !novo) { flash('erro', error?.code === '23505' ? 'SKU já existe.' : 'Erro ao salvar insumo.'); setSalvando(false); return }
+        await supabase.from('producao_estoque_insumos').insert({ insumo_id: novo.id, quantidade_atual: 0, ponto_reposicao: 0 })
+      }
     } else {
-      ({ error } = await supabase.from('producao_produtos').insert(payload))
+      if (form.tem_dimensao_variavel) {
+        const c = Number(form.comprimento_padrao), l = Number(form.largura_padrao)
+        if (!c || c <= 0 || !l || l <= 0) { flash('erro', 'Comprimento e largura padrão são obrigatórios (> 0) para dimensão variável.'); setSalvando(false); return }
+      }
+      const payload = {
+        sku: form.sku.trim() || null,
+        nome: form.nome.trim(),
+        descricao: form.descricao.trim() || null,
+        tipo_produto_id: form.tipo_produto_id ? Number(form.tipo_produto_id) : null,
+        tem_dimensao_variavel: form.tem_dimensao_variavel,
+        comprimento_padrao: form.tem_dimensao_variavel && form.comprimento_padrao ? Number(form.comprimento_padrao) : null,
+        largura_padrao: form.tem_dimensao_variavel && form.largura_padrao ? Number(form.largura_padrao) : null,
+        altura_padrao: form.tem_dimensao_variavel && form.altura_padrao ? Number(form.altura_padrao) : null,
+        custo_mao_obra: form.custo_mao_obra ? Number(form.custo_mao_obra) : 0,
+        margem_lucro_pct: form.margem_lucro_pct ? Number(form.margem_lucro_pct) : 0,
+        updated_at: new Date().toISOString(),
+      }
+      const { error } = editando
+        ? await supabase.from('producao_produtos').update(payload).eq('id', editando.id)
+        : await supabase.from('producao_produtos').insert(payload)
+      if (error) { flash('erro', error.code === '23505' ? 'SKU já existe.' : 'Erro ao salvar produto.'); setSalvando(false); return }
     }
-    if (error) { flash('erro', 'Erro ao salvar produto.'); setSalvando(false); return }
+
     setModalAberto(false)
-    flash('ok', 'Produto salvo!')
+    flash('ok', 'Salvo com sucesso!')
     await carregar()
     setSalvando(false)
   }
 
-  async function toggleAtivoProduto(p: Produto) {
-    await supabase.from('producao_produtos').update({ ativo: !p.ativo }).eq('id', p.id)
+  async function toggleAtivo(linha: Linha) {
+    if (linha.kind === 'insumo') {
+      await supabase.from('producao_insumos').update({ ativo: !linha.ins.ativo }).eq('id', linha.ins.id)
+    } else {
+      await supabase.from('producao_produtos').update({ ativo: !linha.prod.ativo }).eq('id', linha.prod.id)
+    }
     await carregar()
   }
 
@@ -220,6 +286,11 @@ export default function ProdutosManager() {
     setFicha((data || []) as unknown as FichaTecnicaItem[])
   }
 
+  function fecharFicha() {
+    setFichaProduto(null)
+    setFicha([])
+  }
+
   async function salvarCustosProduto() {
     if (!fichaProduto) return
     setSalvando(true)
@@ -233,11 +304,6 @@ export default function ProdutosManager() {
     flash('ok', 'Custos do produto atualizados!')
     await carregar()
     setSalvando(false)
-  }
-
-  function fecharFicha() {
-    setFichaProduto(null)
-    setFicha([])
   }
 
   async function adicionarItemFicha() {
@@ -276,14 +342,27 @@ export default function ProdutosManager() {
 
   const insumosAtivos = insumos.filter((i) => i.ativo)
 
+  const linhas: Linha[] = useMemo(() => {
+    const arr: Linha[] = [
+      ...insumos.map((ins) => ({ kind: 'insumo' as const, ins })),
+      ...produtos.map((prod) => ({ kind: 'fabricado' as const, prod })),
+    ]
+    const filtradas = filtro === 'todos' ? arr : arr.filter((l) => l.kind === filtro)
+    return filtradas.sort((a, b) => {
+      const na = a.kind === 'insumo' ? a.ins.nome : a.prod.nome
+      const nb = b.kind === 'insumo' ? b.ins.nome : b.prod.nome
+      return na.localeCompare(nb)
+    })
+  }, [insumos, produtos, filtro])
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black text-[#0b1733]">Produtos Fabricados</h1>
-          <p className="text-sm text-slate-500">Produtos, dimensões padrão e fichas técnicas de insumos</p>
+          <h1 className="text-2xl font-black text-[#0b1733]">Produtos</h1>
+          <p className="text-sm text-slate-500">Insumos e produtos fabricados · fichas técnicas e preço final</p>
         </div>
-        <button onClick={abrirNovo} className={btnPrimario}>+ Novo Produto</button>
+        <button onClick={abrirNovo} className={btnPrimario}>+ Novo Cadastro</button>
       </div>
 
       {msg && (
@@ -292,136 +371,203 @@ export default function ProdutosManager() {
         </div>
       )}
 
-      {/* SEÇÃO A — Lista de produtos */}
+      {/* Filtro por tipo */}
+      <div className="flex gap-1">
+        {([['todos', 'Todos'], ['insumo', 'Insumos'], ['fabricado', 'Fabricados']] as const).map(([val, lbl]) => (
+          <button
+            key={val}
+            onClick={() => setFiltro(val)}
+            className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition-colors ${filtro === val ? 'bg-[#0b1733] text-white' : 'border border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista unificada */}
       <div className={card}>
         {loading ? (
           <p className="text-sm text-slate-400">Carregando...</p>
-        ) : produtos.length === 0 ? (
-          <p className="text-sm text-slate-400">Nenhum produto cadastrado ainda.</p>
+        ) : linhas.length === 0 ? (
+          <p className="text-sm text-slate-400">Nenhum cadastro ainda. Clique em “+ Novo Cadastro”.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm" style={{ minWidth: 920 }}>
+            <table className="w-full border-collapse text-sm" style={{ minWidth: 940 }}>
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-bold text-slate-500">
+                  <th className="py-2 pr-3">SKU</th>
                   <th className="py-2 pr-3">Nome</th>
                   <th className="py-2 pr-3">Tipo</th>
-                  <th className="py-2 pr-3">Dimensões Padrão</th>
-                  <th className="py-2 pr-3">Variável?</th>
-                  <th className="py-2 pr-3">Insumos</th>
-                  <th className="py-2 pr-3 text-right">Custo Mat.</th>
+                  <th className="py-2 pr-3">Un. / Dimensões</th>
+                  <th className="py-2 pr-3 text-right">Custo</th>
                   <th className="py-2 pr-3 text-right">Preço Venda</th>
                   <th className="py-2 pr-3">Ativo</th>
                   <th className="py-2 pr-3 text-right">Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {produtos.map((p) => (
-                  <tr key={p.id} className={`border-b border-slate-100 ${!p.ativo ? 'opacity-50' : ''}`}>
-                    <td className="py-2 pr-3">
-                      <div className="font-semibold text-[#0b1733]">{p.nome}</div>
-                      {p.descricao && <div className="text-xs text-slate-400">{p.descricao}</div>}
-                    </td>
-                    <td className="py-2 pr-3 text-slate-600">{p.producao_tipos_produto?.nome || '—'}</td>
-                    <td className="py-2 pr-3 text-slate-600">
-                      {p.comprimento_padrao && p.largura_padrao ? `${fmt(p.comprimento_padrao)}m × ${fmt(p.largura_padrao)}m` : '—'}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.tem_dimensao_variavel ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>
-                        {p.tem_dimensao_variavel ? 'Sim' : 'Não'}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3 text-slate-600">{contagens[p.id] || 0} insumos</td>
-                    <td className="py-2 pr-3 text-right text-slate-600">{brl(custoMateriaisProduto[p.id] || 0)}</td>
-                    <td className="py-2 pr-3 text-right font-semibold text-green-700">{brl(precoFinalProduto(p))}</td>
-                    <td className="py-2 pr-3">
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>{p.ativo ? 'Ativo' : 'Inativo'}</span>
-                    </td>
-                    <td className="py-2 pr-3">
-                      <div className="flex justify-end gap-1.5">
-                        <button onClick={() => abrirEdicao(p)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Editar</button>
-                        <button onClick={() => abrirFicha(p)} className="rounded-lg bg-[#0b1733] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1b4fd6]">Ficha Técnica</button>
-                        <button onClick={() => toggleAtivoProduto(p)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{p.ativo ? 'Desativar' : 'Ativar'}</button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {linhas.map((l) => {
+                  if (l.kind === 'insumo') {
+                    const ins = l.ins
+                    return (
+                      <tr key={`i${ins.id}`} className={`border-b border-slate-100 ${!ins.ativo ? 'opacity-50' : ''}`}>
+                        <td className="py-2 pr-3 font-mono text-xs text-slate-500">{ins.sku || '—'}</td>
+                        <td className="py-2 pr-3">
+                          <div className="font-semibold text-[#0b1733]">{ins.nome}</div>
+                          {ins.descricao && <div className="text-xs text-slate-400">{ins.descricao}</div>}
+                        </td>
+                        <td className="py-2 pr-3"><span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800">Insumo</span></td>
+                        <td className="py-2 pr-3 text-slate-600">{ins.unidade}</td>
+                        <td className="py-2 pr-3 text-right text-slate-600">{custosInsumo[ins.id] ? brl(custosInsumo[ins.id]) : '—'}</td>
+                        <td className="py-2 pr-3 text-right text-slate-400">—</td>
+                        <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ins.ativo ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>{ins.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                        <td className="py-2 pr-3">
+                          <div className="flex justify-end gap-1.5">
+                            <button onClick={() => abrirEdicaoInsumo(ins)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Editar</button>
+                            <button onClick={() => toggleAtivo(l)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{ins.ativo ? 'Desativar' : 'Ativar'}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  }
+                  const p = l.prod
+                  return (
+                    <tr key={`p${p.id}`} className={`border-b border-slate-100 ${!p.ativo ? 'opacity-50' : ''}`}>
+                      <td className="py-2 pr-3 font-mono text-xs text-slate-500">{p.sku || '—'}</td>
+                      <td className="py-2 pr-3">
+                        <div className="font-semibold text-[#0b1733]">{p.nome}</div>
+                        <div className="text-xs text-slate-400">
+                          {p.producao_tipos_produto?.nome || 'Sem tipo'} · {contagens[p.id] || 0} insumos
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3"><span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800">Fabricado</span></td>
+                      <td className="py-2 pr-3 text-slate-600">{p.comprimento_padrao && p.largura_padrao ? `${fmt(p.comprimento_padrao)}m × ${fmt(p.largura_padrao)}m` : '—'}</td>
+                      <td className="py-2 pr-3 text-right text-slate-600">{brl(custoMateriaisProduto[p.id] || 0)}</td>
+                      <td className="py-2 pr-3 text-right font-semibold text-green-700">{brl(precoFinalProduto(p))}</td>
+                      <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>{p.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                      <td className="py-2 pr-3">
+                        <div className="flex justify-end gap-1.5">
+                          <button onClick={() => abrirEdicaoProduto(p)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Editar</button>
+                          <button onClick={() => abrirFicha(p)} className="rounded-lg bg-[#0b1733] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1b4fd6]">Ficha Técnica</button>
+                          <button onClick={() => toggleAtivo(l)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{p.ativo ? 'Desativar' : 'Ativar'}</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      {/* SEÇÃO B — Modal de produto */}
+      {/* Modal de cadastro */}
       {modalAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setModalAberto(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-4 text-lg font-bold text-[#0b1733]">{editandoId ? 'Editar Produto' : 'Novo Produto'}</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Nome *</label>
-                <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={`${input} w-full`} placeholder="Ex: Mesa Escritório" />
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="mb-4 text-lg font-bold text-[#0b1733]">
+              {editando ? 'Editar' : 'Novo'} {form.tipo === 'insumo' ? 'Insumo' : 'Produto Fabricado'}
+            </h2>
+
+            {/* Seletor de tipo (só ao criar) */}
+            {!editando && (
+              <div className="mb-4 flex gap-2">
+                <button onClick={() => trocarTipo('insumo')} className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${form.tipo === 'insumo' ? 'border-sky-500 bg-sky-50 text-sky-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                  Insumo (matéria-prima)
+                </button>
+                <button onClick={() => trocarTipo('fabricado')} className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${form.tipo === 'fabricado' ? 'border-violet-500 bg-violet-50 text-violet-800' : 'border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                  Produto Fabricado
+                </button>
               </div>
+            )}
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-[140px_1fr] gap-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">SKU</label>
+                  <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className={`${input} w-full font-mono`} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Nome *</label>
+                  <input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={`${input} w-full`} placeholder={form.tipo === 'insumo' ? 'Ex: Tampo MDF 15mm' : 'Ex: Mesa Escritório'} />
+                </div>
+              </div>
+
               <div>
                 <label className="mb-1 block text-xs font-semibold text-slate-500">Descrição</label>
                 <textarea value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} rows={2} className={`${input} w-full resize-none`} />
               </div>
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-slate-500">Tipo de produto</label>
-                <select value={form.tipo_produto_id} onChange={(e) => setForm({ ...form, tipo_produto_id: e.target.value })} className={`${input} w-full`}>
-                  <option value="">—</option>
-                  {tipos.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-                </select>
-              </div>
-              <label className="flex cursor-pointer items-center gap-2">
-                <input type="checkbox" checked={form.tem_dimensao_variavel} onChange={(e) => setForm({ ...form, tem_dimensao_variavel: e.target.checked })} className="h-4 w-4" />
-                <span className="text-sm font-semibold text-slate-700">Tem dimensão variável?</span>
-              </label>
-              {form.tem_dimensao_variavel && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid grid-cols-3 gap-2">
+
+              {form.tipo === 'insumo' ? (
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Unidade *</label>
+                  <select value={form.unidade} onChange={(e) => setForm({ ...form, unidade: e.target.value })} className={`${input} w-full`}>
+                    {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-400">O saldo, custo e ponto de reposição deste insumo são gerenciados na aba Estoque.</p>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-500">Tipo de produto</label>
+                    <select value={form.tipo_produto_id} onChange={(e) => setForm({ ...form, tipo_produto_id: e.target.value })} className={`${input} w-full`}>
+                      <option value="">—</option>
+                      {tipos.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    </select>
+                  </div>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="checkbox" checked={form.tem_dimensao_variavel} onChange={(e) => setForm({ ...form, tem_dimensao_variavel: e.target.checked })} className="h-4 w-4" />
+                    <span className="text-sm font-semibold text-slate-700">Tem dimensão variável?</span>
+                  </label>
+                  {form.tem_dimensao_variavel && (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold text-slate-500">Comprimento (m) *</label>
+                          <input type="number" step="0.01" value={form.comprimento_padrao} onChange={(e) => setForm({ ...form, comprimento_padrao: e.target.value })} className={`${input} w-full`} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold text-slate-500">Largura (m) *</label>
+                          <input type="number" step="0.01" value={form.largura_padrao} onChange={(e) => setForm({ ...form, largura_padrao: e.target.value })} className={`${input} w-full`} />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold text-slate-500">Altura (m)</label>
+                          <input type="number" step="0.01" value={form.altura_padrao} onChange={(e) => setForm({ ...form, altura_padrao: e.target.value })} className={`${input} w-full`} />
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">As dimensões padrão são a referência para calcular variações no pedido.</p>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-500">Comprimento (m) *</label>
-                      <input type="number" step="0.01" value={form.comprimento_padrao} onChange={(e) => setForm({ ...form, comprimento_padrao: e.target.value })} className={`${input} w-full`} />
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Custo mão de obra (R$)</label>
+                      <input type="number" step="0.01" value={form.custo_mao_obra} onChange={(e) => setForm({ ...form, custo_mao_obra: e.target.value })} className={`${input} w-full`} placeholder="0,00" />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-500">Largura (m) *</label>
-                      <input type="number" step="0.01" value={form.largura_padrao} onChange={(e) => setForm({ ...form, largura_padrao: e.target.value })} className={`${input} w-full`} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-slate-500">Altura (m)</label>
-                      <input type="number" step="0.01" value={form.altura_padrao} onChange={(e) => setForm({ ...form, altura_padrao: e.target.value })} className={`${input} w-full`} />
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Margem de lucro (%)</label>
+                      <input type="number" step="0.1" value={form.margem_lucro_pct} onChange={(e) => setForm({ ...form, margem_lucro_pct: e.target.value })} className={`${input} w-full`} placeholder="0" />
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-slate-500">As dimensões padrão são a referência para calcular variações no pedido.</p>
-                </div>
+                  <p className="text-xs text-slate-400">Os insumos que compõem este produto e o preço final são definidos na Ficha Técnica.</p>
+                </>
               )}
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Custo mão de obra (R$)</label>
-                  <input type="number" step="0.01" value={form.custo_mao_obra} onChange={(e) => setForm({ ...form, custo_mao_obra: e.target.value })} className={`${input} w-full`} placeholder="0,00" />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-semibold text-slate-500">Margem de lucro (%)</label>
-                  <input type="number" step="0.1" value={form.margem_lucro_pct} onChange={(e) => setForm({ ...form, margem_lucro_pct: e.target.value })} className={`${input} w-full`} placeholder="0" />
-                </div>
-              </div>
-              <p className="text-xs text-slate-400">Os insumos e seus custos são definidos na Ficha Técnica, onde o preço final de venda é calculado.</p>
             </div>
+
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setModalAberto(false)} className={btnSecundario}>Cancelar</button>
-              <button onClick={salvarProduto} disabled={salvando} className={btnPrimario}>Salvar Produto</button>
+              <button onClick={salvar} disabled={salvando} className={btnPrimario}>Salvar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SEÇÃO C — Painel de ficha técnica (drawer lateral) */}
+      {/* Painel de ficha técnica (drawer lateral) */}
       {fichaProduto && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={fecharFicha}>
           <div className="h-full w-full max-w-2xl overflow-y-auto bg-slate-50 p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <button onClick={fecharFicha} className="mb-3 text-sm text-slate-400 hover:text-slate-600">← {fichaProduto.nome}</button>
             <h2 className="text-xl font-black text-[#0b1733]">Ficha Técnica</h2>
-            <p className="text-sm text-slate-500">{ficha.length} insumo(s) cadastrado(s)</p>
+            <p className="text-sm text-slate-500">{fichaProduto.sku ? `${fichaProduto.sku} · ` : ''}{ficha.length} insumo(s) na composição</p>
             {fichaProduto.tem_dimensao_variavel && fichaProduto.comprimento_padrao && fichaProduto.largura_padrao && (
               <p className="mt-1 text-sm text-slate-500">Dimensões padrão: {fmt(fichaProduto.comprimento_padrao)}m × {fmt(fichaProduto.largura_padrao)}m</p>
             )}
@@ -429,7 +575,7 @@ export default function ProdutosManager() {
             {/* Lista de insumos da ficha */}
             <div className={`${card} mt-4`}>
               {ficha.length === 0 ? (
-                <p className="text-sm text-slate-400">Nenhum insumo na ficha ainda.</p>
+                <p className="text-sm text-slate-400">Nenhum insumo na composição ainda.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full border-collapse text-sm">
@@ -514,7 +660,7 @@ export default function ProdutosManager() {
 
             {/* Formulário para adicionar insumo */}
             <div className={`${card} mt-4`}>
-              <h3 className="mb-3 text-sm font-bold text-[#0b1733]">Adicionar insumo à ficha</h3>
+              <h3 className="mb-3 text-sm font-bold text-[#0b1733]">Adicionar insumo à composição</h3>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Insumo *</label>
@@ -553,7 +699,7 @@ export default function ProdutosManager() {
                 </div>
               </div>
               <div className="mt-3">
-                <button onClick={adicionarItemFicha} disabled={salvando} className={btnPrimario}>Adicionar à Ficha</button>
+                <button onClick={adicionarItemFicha} disabled={salvando} className={btnPrimario}>Adicionar à Composição</button>
               </div>
             </div>
 

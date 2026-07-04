@@ -56,10 +56,6 @@ export default function EstoqueManager() {
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
 
-  // Cadastro de insumo (colapsável)
-  const [abrirCadastro, setAbrirCadastro] = useState(false)
-  const [novoInsumo, setNovoInsumo] = useState({ nome: '', descricao: '', unidade: 'un' })
-
   // Edição inline de insumo
   const [editId, setEditId] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ nome: '', unidade: 'un', ponto_reposicao: '', custo_unitario: '' })
@@ -88,25 +84,6 @@ export default function EstoqueManager() {
   function flash(tipo: 'ok' | 'erro', texto: string) {
     setMsg({ tipo, texto })
     setTimeout(() => setMsg(null), 4000)
-  }
-
-  // ---- Cadastro de insumo -------------------------------------------------
-  async function adicionarInsumo() {
-    if (!novoInsumo.nome.trim()) return
-    setSalvando(true)
-    const { data: ins, error } = await supabase
-      .from('producao_insumos')
-      .insert({ nome: novoInsumo.nome.trim(), descricao: novoInsumo.descricao.trim() || null, unidade: novoInsumo.unidade })
-      .select()
-      .single()
-    if (error || !ins) { flash('erro', 'Erro ao cadastrar insumo.'); setSalvando(false); return }
-    // Cria a linha de estoque associada
-    await supabase.from('producao_estoque_insumos').insert({ insumo_id: ins.id, quantidade_atual: 0, ponto_reposicao: 0 })
-    setNovoInsumo({ nome: '', descricao: '', unidade: 'un' })
-    setAbrirCadastro(false)
-    flash('ok', 'Insumo cadastrado!')
-    await carregar()
-    setSalvando(false)
   }
 
   function iniciarEdicao(ins: Insumo) {
@@ -195,43 +172,14 @@ export default function EstoqueManager() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black text-[#0b1733]">Estoque de Insumos</h1>
-          <p className="text-sm text-slate-500">Matérias-primas, saldos e movimentações</p>
+          <p className="text-sm text-slate-500">Saldos, ponto de reposição e movimentações</p>
         </div>
-        <button onClick={() => setAbrirCadastro((v) => !v)} className={btnPrimario}>
-          {abrirCadastro ? 'Fechar' : '+ Novo Insumo'}
-        </button>
+        <a href="/producao/produtos" className={btnSecundario}>+ Cadastrar insumo (Produtos)</a>
       </div>
 
       {msg && (
         <div className={`rounded-xl border px-4 py-2 text-sm ${msg.tipo === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
           {msg.texto}
-        </div>
-      )}
-
-      {/* SEÇÃO A — Cadastro de insumo (colapsável) */}
-      {abrirCadastro && (
-        <div className={card}>
-          <h2 className="mb-4 text-base font-bold text-[#0b1733]">Cadastrar Insumo</h2>
-          <div className="grid gap-3 sm:grid-cols-[1fr_1fr_140px]">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">Nome *</label>
-              <input value={novoInsumo.nome} onChange={(e) => setNovoInsumo({ ...novoInsumo, nome: e.target.value })} className={`${input} w-full`} placeholder="Ex: Tampo MDF 15mm" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">Descrição</label>
-              <input value={novoInsumo.descricao} onChange={(e) => setNovoInsumo({ ...novoInsumo, descricao: e.target.value })} className={`${input} w-full`} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-slate-500">Unidade *</label>
-              <select value={novoInsumo.unidade} onChange={(e) => setNovoInsumo({ ...novoInsumo, unidade: e.target.value })} className={`${input} w-full`}>
-                {UNIDADES.map((u) => <option key={u} value={u}>{u}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={adicionarInsumo} disabled={salvando || !novoInsumo.nome.trim()} className={btnPrimario}>Adicionar Insumo</button>
-            <button onClick={() => setAbrirCadastro(false)} className={btnSecundario}>Cancelar</button>
-          </div>
         </div>
       )}
 
@@ -241,7 +189,7 @@ export default function EstoqueManager() {
         {loading ? (
           <p className="text-sm text-slate-400">Carregando...</p>
         ) : insumos.length === 0 ? (
-          <p className="text-sm text-slate-400">Nenhum insumo cadastrado ainda.</p>
+          <p className="text-sm text-slate-400">Nenhum insumo cadastrado ainda. Cadastre na aba <a href="/producao/produtos" className="font-semibold text-[#1b4fd6] hover:underline">Produtos</a> (tipo Insumo).</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-sm" style={{ minWidth: 720 }}>
