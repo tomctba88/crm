@@ -15,6 +15,8 @@ type Produto = {
   largura_padrao: number | null
   altura_padrao: number | null
   tem_dimensao_variavel: boolean
+  custo_mao_obra: number | null
+  margem_lucro_pct: number | null
   ativo: boolean
   producao_tipos_produto: { nome: string } | null
 }
@@ -24,6 +26,7 @@ type FichaTecnicaItem = {
   insumo_id: number
   quantidade_padrao: number
   dimensao_afetada: string
+  custo_unitario: number | null
   observacao: string | null
   producao_insumos: { id: number; nome: string; unidade: string }
 }
@@ -46,9 +49,14 @@ function fmt(n: number) {
   return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 3 })
 }
 
+function brl(n: number) {
+  return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 const PRODUTO_VAZIO = {
   nome: '', descricao: '', tipo_produto_id: '' as string,
   tem_dimensao_variavel: false, comprimento_padrao: '', largura_padrao: '', altura_padrao: '',
+  custo_mao_obra: '', margem_lucro_pct: '',
 }
 
 export default function ProdutosManager() {
@@ -57,6 +65,8 @@ export default function ProdutosManager() {
   const [tipos, setTipos] = useState<TipoProduto[]>([])
   const [insumos, setInsumos] = useState<Insumo[]>([])
   const [contagens, setContagens] = useState<Record<number, number>>({})
+  const [custosInsumo, setCustosInsumo] = useState<Record<number, number>>({})
+  const [custoMateriaisProduto, setCustoMateriaisProduto] = useState<Record<number, number>>({})
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
@@ -69,7 +79,10 @@ export default function ProdutosManager() {
   // Painel ficha técnica
   const [fichaProduto, setFichaProduto] = useState<Produto | null>(null)
   const [ficha, setFicha] = useState<FichaTecnicaItem[]>([])
-  const [novoItem, setNovoItem] = useState({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', observacao: '' })
+  const [novoItem, setNovoItem] = useState({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', custo_unitario: '', observacao: '' })
+  // Custos do produto na ficha (mão de obra + margem, editáveis inline)
+  const [maoObra, setMaoObra] = useState('')
+  const [margem, setMargem] = useState('')
 
   // Simulador
   const [simC, setSimC] = useState('')
@@ -78,19 +91,47 @@ export default function ProdutosManager() {
   useEffect(() => { carregar() }, [])
 
   async function carregar() {
-    const [{ data: prods }, { data: tp }, { data: ins }, { data: fichas }] = await Promise.all([
+    const [{ data: prods }, { data: tp }, { data: ins }, { data: fichas }, { data: est }] = await Promise.all([
       supabase.from('producao_produtos').select('*, producao_tipos_produto(nome)').order('nome'),
       supabase.from('producao_tipos_produto').select('*').eq('ativo', true).order('nome'),
       supabase.from('producao_insumos').select('id, nome, unidade, ativo').order('nome'),
-      supabase.from('producao_ficha_tecnica').select('produto_id'),
+      supabase.from('producao_ficha_tecnica').select('produto_id, insumo_id, quantidade_padrao, custo_unitario'),
+      supabase.from('producao_estoque_insumos').select('insumo_id, custo_unitario'),
     ])
     setProdutos((prods || []) as unknown as Produto[])
     setTipos(tp || [])
     setInsumos(ins || [])
+
+    const custos: Record<number, number> = {}
+    for (const e of est || []) {
+      const row = e as { insumo_id: number; custo_unitario: number | null }
+      custos[row.insumo_id] = row.custo_unitario != null ? Number(row.custo_unitario) : 0
+    }
+    setCustosInsumo(custos)
+
     const cont: Record<number, number> = {}
-    for (const f of fichas || []) cont[(f as { produto_id: number }).produto_id] = (cont[(f as { produto_id: number }).produto_id] || 0) + 1
+    const custoMat: Record<number, number> = {}
+    for (const f of fichas || []) {
+      const row = f as { produto_id: number; insumo_id: number; quantidade_padrao: number; custo_unitario: number | null }
+      cont[row.produto_id] = (cont[row.produto_id] || 0) + 1
+      const cu = row.custo_unitario != null ? Number(row.custo_unitario) : (custos[row.insumo_id] ?? 0)
+      custoMat[row.produto_id] = (custoMat[row.produto_id] || 0) + Number(row.quantidade_padrao) * cu
+    }
     setContagens(cont)
+    setCustoMateriaisProduto(custoMat)
     setLoading(false)
+  }
+
+  // Custo unitário efetivo de um item da ficha (override do item ou custo do estoque)
+  function custoUnitItem(it: FichaTecnicaItem): number {
+    return it.custo_unitario != null ? Number(it.custo_unitario) : (custosInsumo[it.insumo_id] ?? 0)
+  }
+
+  // Preço final de venda de um produto (materiais + mão de obra + margem)
+  function precoFinalProduto(p: Produto): number {
+    const materiais = custoMateriaisProduto[p.id] || 0
+    const total = materiais + (Number(p.custo_mao_obra) || 0)
+    return total * (1 + (Number(p.margem_lucro_pct) || 0) / 100)
   }
 
   function flash(tipo: 'ok' | 'erro', texto: string) {
@@ -115,6 +156,8 @@ export default function ProdutosManager() {
       comprimento_padrao: p.comprimento_padrao != null ? String(p.comprimento_padrao) : '',
       largura_padrao: p.largura_padrao != null ? String(p.largura_padrao) : '',
       altura_padrao: p.altura_padrao != null ? String(p.altura_padrao) : '',
+      custo_mao_obra: p.custo_mao_obra != null ? String(p.custo_mao_obra) : '',
+      margem_lucro_pct: p.margem_lucro_pct != null ? String(p.margem_lucro_pct) : '',
     })
     setModalAberto(true)
   }
@@ -135,6 +178,8 @@ export default function ProdutosManager() {
       comprimento_padrao: form.tem_dimensao_variavel && form.comprimento_padrao ? Number(form.comprimento_padrao) : null,
       largura_padrao: form.tem_dimensao_variavel && form.largura_padrao ? Number(form.largura_padrao) : null,
       altura_padrao: form.tem_dimensao_variavel && form.altura_padrao ? Number(form.altura_padrao) : null,
+      custo_mao_obra: form.custo_mao_obra ? Number(form.custo_mao_obra) : 0,
+      margem_lucro_pct: form.margem_lucro_pct ? Number(form.margem_lucro_pct) : 0,
       updated_at: new Date().toISOString(),
     }
     let error
@@ -160,7 +205,9 @@ export default function ProdutosManager() {
     setFichaProduto(p)
     setSimC(p.comprimento_padrao != null ? String(p.comprimento_padrao) : '')
     setSimL(p.largura_padrao != null ? String(p.largura_padrao) : '')
-    setNovoItem({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: p.tem_dimensao_variavel ? 'fixo' : 'fixo', observacao: '' })
+    setMaoObra(p.custo_mao_obra != null ? String(p.custo_mao_obra) : '')
+    setMargem(p.margem_lucro_pct != null ? String(p.margem_lucro_pct) : '')
+    setNovoItem({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', custo_unitario: '', observacao: '' })
     await carregarFicha(p.id)
   }
 
@@ -171,6 +218,21 @@ export default function ProdutosManager() {
       .eq('produto_id', produtoId)
       .order('id')
     setFicha((data || []) as unknown as FichaTecnicaItem[])
+  }
+
+  async function salvarCustosProduto() {
+    if (!fichaProduto) return
+    setSalvando(true)
+    const patch = {
+      custo_mao_obra: maoObra ? Number(maoObra) : 0,
+      margem_lucro_pct: margem ? Number(margem) : 0,
+      updated_at: new Date().toISOString(),
+    }
+    await supabase.from('producao_produtos').update(patch).eq('id', fichaProduto.id)
+    setFichaProduto({ ...fichaProduto, custo_mao_obra: patch.custo_mao_obra, margem_lucro_pct: patch.margem_lucro_pct })
+    flash('ok', 'Custos do produto atualizados!')
+    await carregar()
+    setSalvando(false)
   }
 
   function fecharFicha() {
@@ -190,6 +252,7 @@ export default function ProdutosManager() {
       insumo_id: insumoId,
       quantidade_padrao: qtd,
       dimensao_afetada: fichaProduto.tem_dimensao_variavel ? novoItem.dimensao_afetada : 'fixo',
+      custo_unitario: novoItem.custo_unitario !== '' ? Number(novoItem.custo_unitario) : null,
       observacao: novoItem.observacao.trim() || null,
     })
     if (error) {
@@ -197,7 +260,7 @@ export default function ProdutosManager() {
       setSalvando(false)
       return
     }
-    setNovoItem({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', observacao: '' })
+    setNovoItem({ insumo_id: '', quantidade_padrao: '', dimensao_afetada: 'fixo', custo_unitario: '', observacao: '' })
     await carregarFicha(fichaProduto.id)
     await carregar()
     setSalvando(false)
@@ -237,7 +300,7 @@ export default function ProdutosManager() {
           <p className="text-sm text-slate-400">Nenhum produto cadastrado ainda.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm" style={{ minWidth: 760 }}>
+            <table className="w-full border-collapse text-sm" style={{ minWidth: 920 }}>
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-bold text-slate-500">
                   <th className="py-2 pr-3">Nome</th>
@@ -245,6 +308,8 @@ export default function ProdutosManager() {
                   <th className="py-2 pr-3">Dimensões Padrão</th>
                   <th className="py-2 pr-3">Variável?</th>
                   <th className="py-2 pr-3">Insumos</th>
+                  <th className="py-2 pr-3 text-right">Custo Mat.</th>
+                  <th className="py-2 pr-3 text-right">Preço Venda</th>
                   <th className="py-2 pr-3">Ativo</th>
                   <th className="py-2 pr-3 text-right">Ações</th>
                 </tr>
@@ -266,6 +331,8 @@ export default function ProdutosManager() {
                       </span>
                     </td>
                     <td className="py-2 pr-3 text-slate-600">{contagens[p.id] || 0} insumos</td>
+                    <td className="py-2 pr-3 text-right text-slate-600">{brl(custoMateriaisProduto[p.id] || 0)}</td>
+                    <td className="py-2 pr-3 text-right font-semibold text-green-700">{brl(precoFinalProduto(p))}</td>
                     <td className="py-2 pr-3">
                       <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>{p.ativo ? 'Ativo' : 'Inativo'}</span>
                     </td>
@@ -328,6 +395,17 @@ export default function ProdutosManager() {
                   <p className="mt-2 text-xs text-slate-500">As dimensões padrão são a referência para calcular variações no pedido.</p>
                 </div>
               )}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Custo mão de obra (R$)</label>
+                  <input type="number" step="0.01" value={form.custo_mao_obra} onChange={(e) => setForm({ ...form, custo_mao_obra: e.target.value })} className={`${input} w-full`} placeholder="0,00" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Margem de lucro (%)</label>
+                  <input type="number" step="0.1" value={form.margem_lucro_pct} onChange={(e) => setForm({ ...form, margem_lucro_pct: e.target.value })} className={`${input} w-full`} placeholder="0" />
+                </div>
+              </div>
+              <p className="text-xs text-slate-400">Os insumos e seus custos são definidos na Ficha Técnica, onde o preço final de venda é calculado.</p>
             </div>
             <div className="mt-5 flex justify-end gap-2">
               <button onClick={() => setModalAberto(false)} className={btnSecundario}>Cancelar</button>
@@ -359,30 +437,80 @@ export default function ProdutosManager() {
                       <tr className="border-b border-slate-200 text-left text-xs font-bold text-slate-500">
                         <th className="py-2 pr-3">Insumo</th>
                         <th className="py-2 pr-3">Un.</th>
-                        <th className="py-2 pr-3">Qtd Padrão</th>
+                        <th className="py-2 pr-3 text-right">Qtd</th>
+                        <th className="py-2 pr-3 text-right">Custo Unit.</th>
+                        <th className="py-2 pr-3 text-right">Custo Total</th>
                         <th className="py-2 pr-3">Escalonamento</th>
-                        <th className="py-2 pr-3">Obs.</th>
                         <th className="py-2 pr-3 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {ficha.map((it) => (
-                        <tr key={it.id} className="border-b border-slate-100">
-                          <td className="py-2 pr-3 font-medium text-[#0b1733]">{it.producao_insumos.nome}</td>
-                          <td className="py-2 pr-3 text-slate-600">{it.producao_insumos.unidade}</td>
-                          <td className="py-2 pr-3 text-slate-700">{Number(it.quantidade_padrao).toFixed(3)}</td>
-                          <td className="py-2 pr-3 text-slate-600">{ESCALONAMENTO_LABEL[it.dimensao_afetada] || it.dimensao_afetada}</td>
-                          <td className="py-2 pr-3 text-slate-500">{it.observacao || '—'}</td>
-                          <td className="py-2 pr-3 text-right">
-                            <button onClick={() => removerItemFicha(it.id)} className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Remover</button>
-                          </td>
-                        </tr>
-                      ))}
+                      {ficha.map((it) => {
+                        const cu = custoUnitItem(it)
+                        const total = Number(it.quantidade_padrao) * cu
+                        return (
+                          <tr key={it.id} className="border-b border-slate-100">
+                            <td className="py-2 pr-3 font-medium text-[#0b1733]">
+                              {it.producao_insumos.nome}
+                              {it.observacao && <span className="block text-xs text-slate-400">{it.observacao}</span>}
+                            </td>
+                            <td className="py-2 pr-3 text-slate-600">{it.producao_insumos.unidade}</td>
+                            <td className="py-2 pr-3 text-right text-slate-700">{Number(it.quantidade_padrao).toFixed(3)}</td>
+                            <td className="py-2 pr-3 text-right text-slate-600">
+                              {brl(cu)}
+                              {it.custo_unitario == null && cu > 0 && <span className="block text-[10px] text-slate-400">estoque</span>}
+                            </td>
+                            <td className="py-2 pr-3 text-right font-semibold text-slate-800">{brl(total)}</td>
+                            <td className="py-2 pr-3 text-slate-600">{ESCALONAMENTO_LABEL[it.dimensao_afetada] || it.dimensao_afetada}</td>
+                            <td className="py-2 pr-3 text-right">
+                              <button onClick={() => removerItemFicha(it.id)} className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">Remover</button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
+
+            {/* Resumo de custos e preço final */}
+            {(() => {
+              const custoMateriais = ficha.reduce((s, it) => s + Number(it.quantidade_padrao) * custoUnitItem(it), 0)
+              const mo = Number(maoObra) || 0
+              const mg = Number(margem) || 0
+              const custoTotal = custoMateriais + mo
+              const preco = custoTotal * (1 + mg / 100)
+              const lucro = preco - custoTotal
+              return (
+                <div className={`${card} mt-4`}>
+                  <h3 className="mb-3 text-sm font-bold text-[#0b1733]">Resumo de Custos e Preço</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Custo de mão de obra (R$)</label>
+                      <input type="number" step="0.01" value={maoObra} onChange={(e) => setMaoObra(e.target.value)} className={`${input} w-full`} placeholder="0,00" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">Margem de lucro (%)</label>
+                      <input type="number" step="0.1" value={margem} onChange={(e) => setMargem(e.target.value)} className={`${input} w-full`} placeholder="0" />
+                    </div>
+                  </div>
+
+                  <dl className="mt-4 space-y-1.5 text-sm">
+                    <div className="flex justify-between"><dt className="text-slate-500">Custo de materiais ({ficha.length} insumo(s))</dt><dd className="font-semibold text-slate-800">{brl(custoMateriais)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-slate-500">Custo de mão de obra</dt><dd className="font-semibold text-slate-800">{brl(mo)}</dd></div>
+                    <div className="flex justify-between border-t border-slate-200 pt-1.5"><dt className="font-semibold text-slate-600">Custo total de produção</dt><dd className="font-bold text-[#0b1733]">{brl(custoTotal)}</dd></div>
+                    <div className="flex justify-between"><dt className="text-slate-500">Margem de lucro ({mg.toLocaleString('pt-BR')}%)</dt><dd className="font-semibold text-green-700">+ {brl(lucro)}</dd></div>
+                    <div className="flex justify-between rounded-xl bg-[#0b1733] px-3 py-2 text-white"><dt className="font-bold">Preço final de venda</dt><dd className="text-lg font-black">{brl(preco)}</dd></div>
+                  </dl>
+
+                  <div className="mt-3">
+                    <button onClick={salvarCustosProduto} disabled={salvando} className={btnPrimario}>Salvar custos do produto</button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-400">Materiais somados da ficha (quantidade × custo unitário). Mão de obra e margem são salvas no produto.</p>
+                </div>
+              )
+            })()}
 
             {/* Formulário para adicionar insumo */}
             <div className={`${card} mt-4`}>
@@ -398,6 +526,15 @@ export default function ProdutosManager() {
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Quantidade padrão *</label>
                   <input type="number" step="0.001" value={novoItem.quantidade_padrao} onChange={(e) => setNovoItem({ ...novoItem, quantidade_padrao: e.target.value })} className={`${input} w-full`} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-slate-500">Custo unitário (R$)</label>
+                  <input
+                    type="number" step="0.0001" value={novoItem.custo_unitario}
+                    onChange={(e) => setNovoItem({ ...novoItem, custo_unitario: e.target.value })}
+                    placeholder={novoItem.insumo_id && custosInsumo[Number(novoItem.insumo_id)] ? `estoque: ${brl(custosInsumo[Number(novoItem.insumo_id)])}` : 'usa custo do estoque'}
+                    className={`${input} w-full`}
+                  />
                 </div>
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-slate-500">Escalonamento *</label>
