@@ -3,7 +3,8 @@ import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server-client'
 
 // GET /api/pedidos/produtos?q=texto
-// Busca produtos no CATÁLOGO do Tiny (produtos_catalogo) para o vendedor montar o pedido.
+// Busca produtos no cadastro da Produção (producao_produtos, já no formato Tiny).
+// Preço = campo `preco` (Tiny) quando houver; senão calcula pela ficha técnica.
 export async function GET(req: Request) {
   try {
     const supabase = await createServerClient()
@@ -21,21 +22,43 @@ export async function GET(req: Request) {
     )
 
     let query = admin
-      .from('produtos_catalogo')
-      .select('id, sku, descricao, preco, unidade')
-      .order('descricao')
+      .from('producao_produtos')
+      .select('id, nome, sku, preco, custo_mao_obra, margem_lucro_pct')
+      .eq('ativo', true)
+      .order('nome')
       .limit(20)
-    if (q.length >= 1) query = query.or(`descricao.ilike.%${q}%,sku.ilike.%${q}%`)
+    if (q.length >= 1) query = query.or(`nome.ilike.%${q}%,sku.ilike.%${q}%`)
 
-    const { data, error } = await query
+    const [{ data: produtos, error }, { data: ficha }, { data: estoques }] = await Promise.all([
+      query,
+      admin.from('producao_ficha_tecnica').select('produto_id, insumo_id, quantidade_padrao, custo_unitario'),
+      admin.from('producao_estoque_insumos').select('insumo_id, custo_unitario'),
+    ])
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    const produtos = (data || []).map((p) => {
-      const r = p as { id: number; sku: string | null; descricao: string | null; preco: number | null }
-      return { id: r.id, nome: r.descricao || '(sem descrição)', sku: r.sku, preco: Number(r.preco) || 0 }
+    const custoEstoque: Record<number, number> = {}
+    for (const e of estoques || []) {
+      const r = e as { insumo_id: number; custo_unitario: number | null }
+      custoEstoque[r.insumo_id] = r.custo_unitario != null ? Number(r.custo_unitario) : 0
+    }
+    const custoMateriais: Record<number, number> = {}
+    for (const f of ficha || []) {
+      const r = f as { produto_id: number; insumo_id: number; quantidade_padrao: number; custo_unitario: number | null }
+      const cu = r.custo_unitario != null ? Number(r.custo_unitario) : (custoEstoque[r.insumo_id] ?? 0)
+      custoMateriais[r.produto_id] = (custoMateriais[r.produto_id] || 0) + Number(r.quantidade_padrao) * cu
+    }
+
+    const resultado = (produtos || []).map((p) => {
+      const prod = p as { id: number; nome: string; sku: string | null; preco: number | null; custo_mao_obra: number | null; margem_lucro_pct: number | null }
+      let preco = Number(prod.preco)
+      if (!preco || !isFinite(preco)) {
+        preco = ((custoMateriais[prod.id] || 0) + (Number(prod.custo_mao_obra) || 0)) *
+          (1 + (Number(prod.margem_lucro_pct) || 0) / 100)
+      }
+      return { id: prod.id, nome: prod.nome, sku: prod.sku, preco: Math.round(preco * 100) / 100 }
     })
 
-    return NextResponse.json({ produtos })
+    return NextResponse.json({ produtos: resultado })
   } catch (e) {
     console.error('ERRO GET /api/pedidos/produtos:', e)
     return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
