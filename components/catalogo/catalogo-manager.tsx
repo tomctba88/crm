@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import * as XLSX from 'xlsx'
 
 type Produto = {
@@ -28,6 +30,7 @@ function brl(n: number | null) {
 }
 
 export default function CatalogoManager() {
+  const router = useRouter()
   const [total, setTotal] = useState(0)
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [filtro, setFiltro] = useState('')
@@ -106,11 +109,14 @@ export default function CatalogoManager() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-xl font-black text-slate-800">Catálogo de Produtos</h1>
-        <p className="text-sm text-slate-500">
-          Produtos importados do Tiny. Total no sistema: <strong>{total.toLocaleString('pt-BR')}</strong>
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-black text-slate-800">Catálogo de Produtos</h1>
+          <p className="text-sm text-slate-500">
+            Base de cadastro (Tiny). Total no sistema: <strong>{total.toLocaleString('pt-BR')}</strong>
+          </p>
+        </div>
+        <Link href="/catalogo/novo" className={btnPrimario}>+ Novo produto</Link>
       </div>
 
       {/* Importador */}
@@ -175,7 +181,11 @@ export default function CatalogoManager() {
               </thead>
               <tbody>
                 {produtos.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100">
+                  <tr
+                    key={p.id}
+                    onClick={() => router.push(`/catalogo/${p.id}`)}
+                    className="cursor-pointer border-b border-slate-100 hover:bg-slate-50"
+                  >
                     <td className="py-2 pr-3 font-mono text-xs text-slate-500">{p.sku || '—'}</td>
                     <td className="py-2 pr-3">{p.descricao}</td>
                     <td className="py-2 pr-3 text-slate-500">{p.categoria || '—'}</td>
