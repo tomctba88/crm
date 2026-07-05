@@ -83,7 +83,7 @@ INSERT INTO pedidos (numero, lead_id, pos_venda_id, vendedor, status_global,
                      prazo_entrega, valor_produtos, valor_total, created_at)
 SELECT
   'PED-' || to_char(COALESCE(pv.data_inicio, NOW())::date, 'YYYY') || '-' || lpad(pv.id::text, 4, '0'),
-  pv.lead_id,
+  l.id,                                   -- usa l.id (NULL se o lead nao existir mais) p/ nao violar FK
   pv.id,
   COALESCE(pv.responsavel, l.vendedor),   -- vendedor: em pos_vendas é "responsavel"; senão vem do lead
   CASE
