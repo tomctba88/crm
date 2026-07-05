@@ -33,12 +33,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json().catch(() => ({}))
     const db = admin()
 
+    const catalogoId = body.catalogo_id ? Number(body.catalogo_id) : null
     const produtoId = body.produto_id ? Number(body.produto_id) : null
     const quantidade = Number(body.quantidade) > 0 ? Number(body.quantidade) : 1
 
     let valorTabela = 0
     let descricao: string | null = body.descricao ?? null
-    if (produtoId) {
+
+    if (catalogoId) {
+      // produto do catálogo do Tiny: preço e descrição vêm da tabela produtos_catalogo
+      const { data: cat } = await db
+        .from('produtos_catalogo')
+        .select('preco, descricao')
+        .eq('id', catalogoId)
+        .maybeSingle()
+      const c = cat as { preco: number | null; descricao: string | null } | null
+      valorTabela = Number(c?.preco) || 0
+      if (!descricao) descricao = c?.descricao ?? null
+    } else if (produtoId) {
+      // produto fabricado (Produção): preço calculado pela ficha técnica
       valorTabela = await precoFinalProduto(db, produtoId)
       if (!descricao) {
         const { data: prod } = await db.from('producao_produtos').select('nome').eq('id', produtoId).maybeSingle()
@@ -52,6 +65,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { error } = await db.from('pedido_itens').insert({
       pedido_id: pedidoId,
       produto_id: produtoId,
+      catalogo_id: catalogoId,
       descricao,
       quantidade,
       valor_tabela: valorTabela,

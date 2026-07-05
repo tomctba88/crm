@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server-client'
 
-// GET /api/pedidos/produtos?q=texto
-// Busca produtos no CATÁLOGO do Tiny (produtos_catalogo) para o vendedor montar o pedido.
+// GET /api/produtos-catalogo?q=texto  → busca no catálogo + total geral
 export async function GET(req: Request) {
   try {
     const supabase = await createServerClient()
@@ -20,24 +19,23 @@ export async function GET(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    const { count } = await admin
+      .from('produtos_catalogo')
+      .select('*', { count: 'exact', head: true })
+
     let query = admin
       .from('produtos_catalogo')
-      .select('id, sku, descricao, preco, unidade')
+      .select('id, tiny_id, sku, descricao, unidade, preco, preco_custo, estoque, categoria, situacao, url_imagem')
       .order('descricao')
-      .limit(20)
+      .limit(50)
     if (q.length >= 1) query = query.or(`descricao.ilike.%${q}%,sku.ilike.%${q}%`)
 
     const { data, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    const produtos = (data || []).map((p) => {
-      const r = p as { id: number; sku: string | null; descricao: string | null; preco: number | null }
-      return { id: r.id, nome: r.descricao || '(sem descrição)', sku: r.sku, preco: Number(r.preco) || 0 }
-    })
-
-    return NextResponse.json({ produtos })
+    return NextResponse.json({ produtos: data || [], total: count || 0 })
   } catch (e) {
-    console.error('ERRO GET /api/pedidos/produtos:', e)
+    console.error('ERRO GET catálogo:', e)
     return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
   }
 }

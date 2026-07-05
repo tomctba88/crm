@@ -166,7 +166,7 @@ export default function PedidoDetalhe({ pedidoId }: { pedidoId: number }) {
     const res = await fetch(`/api/pedidos/${pedidoId}/itens`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ produto_id: prod.id, quantidade: 1 }),
+      body: JSON.stringify({ catalogo_id: prod.id, quantidade: 1 }),
     })
     const json = await res.json()
     if (json.itens) {

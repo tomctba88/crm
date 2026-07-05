@@ -27,6 +27,7 @@ function getModuloEmoji(icone?: string | null) {
   if (icone === 'factory') return '🏭'
   if (icone === 'wallet') return '💰'
   if (icone === 'clipboard') return '📋'
+  if (icone === 'box') return '📦'
   return '🧩'
 }
 
