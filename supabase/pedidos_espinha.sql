@@ -85,16 +85,17 @@ SELECT
   'PED-' || to_char(COALESCE(pv.data_inicio, NOW())::date, 'YYYY') || '-' || lpad(pv.id::text, 4, '0'),
   pv.lead_id,
   pv.id,
-  pv.vendedor,
+  COALESCE(pv.responsavel, l.vendedor),   -- vendedor: em pos_vendas é "responsavel"; senão vem do lead
   CASE
     WHEN pv.data_entrega IS NOT NULL THEN 'ENTREGUE'
     ELSE 'EM_PRODUCAO'
   END,
   pv.data_prevista_entrega,
-  COALESCE(pv.valor_orcamento, 0),
-  COALESCE(pv.valor_orcamento, 0),
+  COALESCE(l.valor_orcamento, 0),          -- valor vem do lead (valor_orcamento)
+  COALESCE(l.valor_orcamento, 0),
   COALESCE(pv.data_inicio, NOW())
 FROM pos_vendas pv
+LEFT JOIN leads l ON l.id = pv.lead_id
 WHERE NOT EXISTS (SELECT 1 FROM pedidos p WHERE p.pos_venda_id = pv.id);
 
 -- 5.1 amarra a pós-venda ao pedido recém-criado
