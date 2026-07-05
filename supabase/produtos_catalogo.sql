@@ -79,10 +79,19 @@ ALTER TABLE producao_produtos ADD COLUMN IF NOT EXISTS catalogo_id INTEGER REFER
 CREATE INDEX IF NOT EXISTS idx_producao_produtos_catalogo ON producao_produtos(catalogo_id);
 
 -- Auto-vínculo por SKU. Idempotente: rode/re-rode DEPOIS de importar o catálogo.
-UPDATE producao_produtos p
-SET catalogo_id = c.id
-FROM produtos_catalogo c
-WHERE p.sku IS NOT NULL AND c.sku = p.sku AND p.catalogo_id IS NULL;
+-- Só executa se producao_produtos tiver a coluna sku (evita erro se ainda não existir).
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'producao_produtos' AND column_name = 'sku'
+  ) THEN
+    UPDATE producao_produtos p
+    SET catalogo_id = c.id
+    FROM produtos_catalogo c
+    WHERE p.sku IS NOT NULL AND c.sku = p.sku AND p.catalogo_id IS NULL;
+  END IF;
+END $$;
 
 -- Menu: adiciona "Catálogo" na navegação (data-driven)
 INSERT INTO modulos (nome, slug, url, icone, ordem, ativo)
