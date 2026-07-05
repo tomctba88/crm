@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import * as XLSX from 'xlsx'
 import { createClient } from '@/lib/supabase/browser-client'
 import { calcularQuantidade, ESCALONAMENTO_LABEL } from '@/lib/producao/calcular-materiais'
 
@@ -79,8 +82,13 @@ const FORM_VAZIO = {
   margem_lucro_pct: '',
 }
 
+const LOTE_IMPORT = 500
+
 export default function ProdutosManager() {
+  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const [importando, setImportando] = useState(false)
+  const [progressoImport, setProgressoImport] = useState<{ feito: number; total: number } | null>(null)
   const [insumos, setInsumos] = useState<Insumo[]>([])
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [tipos, setTipos] = useState<TipoProduto[]>([])
@@ -340,6 +348,45 @@ export default function ProdutosManager() {
     await carregar()
   }
 
+  async function onImportarArquivos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    setImportando(true)
+    setProgressoImport(null)
+    try {
+      let linhas: Record<string, unknown>[] = []
+      for (const f of files) {
+        const buf = await f.arrayBuffer()
+        const wb = XLSX.read(buf, { type: 'array', cellDates: false })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        linhas = linhas.concat(XLSX.utils.sheet_to_json(ws, { defval: '' }) as Record<string, unknown>[])
+      }
+      let feito = 0, inseridos = 0, atualizados = 0
+      setProgressoImport({ feito: 0, total: linhas.length })
+      for (let i = 0; i < linhas.length; i += LOTE_IMPORT) {
+        const lote = linhas.slice(i, i + LOTE_IMPORT)
+        const res = await fetch('/api/producao/produtos/importar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produtos: lote }),
+        })
+        const json = await res.json()
+        if (json.error) throw new Error(json.error)
+        inseridos += json.inseridos || 0
+        atualizados += json.atualizados || 0
+        feito += lote.length
+        setProgressoImport({ feito, total: linhas.length })
+      }
+      flash('ok', `Importação concluída: ${inseridos} novos, ${atualizados} atualizados.`)
+      await carregar()
+    } catch (err) {
+      flash('erro', `Erro na importação: ${(err as Error).message}`)
+    } finally {
+      setImportando(false)
+      e.target.value = ''
+    }
+  }
+
   const insumosAtivos = insumos.filter((i) => i.ativo)
 
   const linhas: Linha[] = useMemo(() => {
@@ -360,10 +407,29 @@ export default function ProdutosManager() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-black text-[#0b1733]">Produtos</h1>
-          <p className="text-sm text-slate-500">Insumos e produtos fabricados · fichas técnicas e preço final</p>
+          <p className="text-sm text-slate-500">Cadastro (formato Tiny), insumos, fichas técnicas e estoque</p>
         </div>
-        <button onClick={abrirNovo} className={btnPrimario}>+ Novo Cadastro</button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className={`${btnSecundario} cursor-pointer ${importando ? 'opacity-50 pointer-events-none' : ''}`}>
+            {importando ? 'Importando…' : '⬆ Importar planilha (Tiny)'}
+            <input type="file" accept=".xls,.xlsx" multiple className="hidden" disabled={importando} onChange={onImportarArquivos} />
+          </label>
+          <Link href="/producao/produtos/novo" className={btnSecundario}>+ Produto (completo)</Link>
+          <button onClick={abrirNovo} className={btnPrimario}>+ Novo Cadastro</button>
+        </div>
       </div>
+
+      {progressoImport && (
+        <div>
+          <div className="mb-1 flex justify-between text-xs text-slate-500">
+            <span>Importando… {progressoImport.feito.toLocaleString('pt-BR')} / {progressoImport.total.toLocaleString('pt-BR')}</span>
+            <span>{progressoImport.total > 0 ? Math.round((progressoImport.feito / progressoImport.total) * 100) : 0}%</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+            <div className="h-full bg-[#1b4fd6] transition-all" style={{ width: `${progressoImport.total > 0 ? Math.round((progressoImport.feito / progressoImport.total) * 100) : 0}%` }} />
+          </div>
+        </div>
+      )}
 
       {msg && (
         <div className={`rounded-xl border px-4 py-2 text-sm ${msg.tipo === 'ok' ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-200 text-red-700'}`}>
@@ -447,7 +513,7 @@ export default function ProdutosManager() {
                       <td className="py-2 pr-3"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${p.ativo ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-500'}`}>{p.ativo ? 'Ativo' : 'Inativo'}</span></td>
                       <td className="py-2 pr-3">
                         <div className="flex justify-end gap-1.5">
-                          <button onClick={() => abrirEdicaoProduto(p)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Editar</button>
+                          <button onClick={() => router.push(`/producao/produtos/${p.id}`)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">Editar</button>
                           <button onClick={() => abrirFicha(p)} className="rounded-lg bg-[#0b1733] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#1b4fd6]">Ficha Técnica</button>
                           <button onClick={() => toggleAtivo(l)} className="rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100">{p.ativo ? 'Desativar' : 'Ativar'}</button>
                         </div>

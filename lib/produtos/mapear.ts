@@ -1,7 +1,6 @@
 // Mapeia uma linha do Tiny (objeto com chaves = cabeçalhos da planilha) para as
-// colunas dedicadas de produtos_catalogo. Guarda a linha inteira em raw.
-// Usado tanto na importação quanto na edição/cadastro manual, para manter uma
-// única fonte de verdade do mapeamento.
+// colunas de producao_produtos (o cadastro de produtos do sistema, formato Tiny).
+// Guarda a linha inteira em raw. Usado na importação e na edição/cadastro manual.
 
 export type LinhaTiny = Record<string, unknown>
 
@@ -18,12 +17,13 @@ function num(v: unknown): number | null {
   return isFinite(n) ? n : null
 }
 
-export function mapearCatalogo(l: LinhaTiny) {
+// Retorna o objeto pronto para insert/update em producao_produtos.
+export function mapearProduto(l: LinhaTiny) {
   const g = (k: string) => l[k]
   return {
     tiny_id: txt(g('ID')),
+    nome: txt(g('Descrição')) || '(sem descrição)',
     sku: txt(g('Código (SKU)')),
-    descricao: txt(g('Descrição')),
     descricao_complementar: txt(g('Descrição complementar')),
     observacoes: txt(g('Observações')),
     unidade: txt(g('Unidade')),
@@ -36,7 +36,7 @@ export function mapearCatalogo(l: LinhaTiny) {
     preco_promocional: num(g('Preço promocional')),
     markup: num(g('Markup')),
     situacao: txt(g('Situação')),
-    estoque: num(g('Estoque')),
+    estoque: num(g('Estoque')) ?? 0,
     estoque_min: num(g('Estoque mínimo')),
     estoque_max: num(g('Estoque máximo')),
     fornecedor: txt(g('Fornecedor')),
@@ -51,20 +51,20 @@ export function mapearCatalogo(l: LinhaTiny) {
     comprimento_emb: num(g('Comprimento embalagem')),
     diametro_emb: num(g('Diâmetro embalagem')),
     unidade_por_caixa: num(g('Unidade por caixa')),
-    tipo_produto: txt(g('Tipo do produto')),
+    tipo_tiny: txt(g('Tipo do produto')),
     codigo_pai: txt(g('Código do pai')),
     categoria: txt(g('Categoria')),
     sob_encomenda: txt(g('Sob encomenda')),
     permitir_venda: txt(g('Permitir inclusão nas vendas')),
     dias_preparacao: txt(g('Dias para preparação')),
     url_imagem: txt(g('URL imagem 1')),
+    ativo: true,
     raw: l,
     updated_at: new Date().toISOString(),
   }
 }
 
-// Lista canônica dos campos da planilha do Tiny, agrupados em abas.
-// Serve para gerar o formulário de edição/cadastro manual com TODAS as colunas.
+// Config dos campos da planilha, agrupados em abas (para gerar o formulário).
 export type CampoTiny = { key: string; label: string; tipo: 'texto' | 'numero' | 'area' }
 export type GrupoCampos = { aba: string; campos: CampoTiny[] }
 
