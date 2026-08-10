@@ -151,3 +151,50 @@ export function obterDatasParaStatus(
 
   return datas
 }
+
+/**
+ * Retorna apenas a parte AAAA-MM-DD de uma data/timestamp
+ */
+export function soData(value?: string | null): string | null {
+  if (!value) return null
+  const s = String(value).trim()
+  return s ? s.slice(0, 10) : null
+}
+
+function dataBR(iso: string): string {
+  const [ano, mes, dia] = iso.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+/**
+ * Valida que as datas de encerramento (fechamento / cancelamento / finalização)
+ * não sejam anteriores à data de entrada do lead (data_contato).
+ *
+ * Regra de negócio: nada pode acontecer antes do lead entrar no CRM.
+ *
+ * Retorna a mensagem de erro (string) se houver inconsistência, ou null se estiver tudo certo.
+ */
+export function validarDatasEncerramento(params: {
+  data_contato?: string | null
+  data_fechamento?: string | null
+  data_cancelamento?: string | null
+  data_finalizacao?: string | null
+}): string | null {
+  const entrada = soData(params.data_contato)
+  if (!entrada) return null
+
+  const checagens: Array<[string, string | null | undefined]> = [
+    ['fechamento', params.data_fechamento],
+    ['cancelamento', params.data_cancelamento],
+    ['finalização', params.data_finalizacao],
+  ]
+
+  for (const [rotulo, valor] of checagens) {
+    const d = soData(valor)
+    if (d && d < entrada) {
+      return `A data de ${rotulo} (${dataBR(d)}) não pode ser anterior à data de entrada do lead (${dataBR(entrada)}).`
+    }
+  }
+
+  return null
+}

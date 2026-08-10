@@ -71,6 +71,26 @@ export async function POST(req: Request) {
       ? String(body.dataEncerramento).slice(0, 10)
       : hoje
 
+    // Trava: encerramento não pode ser anterior à data de entrada do lead
+    const entradaLead = leadAtual.data_contato
+      ? String(leadAtual.data_contato).slice(0, 10)
+      : null
+    const ehEncerramento =
+      novoStatus === 'FECHADO' ||
+      novoStatus === 'PEDIDO' ||
+      novoStatus === 'CANCELADO' ||
+      novoStatus === 'DESQUALIFICADO'
+
+    if (ehEncerramento && entradaLead && dataEncerramento < entradaLead) {
+      const br = (iso: string) => iso.split('-').reverse().join('/')
+      return NextResponse.json(
+        {
+          error: `A data de encerramento (${br(dataEncerramento)}) não pode ser anterior à data de entrada do lead (${br(entradaLead)}).`,
+        },
+        { status: 400 }
+      )
+    }
+
     const dadosExtras: Record<string, any> = {}
 
     if (novoStatus === 'FECHADO' || novoStatus === 'PEDIDO') {

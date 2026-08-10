@@ -47,6 +47,15 @@ type FormDataType = {
   observacoes: string
 }
 
+type HistoricoItem = {
+  id: string
+  tipo: string
+  resumo: string
+  alteracoes: { campo: string; label: string; de: string; para: string }[]
+  usuario: string
+  timestamp: string
+}
+
 type ClienteSugestao = {
   id: number
   nome_cliente: string
@@ -149,6 +158,13 @@ function formatDateBR(value: string | null) {
   if (!ano || !mes || !dia) return value
 
   return `${dia}/${mes}/${ano}`
+}
+
+function formatDateTimeBR(value: string | null) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 function parseDateSafe(val: string | null | undefined): Date | null {
@@ -321,6 +337,8 @@ const [selecionados, setSelecionados] = useState<number[]>([])
 const [exportDropdownAberto, setExportDropdownAberto] = useState(false)
 const [leadEmFoco, setLeadEmFoco] = useState<number | null>(null)
 const [leadAutoOpenDone, setLeadAutoOpenDone] = useState(false)
+const [historico, setHistorico] = useState<HistoricoItem[]>([])
+const [carregandoHistorico, setCarregandoHistorico] = useState(false)
 
 const [vendedores, setVendedores] = useState<CadastroOption[]>([])
 const [tiposContato, setTiposContato] = useState<CadastroOption[]>([])
@@ -473,6 +491,39 @@ const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     setForm(getInitialForm())
     setEditandoId(null)
     setLeadEmFoco(null)
+    setHistorico([])
+  }
+
+  async function buscarHistorico(leadId: number) {
+    setCarregandoHistorico(true)
+    try {
+      const res = await fetch(`/api/leads/historico?leadId=${leadId}`)
+      if (!res.ok) throw new Error('erro')
+      const json = await res.json()
+      setHistorico(json.historico || [])
+    } catch {
+      setHistorico([])
+    } finally {
+      setCarregandoHistorico(false)
+    }
+  }
+
+  // Regra de negócio: encerramento nunca antes da entrada do lead
+  function validarDatasForm(): string | null {
+    const entrada = form.data_contato ? form.data_contato.slice(0, 10) : ''
+    if (!entrada) return null
+    const checagens: Array<[string, string]> = [
+      ['fechamento', form.data_fechamento],
+      ['cancelamento', form.data_cancelamento],
+      ['finalização', form.data_finalizacao],
+    ]
+    for (const [rotulo, valor] of checagens) {
+      const d = valor ? valor.slice(0, 10) : ''
+      if (d && d < entrada) {
+        return `A data de ${rotulo} não pode ser anterior à data de entrada do lead (${formatDateBR(entrada)}).`
+      }
+    }
+    return null
   }
 
   async function handleSalvar(e: React.FormEvent<HTMLFormElement>) {
@@ -500,6 +551,13 @@ const timerSugestaoRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     if (Object.keys(novosErros).length > 0) {
       setErros(novosErros)
       setPopupErroAberto(true)
+      setLoading(false)
+      return
+    }
+
+    const erroDatas = validarDatasForm()
+    if (erroDatas) {
+      alert(erroDatas)
       setLoading(false)
       return
     }
@@ -593,6 +651,7 @@ const payload = {
     setEditandoId(lead.id)
     setMensagemTopo(`Lead #${lead.id} carregado para edição`)
     setLeadEmFoco(lead.id)
+    buscarHistorico(lead.id)
 
     setForm({
       data_contato: lead.data_contato || '',
@@ -1501,6 +1560,60 @@ useEffect(() => {
               placeholder="Ex.: Só para próximo mês / oferta feita msg 1 / sem retorno das msgs..."
             />
           </div>
+
+          {editandoId ? (
+            <div className="xl:col-span-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase tracking-wide text-slate-600">
+                  Histórico de alterações do lead #{editandoId}
+                </h3>
+                {carregandoHistorico ? (
+                  <span className="text-xs text-slate-400">Carregando...</span>
+                ) : null}
+              </div>
+
+              {!carregandoHistorico && historico.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  Nenhuma alteração registrada ainda para este lead.
+                </p>
+              ) : null}
+
+              {historico.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Última gravação em destaque */}
+                  <div className="rounded-xl border border-blue-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">
+                        Última gravação
+                      </span>
+                      <span className="text-xs font-medium text-slate-500">
+                        {historico[0].usuario} · {formatDateTimeBR(historico[0].timestamp)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-800">{historico[0].resumo}</p>
+                  </div>
+
+                  {/* Gravações anteriores */}
+                  {historico.slice(1).map((h) => (
+                    <div
+                      key={h.id}
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {h.tipo === 'CRIACAO' ? 'Cadastro' : 'Edição'}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {h.usuario} · {formatDateTimeBR(h.timestamp)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-slate-700">{h.resumo}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="xl:col-span-4 flex flex-wrap gap-3 pt-2">
             <button

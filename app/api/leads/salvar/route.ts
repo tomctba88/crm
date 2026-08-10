@@ -2,11 +2,12 @@ import { NextResponse } from 'next/server'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { createClient as createServerClient } from '@/lib/supabase/server-client'
 import {
-  normalizarStatus,
   isVendaFechada,
   obterDatasParaStatus,
+  validarDatasEncerramento,
 } from '@/lib/constants/status'
 import { criarOrdemProducao } from '@/lib/producao/criar-ordem'
+import { registrarAlteracaoLead } from '@/lib/leads/historico'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function upsertCliente(admin: any, payload: Record<string, unknown>) {
@@ -136,6 +137,21 @@ export async function POST(req: Request) {
         }
       }
 
+      // Trava: fechamento/cancelamento/finalização não podem ser anteriores à entrada
+      const erroDatas = validarDatasEncerramento({
+        data_contato:
+          'data_contato' in payload ? payload.data_contato : leadAtual.data_contato,
+        data_fechamento:
+          'data_fechamento' in payload ? payload.data_fechamento : leadAtual.data_fechamento,
+        data_cancelamento:
+          'data_cancelamento' in payload ? payload.data_cancelamento : leadAtual.data_cancelamento,
+        data_finalizacao:
+          'data_finalizacao' in payload ? payload.data_finalizacao : leadAtual.data_finalizacao,
+      })
+      if (erroDatas) {
+        return NextResponse.json({ error: erroDatas }, { status: 400 })
+      }
+
       const { error } = await admin
         .from('leads')
         .update(payload)
@@ -144,6 +160,15 @@ export async function POST(req: Request) {
       if (error) {
         return NextResponse.json({ error: error.message }, { status: 400 })
       }
+
+      await registrarAlteracaoLead({
+        admin,
+        leadId,
+        userId: user.id,
+        tipo: 'EDICAO',
+        anterior: leadAtual,
+        novo: payload,
+      })
 
       await upsertCliente(admin, payload)
 
@@ -165,6 +190,17 @@ export async function POST(req: Request) {
       }
     }
 
+    // Trava: fechamento/cancelamento/finalização não podem ser anteriores à entrada
+    const erroDatasNovo = validarDatasEncerramento({
+      data_contato: payload.data_contato,
+      data_fechamento: payload.data_fechamento,
+      data_cancelamento: payload.data_cancelamento,
+      data_finalizacao: payload.data_finalizacao,
+    })
+    if (erroDatasNovo) {
+      return NextResponse.json({ error: erroDatasNovo }, { status: 400 })
+    }
+
     const { data: novoLead, error } = await admin
       .from('leads')
       .insert(payload)
@@ -173,6 +209,17 @@ export async function POST(req: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    if (novoLead) {
+      await registrarAlteracaoLead({
+        admin,
+        leadId: novoLead.id,
+        userId: user.id,
+        tipo: 'CRIACAO',
+        anterior: null,
+        novo: payload,
+      })
     }
 
     // Se o novo lead já foi criado com status de venda fechada, cria pós-vendas e ordem de produção
