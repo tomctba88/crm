@@ -137,6 +137,7 @@ export default function Sidebar({
             <div className="ml-3 space-y-0.5 border-l border-white/10 pl-3">
               {podeVerRelatorioComercial && link('/relatorios/comercial', 'Comercial')}
               {podeVerRelatorioVendedores && link('/relatorios/vendedores', 'Vendedores')}
+              {podeVerRelatorioComercial && link('/relatorios/ciclo-vendas', 'Ciclo de Vendas')}
               {podeVerMarketing && (
                 <>
                   {link('/relatorios/marketing/google', 'Marketing')}

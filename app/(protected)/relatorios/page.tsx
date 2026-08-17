@@ -32,6 +32,21 @@ export default function RelatoriosPage() {
         </a>
 
         <a
+          href="/relatorios/ciclo-vendas"
+          className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+        >
+          <p className="text-sm font-bold uppercase tracking-[0.14em] text-blue-600">
+            Velocidade comercial
+          </p>
+          <h2 className="mt-2 text-2xl font-black text-slate-900">
+            Ciclo de Vendas
+          </h2>
+          <p className="mt-2 text-sm text-slate-500">
+            Tempo entre a entrada do lead e o fechamento — por origem, vendedor, período e cliente.
+          </p>
+        </a>
+
+        <a
           href="/relatorios/marketing"
           className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
         >
