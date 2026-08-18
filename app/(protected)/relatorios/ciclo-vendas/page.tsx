@@ -327,14 +327,16 @@ export default function CicloVendasPage() {
 
         {/* Filtros — uma linha, escopam todos os blocos abaixo */}
         <div className="mt-5 grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-7">
-          <Campo label="Contar período por">
+          {/* Não muda o cálculo do ciclo (sempre fechamento - entrada); muda só
+              em qual mês cada lead é contado. */}
+          <Campo label="O período filtra">
             <select
               value={basePeriodo}
               onChange={(e) => setBasePeriodo(e.target.value as BasePeriodo)}
               className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-medium outline-none focus:border-blue-500"
             >
-              <option value="fechamento">Data de fechamento</option>
-              <option value="entrada">Data de entrada</option>
+              <option value="fechamento">Vendas fechadas no período</option>
+              <option value="entrada">Leads que entraram no período</option>
             </select>
           </Campo>
 
@@ -412,6 +414,22 @@ export default function CicloVendasPage() {
             </button>
           </div>
         </div>
+
+        {/* O filtro de base de período confunde: deixa explícito que o cálculo
+            é sempre o mesmo, e avisa do viés das safras recentes. */}
+        <p className="mt-3 text-xs text-slate-500">
+          {basePeriodo === 'fechamento'
+            ? 'O ciclo é sempre contado da entrada do lead até o fechamento. Aqui você está vendo as vendas fechadas no período — a visão que bate com o faturamento do mês.'
+            : 'O ciclo é sempre contado da entrada do lead até o fechamento. Aqui você está vendo a safra de leads que entrou no período.'}
+        </p>
+
+        {basePeriodo === 'entrada' && (
+          <p className="mt-2 rounded-xl bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800">
+            Atenção: safras recentes ainda estão incompletas. Os leads que entraram no período e
+            <strong> ainda não fecharam</strong> não aparecem aqui, então os meses mais novos
+            parecem mais rápidos do que realmente são. Para comparar meses, use safras já maduras.
+          </p>
+        )}
 
         {/* Separa pedido registrado de lead negociado — ver comentário no state. */}
         <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:bg-slate-50">
