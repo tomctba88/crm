@@ -106,6 +106,14 @@ export default function CicloVendasPage() {
   const [vendedor, setVendedor] = useState(TODOS)
   const [uf, setUf] = useState(TODOS)
 
+  /**
+   * Metade da base fecha no mesmo dia em que entra (D0): são pedidos registrados
+   * já prontos — recompra, site, telefone — que nunca tiveram negociação.
+   * Misturados aos demais, eles dominam a mediana e ela deixa de medir
+   * velocidade comercial. Este filtro separa as duas populações.
+   */
+  const [excluirD0, setExcluirD0] = useState(false)
+
   const [ordemTabela, setOrdemTabela] = useState<'dias-desc' | 'dias-asc' | 'valor' | 'data'>('dias-desc')
 
   useEffect(() => {
@@ -176,7 +184,8 @@ export default function CicloVendasPage() {
     return true
   }
 
-  const ciclos = useMemo(() => {
+  // Recorte do período e das dimensões, ainda com os fechamentos em D0 dentro.
+  const ciclosPeriodo = useMemo(() => {
     return base.ciclos.filter((ciclo) => {
       const dataBase = basePeriodo === 'entrada' ? ciclo.entrada : ciclo.fechamento
       return dentroDoPeriodo(dataBase, ano, mes) && passaDimensoes(ciclo)
@@ -184,17 +193,30 @@ export default function CicloVendasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base.ciclos, ano, mes, basePeriodo, origem, vendedor, uf])
 
+  const totalD0 = useMemo(
+    () => ciclosPeriodo.filter((ciclo) => ciclo.dias === 0).length,
+    [ciclosPeriodo]
+  )
+
+  const percentualD0 = ciclosPeriodo.length > 0 ? (totalD0 / ciclosPeriodo.length) * 100 : 0
+
+  const ciclos = useMemo(
+    () => (excluirD0 ? ciclosPeriodo.filter((ciclo) => ciclo.dias > 0) : ciclosPeriodo),
+    [ciclosPeriodo, excluirD0]
+  )
+
   // Período anterior equivalente, para o delta dos KPIs.
   const ciclosAnteriores = useMemo(() => {
     const anoAnterior = mes === 0 ? ano - 1 : mes === 1 ? ano - 1 : ano
     const mesAnterior = mes === 0 ? 0 : mes === 1 ? 12 : mes - 1
 
     return base.ciclos.filter((ciclo) => {
+      if (excluirD0 && ciclo.dias === 0) return false
       const dataBase = basePeriodo === 'entrada' ? ciclo.entrada : ciclo.fechamento
       return dentroDoPeriodo(dataBase, anoAnterior, mesAnterior) && passaDimensoes(ciclo)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [base.ciclos, ano, mes, basePeriodo, origem, vendedor, uf])
+  }, [base.ciclos, ano, mes, basePeriodo, origem, vendedor, uf, excluirD0])
 
   // A carteira aberta é uma foto de HOJE — não faz sentido recortá-la por mês,
   // então só as dimensões (origem/vendedor/UF) a filtram.
@@ -249,6 +271,7 @@ export default function CicloVendasPage() {
     setOrigem(TODOS)
     setVendedor(TODOS)
     setUf(TODOS)
+    setExcluirD0(false)
   }
 
   function exportarExcel() {
@@ -390,10 +413,31 @@ export default function CicloVendasPage() {
           </div>
         </div>
 
+        {/* Separa pedido registrado de lead negociado — ver comentário no state. */}
+        <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4 transition hover:bg-slate-50">
+          <input
+            type="checkbox"
+            checked={excluirD0}
+            onChange={(e) => setExcluirD0(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-blue-600"
+          />
+          <span>
+            <span className="block text-sm font-bold text-slate-800">
+              Considerar apenas leads que negociaram
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              Tira da conta os fechamentos no mesmo dia da entrada (D0) — recompra, site e
+              telefone, que entram no CRM já fechados e nunca passaram por negociação.
+            </span>
+          </span>
+        </label>
+
         <p className="mt-3 text-xs text-slate-500">
           {loading
             ? 'Carregando leads...'
-            : `${stats.quantidade} lead(s) fechado(s) em ${rotuloPeriodo}, contados pela ${rotuloBase}.`}
+            : `${stats.quantidade} lead(s) fechado(s) em ${rotuloPeriodo}, contados pela ${rotuloBase}${
+                excluirD0 ? `, excluindo ${totalD0} fechamento(s) em D0` : ''
+              }.`}
         </p>
 
         {erro && (
@@ -450,6 +494,27 @@ export default function CicloVendasPage() {
           <p className="mt-3 text-xs text-slate-500">
             Metade dos leads fecha em até {Math.round(stats.mediana)} dias; a outra metade demora mais.
           </p>
+
+          {/* O % de D0 é, em si, um indicador: mede o quanto o CRM registra
+              negociação em vez de só arquivar pedido pronto. */}
+          {ciclosPeriodo.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-blue-200 bg-white/70 px-4 py-3">
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                Fechados no mesmo dia (D0)
+              </p>
+              <p className="mt-1 text-2xl font-black text-slate-900">
+                {percentualD0.toFixed(0)}%
+                <span className="ml-2 text-sm font-bold text-slate-500">
+                  {totalD0} de {ciclosPeriodo.length}
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {excluirD0
+                  ? 'Fora da conta acima — o ciclo mostrado é só de quem negociou.'
+                  : 'Entram no ciclo acima e puxam a mediana para baixo.'}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
@@ -559,7 +624,11 @@ export default function CicloVendasPage() {
 
         <ChartCard
           titulo="Ciclo por vendedor"
-          subtitulo="Quem fecha mais rápido — leia junto com o volume, rápido com 2 leads não é padrão."
+          subtitulo={
+            excluirD0
+              ? 'Quem fecha mais rápido entre os leads que realmente negociaram.'
+              : 'Quem fecha mais rápido. Mediana 0 significa que o vendedor cadastra o lead já fechado — ligue o filtro acima para separar.'
+          }
           vazio={porVendedor.length === 0}
           tabela={
             <TabelaSimples
