@@ -15,6 +15,47 @@ function matchTipoProduto(produto: string | null, tipos: { id: number; nome: str
   return tipos.find((t) => t.nome === 'Outros')?.id ?? null
 }
 
+async function criarItensDaOrdem(
+  admin: SupabaseClient,
+  ordemId: number,
+  pedidoId: number | null,
+  produto: string | null
+) {
+  if (pedidoId) {
+    const { data: itensPedido } = await admin
+      .from('pedido_itens')
+      .select('id, produto_id, descricao, quantidade, valor_unitario')
+      .eq('pedido_id', pedidoId)
+
+    if (itensPedido && itensPedido.length > 0) {
+      const produtoIds = itensPedido.map((i) => i.produto_id).filter(Boolean) as number[]
+      const { data: produtos } = produtoIds.length
+        ? await admin.from('producao_produtos').select('id, nome, preco_custo').in('id', produtoIds)
+        : { data: [] }
+      const porProduto = new Map((produtos || []).map((p) => [p.id, p]))
+
+      await admin.from('producao_ordem_itens').insert(
+        itensPedido.map((i) => ({
+          ordem_id: ordemId,
+          pedido_item_id: i.id,
+          produto_id: i.produto_id,
+          descricao: i.descricao || porProduto.get(i.produto_id!)?.nome || produto,
+          qtd_planejada: i.quantidade,
+          valor_unitario: i.valor_unitario,
+          custo_unitario: porProduto.get(i.produto_id!)?.preco_custo || 0,
+        }))
+      )
+      return
+    }
+  }
+
+  await admin.from('producao_ordem_itens').insert({
+    ordem_id: ordemId,
+    descricao: produto || 'Sem descrição',
+    qtd_planejada: 1,
+  })
+}
+
 export async function criarOrdemProducao(
   admin: SupabaseClient,
   posVendaId: number,
@@ -64,6 +105,11 @@ export async function criarOrdemProducao(
     .single()
 
   if (error || !novaOrdem) return null
+
+  // Itens da ordem (modelo + quantidade) — base do volume, da curva ABC e da
+  // taxa de refugo. Nascem do pedido quando ele existe; senão vira um item só
+  // com o texto do produto, que o encarregado detalha depois na ficha da OP.
+  await criarItensDaOrdem(admin, novaOrdem.id, novaOrdem.pedido_id ?? null, produto)
 
   // Copia processos padrão do tipo como etapas da ordem
   if (tipoProdutoId) {

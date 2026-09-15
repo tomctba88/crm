@@ -26,16 +26,21 @@ export async function PATCH(
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    const agora = new Date().toISOString()
     const atualizacao: Record<string, unknown> = {
       status: novoStatus,
-      updated_at: new Date().toISOString(),
+      updated_at: agora,
     }
 
+    // data_* (DATE) fica para leitura; *_em (TIMESTAMPTZ) é o que alimenta os
+    // indicadores de tempo de fabricação e produtividade por hora.
     if (novoStatus === 'EM_ANDAMENTO') {
-      atualizacao.data_inicio = new Date().toISOString().slice(0, 10)
+      atualizacao.data_inicio = agora.slice(0, 10)
+      atualizacao.iniciada_em = agora
     }
     if (novoStatus === 'CONCLUIDA' || novoStatus === 'PULADA') {
-      atualizacao.data_conclusao = new Date().toISOString().slice(0, 10)
+      atualizacao.data_conclusao = agora.slice(0, 10)
+      atualizacao.concluida_em = agora
     }
 
     const { error } = await admin
@@ -58,13 +63,14 @@ export async function PATCH(
     if (todasFinalizadas) {
       await admin
         .from('producao_ordens')
-        .update({ status: 'QUALIDADE', updated_at: new Date().toISOString() })
+        .update({ status: 'QUALIDADE', updated_at: agora })
         .eq('id', Number(id))
     } else if (novoStatus === 'EM_ANDAMENTO') {
-      // Ao iniciar a primeira etapa, avança a ordem para EM_ANDAMENTO
+      // Ao iniciar a primeira etapa, avança a ordem para EM_ANDAMENTO.
+      // iniciada_em marca o fim da fila e o começo do tempo de execução.
       await admin
         .from('producao_ordens')
-        .update({ status: 'EM_ANDAMENTO', updated_at: new Date().toISOString() })
+        .update({ status: 'EM_ANDAMENTO', updated_at: agora, iniciada_em: agora })
         .eq('id', Number(id))
         .eq('status', 'AGUARDANDO')
     }

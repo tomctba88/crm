@@ -2,12 +2,23 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/browser-client'
+import CadastrosIndicadores from '@/components/producao/cadastros-indicadores'
 
 type TipoProduto = { id: number; nome: string; ativo: boolean }
 type Processo = { id: number; tipo_produto_id: number; nome: string; sequencia: number; ativo: boolean }
 
+const SECOES = [
+  { chave: 'processos', label: 'Tipos & Processos' },
+  { chave: 'revestimentos', label: 'Revestimentos' },
+  { chave: 'estofadores', label: 'Estofadores' },
+  { chave: 'motivos', label: 'Motivos de perda' },
+] as const
+
+type Secao = (typeof SECOES)[number]['chave']
+
 export default function CadastrosProducaoPage() {
   const supabase = useMemo(() => createClient(), [])
+  const [secao, setSecao] = useState<Secao>('processos')
   const [tipos, setTipos] = useState<TipoProduto[]>([])
   const [processos, setProcessos] = useState<Processo[]>([])
   const [tipoSelecionado, setTipoSelecionado] = useState<number | null>(null)
@@ -115,10 +126,30 @@ export default function CadastrosProducaoPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-black text-[#0b1733]">Cadastros de Produção</h1>
-        <p className="text-sm text-slate-500">Gerencie os tipos de produto e os processos de cada tipo</p>
+        <p className="text-sm text-slate-500">
+          Tipos e processos das ordens, e as tabelas que alimentam os indicadores
+        </p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
+      <div className="flex flex-wrap gap-2">
+        {SECOES.map((s) => (
+          <button
+            key={s.chave}
+            onClick={() => setSecao(s.chave)}
+            className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+              secao === s.chave
+                ? 'bg-[#0b1733] text-white'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      {secao !== 'processos' && <CadastrosIndicadores secao={secao} />}
+
+      <div className={`grid gap-5 lg:grid-cols-[340px_1fr] ${secao === 'processos' ? '' : 'hidden'}`}>
         {/* Tipos de produto */}
         <div className={`${card} p-5`}>
           <h2 className="mb-4 text-base font-bold text-[#0b1733]">Tipos de Produto</h2>

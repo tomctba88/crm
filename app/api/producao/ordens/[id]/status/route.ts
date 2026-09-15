@@ -29,15 +29,42 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
+    const agora = new Date().toISOString()
+    const atualizacao: Record<string, unknown> = { status: novoStatus, updated_at: agora }
+
+    // concluida_em fecha o cronômetro do tempo de fabricação (OP gerada → fim)
+    if (novoStatus === 'CONCLUIDO') {
+      atualizacao.concluida_em = agora
+      atualizacao.data_conclusao = agora.slice(0, 10)
+    }
+
     const { data: ordem, error: ordemError } = await admin
       .from('producao_ordens')
-      .update({ status: novoStatus, updated_at: new Date().toISOString() })
+      .update(atualizacao)
       .eq('id', Number(id))
       .select('pos_venda_id')
       .single()
 
     if (ordemError || !ordem) {
       return NextResponse.json({ error: 'Ordem não encontrada.' }, { status: 404 })
+    }
+
+    // Ao concluir, o que foi planejado (menos o refugo) vira produzido nos itens
+    // que ninguém apontou à mão — sem isso o volume da fábrica ficaria zerado.
+    if (novoStatus === 'CONCLUIDO') {
+      const { data: itens } = await admin
+        .from('producao_ordem_itens')
+        .select('id, qtd_planejada, qtd_produzida, qtd_perdida')
+        .eq('ordem_id', Number(id))
+
+      for (const item of itens || []) {
+        if (Number(item.qtd_produzida) > 0) continue
+        const produzida = Math.max(0, Number(item.qtd_planejada) - Number(item.qtd_perdida))
+        await admin
+          .from('producao_ordem_itens')
+          .update({ qtd_produzida: produzida, updated_at: agora })
+          .eq('id', item.id)
+      }
     }
 
     // Atualiza pos_vendas se há mapeamento de status

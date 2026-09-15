@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/browser-client'
 import Link from 'next/link'
 import { calcularQuantidade } from '@/lib/producao/calcular-materiais'
+import OrdemItens from '@/components/producao/ordem-itens'
 
 type Etapa = { id: number; nome: string; sequencia: number; status: string; responsavel: string | null; data_inicio: string | null; data_conclusao: string | null; observacoes: string | null }
 type Ordem = {
   id: number; numero: string; status: string; produto: string | null; responsavel: string | null
   data_prevista: string | null; data_conclusao: string | null; observacoes: string | null; created_at: string
-  produto_id: number | null; comprimento_pedido: number | null; largura_pedido: number | null; altura_pedido: number | null
+  produto_id: number | null; pedido_id: number | null
+  comprimento_pedido: number | null; largura_pedido: number | null; altura_pedido: number | null
   materiais_calculados: MaterialSnapshot[] | null
   leads: { id: number; nome_cliente: string; nome_empresa: string | null; telefone: string | null; vendedor: string | null; produto_interesse: string | null; valor_orcamento: number | null } | null
   pos_vendas: { id: number; status_pos_venda: string } | null
@@ -61,7 +63,7 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
   async function carregar() {
     const { data: ordemData } = await supabase
       .from('producao_ordens')
-      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,produto_id,comprimento_pedido,largura_pedido,altura_pedido,materiais_calculados,leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
+      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,produto_id,pedido_id,comprimento_pedido,largura_pedido,altura_pedido,materiais_calculados,leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
       .eq('id', ordemId)
       .single()
 
@@ -237,6 +239,8 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
+          <OrdemItens ordemId={ordemId} temPedido={ordem.pedido_id != null} />
+
           {/* Etapas */}
           <div className={card}>
             <div className="mb-4 flex items-center justify-between">
