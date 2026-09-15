@@ -110,9 +110,18 @@ CREATE TABLE IF NOT EXISTS producao_ordem_itens (
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_ordem   ON producao_ordem_itens(ordem_id);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_produto ON producao_ordem_itens(produto_id);
 CREATE INDEX IF NOT EXISTS idx_ordem_itens_revest  ON producao_ordem_itens(revestimento_id);
--- evita duplicar o item ao regerar a OP a partir do pedido
-CREATE UNIQUE INDEX IF NOT EXISTS uq_ordem_itens_pedido_item
-  ON producao_ordem_itens(pedido_item_id) WHERE pedido_item_id IS NOT NULL;
+-- Evita duplicar o item ao regerar a OP a partir do pedido.
+-- Precisa ser CONSTRAINT, não índice parcial: ON CONFLICT não infere índice com
+-- WHERE (erro 42P10). E constraint única já aceita N nulos — em Postgres um NULL
+-- nunca conflita com outro —, então itens sem pedido seguem livres.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_ordem_itens_pedido_item') THEN
+    DROP INDEX IF EXISTS uq_ordem_itens_pedido_item;
+    ALTER TABLE producao_ordem_itens
+      ADD CONSTRAINT uq_ordem_itens_pedido_item UNIQUE (pedido_item_id);
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- 5. APONTAMENTOS DE PRODUÇÃO (produtividade)
