@@ -146,8 +146,13 @@ export function formatarHoras(valor: number) {
   return `${formatNumero(valor / 24, 1)} d`
 }
 
-/** Horas efetivas de um apontamento: cronômetro quando existe, senão o lançado. */
-export function horasDoApontamento(a: ApontamentoIndicador): number {
+/**
+ * Horas efetivas de um apontamento: cronômetro quando existe, senão o lançado.
+ * Tipado pelo que de fato usa, para servir também ao apontamento de máquina.
+ */
+export function horasDoApontamento(
+  a: { inicio: string | null; fim: string | null; horas: number | string | null }
+): number {
   if (a.inicio && a.fim) return horasEntre(a.inicio, a.fim)
   return num(a.horas)
 }

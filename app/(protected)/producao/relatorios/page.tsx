@@ -14,9 +14,15 @@ import {
   formatCurrency, formatNumero, formatarDataBR, formatarHoras,
   montarPecas, produtividadePorFuncionario, resumirPerdas, resumoABC,
   serieMensalPerdas, serieVolume,
+  horasDoApontamento,
   type ApontamentoIndicador, type FuncionarioIndicador, type ItemIndicador,
   type OrdemIndicador, type PerdaIndicador, type RevestimentoIndicador,
 } from '@/lib/producao/indicadores'
+import {
+  calcularAproveitamento, consumoDeFita, filaPorEtapa,
+  produtividadePorMaquina, resumirAproveitamento, resumirPecas,
+  type Chapa, type ChapaConsumida, type Fita, type Maquina, type Peca,
+} from '@/lib/producao/marcenaria'
 
 /* --------------------------------------------------------------------------
  * Paleta
@@ -34,7 +40,14 @@ const COR_GRID = '#e2e8f0'
 const COR_EIXO = '#94a3b8'
 const COR_TEXTO_EIXO = '#64748b'
 
-type Aba = 'volume' | 'abc' | 'perdas' | 'produtividade' | 'tempo'
+/** O apontamento carrega as duas naturezas: pessoa (estofaria) e máquina (marcenaria). */
+type ApontamentoCompleto = ApontamentoIndicador & {
+  maquina_id: number | null
+  metros: number | string
+  chapas: number | string
+}
+
+type Aba = 'volume' | 'abc' | 'perdas' | 'produtividade' | 'tempo' | 'marcenaria'
 
 const ABAS: { chave: Aba; label: string }[] = [
   { chave: 'volume', label: 'Volume' },
@@ -42,6 +55,7 @@ const ABAS: { chave: Aba; label: string }[] = [
   { chave: 'perdas', label: 'Perdas' },
   { chave: 'produtividade', label: 'Produtividade' },
   { chave: 'tempo', label: 'Tempo de fabricação' },
+  { chave: 'marcenaria', label: 'Marcenaria' },
 ]
 
 const card = 'bg-white border border-slate-200 rounded-2xl shadow-sm p-5'
@@ -61,35 +75,53 @@ export default function RelatoriosProducaoPage() {
   const [ordens, setOrdens] = useState<OrdemIndicador[]>([])
   const [itens, setItens] = useState<ItemIndicador[]>([])
   const [revestimentos, setRevestimentos] = useState<RevestimentoIndicador[]>([])
-  const [apontamentos, setApontamentos] = useState<ApontamentoIndicador[]>([])
+  const [apontamentos, setApontamentos] = useState<ApontamentoCompleto[]>([])
   const [funcionarios, setFuncionarios] = useState<FuncionarioIndicador[]>([])
   const [perdas, setPerdas] = useState<PerdaIndicador[]>([])
   const [motivos, setMotivos] = useState<{ id: number; nome: string; categoria: string }[]>([])
+
+  // marcenaria
+  const [pecasMarc, setPecasMarc] = useState<Peca[]>([])
+  const [consumos, setConsumos] = useState<ChapaConsumida[]>([])
+  const [chapas, setChapas] = useState<Chapa[]>([])
+  const [fitas, setFitas] = useState<Fita[]>([])
+  const [maquinas, setMaquinas] = useState<Maquina[]>([])
 
   const [de, setDe] = useState('')
   const [ate, setAte] = useState('')
 
   const carregar = useCallback(async () => {
-    const [o, i, r, a, f, p, m] = await Promise.all([
+    const [o, i, r, a, f, p, m, pc, cc, ch, ft, mq] = await Promise.all([
       supabase.from('producao_ordens')
         .select('id,numero,status,created_at,iniciada_em,concluida_em,data_prevista,responsavel'),
       supabase.from('producao_ordem_itens')
         .select('id,ordem_id,produto_id,descricao,revestimento_id,qtd_planejada,qtd_produzida,qtd_perdida,valor_unitario,custo_unitario'),
       supabase.from('producao_revestimentos').select('id,nome,cor,material'),
-      supabase.from('producao_apontamentos').select('id,funcionario_id,ordem_id,data_ref,inicio,fim,horas,pecas'),
+      supabase.from('producao_apontamentos')
+        .select('id,funcionario_id,maquina_id,ordem_id,data_ref,inicio,fim,horas,pecas,metros,chapas'),
       supabase.from('producao_funcionarios').select('id,nome,funcao,jornada_horas,ativo'),
       supabase.from('producao_perdas')
         .select('id,data_ref,tipo,motivo_id,funcionario_id,ordem_item_id,quantidade,custo_estimado,recuperavel'),
       supabase.from('producao_motivos_perda').select('id,nome,categoria'),
+      supabase.from('producao_pecas').select('*'),
+      supabase.from('producao_chapas_consumidas').select('*'),
+      supabase.from('producao_chapas').select('*'),
+      supabase.from('producao_fitas').select('*'),
+      supabase.from('producao_maquinas').select('*'),
     ])
 
     setOrdens((o.data || []) as OrdemIndicador[])
     setItens((i.data || []) as ItemIndicador[])
     setRevestimentos((r.data || []) as RevestimentoIndicador[])
-    setApontamentos((a.data || []) as ApontamentoIndicador[])
+    setApontamentos((a.data || []) as ApontamentoCompleto[])
     setFuncionarios((f.data || []) as FuncionarioIndicador[])
     setPerdas((p.data || []) as PerdaIndicador[])
     setMotivos(m.data || [])
+    setPecasMarc((pc.data || []) as Peca[])
+    setConsumos((cc.data || []) as ChapaConsumida[])
+    setChapas((ch.data || []) as Chapa[])
+    setFitas((ft.data || []) as Fita[])
+    setMaquinas((mq.data || []) as Maquina[])
     setCarregando(false)
   }, [supabase])
 
@@ -120,7 +152,22 @@ export default function RelatoriosProducaoPage() {
     [ordens, itens, dentro]
   )
 
-  const semDados = !carregando && pecas.length === 0 && perdasFiltradas.length === 0 && apontamentosFiltrados.length === 0
+  // Peça não tem data própria: herda a da ordem, igual ao volume
+  const pecasFiltradas = useMemo(() => {
+    const diaDaOrdem = new Map(
+      ordens.map((o) => [o.id, (o.concluida_em || o.iniciada_em || o.created_at)?.slice(0, 10) || null])
+    )
+    return pecasMarc.filter((p) => dentro(diaDaOrdem.get(p.ordem_id) ?? null))
+  }, [pecasMarc, ordens, dentro])
+
+  const consumosFiltrados = useMemo(
+    () => consumos.filter((c) => dentro(c.data_ref?.slice(0, 10) || null)),
+    [consumos, dentro]
+  )
+
+  const semDados = !carregando
+    && pecas.length === 0 && perdasFiltradas.length === 0
+    && apontamentosFiltrados.length === 0 && pecasFiltradas.length === 0
 
   return (
     <div className="space-y-6">
@@ -176,6 +223,10 @@ export default function RelatoriosProducaoPage() {
             <AbaProdutividade apontamentos={apontamentosFiltrados} funcionarios={funcionarios} />
           )}
           {aba === 'tempo' && <AbaTempo tempos={tempos} />}
+          {aba === 'marcenaria' && (
+            <AbaMarcenaria pecas={pecasFiltradas} consumos={consumosFiltrados} chapas={chapas}
+              fitas={fitas} maquinas={maquinas} apontamentos={apontamentosFiltrados} />
+          )}
         </>
       )}
     </div>
@@ -848,6 +899,206 @@ function AbaProdutividade({ apontamentos, funcionarios }: {
           </table>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ==========================================================================
+ * 6. MARCENARIA
+ *
+ * Os três indicadores que a estofaria não tem: aproveitamento de chapa (a
+ * "perda" inerente do nesting), metros de fita e rendimento de máquina.
+ * ======================================================================== */
+
+function AbaMarcenaria({ pecas, consumos, chapas, fitas, maquinas, apontamentos }: {
+  pecas: Peca[]
+  consumos: ChapaConsumida[]
+  chapas: Chapa[]
+  fitas: Fita[]
+  maquinas: Maquina[]
+  apontamentos: ApontamentoCompleto[]
+}) {
+  const resumo = useMemo(() => resumirPecas(pecas), [pecas])
+  const aproveitamento = useMemo(
+    () => calcularAproveitamento(pecas, consumos, chapas),
+    [pecas, consumos, chapas]
+  )
+  const resumoAprov = useMemo(() => resumirAproveitamento(aproveitamento), [aproveitamento])
+  const fitasUsadas = useMemo(() => consumoDeFita(pecas, fitas), [pecas, fitas])
+  const fila = useMemo(() => filaPorEtapa(pecas), [pecas])
+  const porMaquina = useMemo(
+    () => produtividadePorMaquina(apontamentos, maquinas, horasDoApontamento),
+    [apontamentos, maquinas]
+  )
+
+  if (pecas.length === 0 && porMaquina.length === 0) {
+    return (
+      <div className={card}>
+        <h2 className="text-base font-bold text-[#0b1733]">Nenhuma peça no período</h2>
+        <div className="mt-2 space-y-1 text-sm text-slate-500">
+          <p>Os indicadores de marcenaria vêm de dois lugares:</p>
+          <p>· <span className="font-semibold">Ordens → Peças da Ordem</span> — lista de peças e consumo de chapa</p>
+          <p>· <span className="font-semibold">Apontamentos</span> — horas de CNC e coladeira, apontadas por máquina</p>
+        </div>
+      </div>
+    )
+  }
+
+  const temConsumo = resumoAprov.m2Consumidos > 0
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Tile label="Aproveitamento de chapa"
+          valor={temConsumo ? `${formatNumero(resumoAprov.percentual, 1)}%` : '—'}
+          detalhe={temConsumo
+            ? `${formatNumero(resumoAprov.m2Uteis, 1)} de ${formatNumero(resumoAprov.m2Consumidos, 1)} m²`
+            : 'registre o consumo de chapa na OP'}
+          tom={temConsumo && resumoAprov.percentual >= 80 ? 'bom' : 'padrao'} />
+        <Tile label="Custo da sobra" valor={formatCurrency(resumoAprov.custoSobra)}
+          detalhe={`${formatNumero(resumoAprov.m2Sobra, 1)} m² de retalho`} tom="perda" />
+        <Tile label="Peças cortadas" valor={formatNumero(resumo.total, 0)}
+          detalhe={`${formatNumero(resumo.m2, 1)} m² úteis`} />
+        <Tile label="Fita de borda" valor={`${formatNumero(resumo.metrosFita, 0)} m`}
+          detalhe={`${formatNumero(resumo.pecasComFita, 0)} peças fitadas`} />
+      </div>
+
+      {temConsumo && (
+        <Grafico titulo="Aproveitamento por chapa"
+          subtitulo="Área que virou peça sobre a área comprada — o resto é sobra do plano de corte">
+          <BarChart data={aproveitamento.filter((a) => a.percentual > 0)}
+            layout="vertical" margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+            <CartesianGrid stroke={COR_GRID} horizontal={false} />
+            <XAxis type="number" domain={[0, 100]} {...eixoProps} axisLine={false}
+              tickFormatter={(v: number) => `${v}%`} />
+            <YAxis type="category" dataKey="chaveChapa" width={180} {...eixoProps} axisLine={false}
+              tickFormatter={(v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v)} />
+            <Tooltip
+              cursor={{ fill: 'rgba(37,99,235,0.06)' }}
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const d = payload[0].payload as (typeof aproveitamento)[number]
+                return <TooltipCartao titulo={d.chaveChapa} linhas={[
+                  { chave: 'Aproveitamento', valor: `${formatNumero(d.percentual, 1)}%` },
+                  { chave: 'm² úteis', valor: formatNumero(d.m2Uteis, 2) },
+                  { chave: 'm² comprados', valor: formatNumero(d.m2Consumidos, 2) },
+                  { chave: 'Chapas', valor: formatNumero(d.chapasConsumidas, 1) },
+                  { chave: 'Custo da sobra', valor: formatCurrency(d.custoSobra) },
+                ]} />
+              }}
+            />
+            <Bar dataKey="percentual" fill={COR_SERIE} radius={[0, 4, 4, 0]} maxBarSize={24} />
+          </BarChart>
+        </Grafico>
+      )}
+
+      {fila.length > 0 && (
+        <div className={card}>
+          <h2 className="mb-1 text-base font-bold text-[#0b1733]">Fila da fábrica</h2>
+          <p className="mb-4 text-xs text-slate-500">
+            Onde as peças estão paradas agora. O maior número é o gargalo.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {fila.map((f) => (
+              <div key={f.status} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-xs font-semibold text-slate-500">{f.rotulo}</p>
+                <p className="mt-1 text-2xl font-black tabular-nums text-[#0b1733]">
+                  {formatNumero(f.pecas, 0)}
+                </p>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {formatNumero(f.m2, 1)} m²
+                  {f.metrosFita > 0 && ` · ${formatNumero(f.metrosFita, 0)} m de fita`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {porMaquina.length > 0 && (
+        <div className={card}>
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-[#0b1733]">Rendimento das máquinas</h2>
+              <p className="text-xs text-slate-500">
+                Cada máquina rende na sua unidade: CNC em chapas/hora, coladeira em metros/hora
+              </p>
+            </div>
+            <BotaoExportar onClick={() => exportar('maquinas', porMaquina.map((m) => ({
+              Máquina: m.nome, Tipo: m.tipo,
+              Horas: Number(m.horas.toFixed(2)), Dias: m.dias,
+              Chapas: m.chapas, Metros: m.metros, Peças: m.pecas,
+              [`Por hora (${m.unidade})`]: Number(m.porHora.toFixed(2)),
+              'Capacidade/hora': m.capacidade,
+              'Eficiência %': Number(m.eficiencia.toFixed(1)),
+              'Custo de máquina': m.custo,
+            })))} />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px]">
+              <thead className="border-b border-slate-200">
+                <tr>
+                  <th className={th}>Máquina</th><th className={th}>Tipo</th>
+                  <th className={thNum}>Horas</th><th className={thNum}>Dias</th>
+                  <th className={thNum}>Produzido</th><th className={thNum}>Por hora</th>
+                  <th className={thNum}>Eficiência</th><th className={thNum}>Custo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {porMaquina.map((m) => (
+                  <tr key={m.maquinaId} className="border-b border-slate-100">
+                    <td className={`${td} font-semibold`}>{m.nome}</td>
+                    <td className={td}>{m.tipo}</td>
+                    <td className={tdNum}>{formatNumero(m.horas, 1)}</td>
+                    <td className={tdNum}>{formatNumero(m.dias, 0)}</td>
+                    <td className={tdNum}>
+                      {formatNumero(
+                        m.unidade === 'metros' ? m.metros : m.unidade === 'pecas' ? m.pecas : m.chapas, 1
+                      )} {m.unidade}
+                    </td>
+                    <td className={`${tdNum} font-bold text-[#1b4fd6]`}>{formatNumero(m.porHora, 2)}</td>
+                    <td className={tdNum}>
+                      {m.capacidade > 0 ? `${formatNumero(m.eficiencia, 0)}%` : '—'}
+                    </td>
+                    <td className={tdNum}>{m.custo > 0 ? formatCurrency(m.custo) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {fitasUsadas.length > 0 && (
+        <div className={card}>
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-base font-bold text-[#0b1733]">Consumo de fita de borda</h2>
+            <BotaoExportar onClick={() => exportar('consumo-fita', fitasUsadas.map((f) => ({
+              Fita: f.chave,
+              'Metros lineares': Number(f.metros.toFixed(2)),
+              Peças: f.pecas, Custo: f.custo,
+            })))} />
+          </div>
+          <table className="w-full">
+            <thead className="border-b border-slate-200">
+              <tr>
+                <th className={th}>Fita</th><th className={thNum}>Metros lineares</th>
+                <th className={thNum}>Peças</th><th className={thNum}>Custo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fitasUsadas.map((f) => (
+                <tr key={f.fitaId ?? f.chave} className="border-b border-slate-100">
+                  <td className={`${td} font-semibold`}>{f.chave}</td>
+                  <td className={`${tdNum} font-semibold`}>{formatNumero(f.metros, 1)} m</td>
+                  <td className={tdNum}>{formatNumero(f.pecas, 0)}</td>
+                  <td className={tdNum}>{f.custo > 0 ? formatCurrency(f.custo) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

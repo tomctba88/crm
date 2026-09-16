@@ -33,9 +33,16 @@ export async function POST(request: Request) {
     if (!user) return NextResponse.json({ error: 'Não autenticado.' }, { status: 401 })
 
     const body = await request.json()
-    const funcionarioId = Number(body.funcionario_id)
-    if (!funcionarioId) {
-      return NextResponse.json({ error: 'Informe o funcionário.' }, { status: 400 })
+    const funcionarioId = body.funcionario_id ? Number(body.funcionario_id) : null
+    const maquinaId = body.maquina_id ? Number(body.maquina_id) : null
+
+    // Marcenaria aponta por máquina (CNC, coladeira); estofaria por pessoa.
+    // Acabamento e montagem apontam pelos dois. Um dos dois é obrigatório.
+    if (!funcionarioId && !maquinaId) {
+      return NextResponse.json(
+        { error: 'Informe o funcionário ou a máquina.' },
+        { status: 400 }
+      )
     }
 
     const origem = body.origem === 'cronometro' ? 'cronometro' : 'lancamento'
@@ -43,6 +50,7 @@ export async function POST(request: Request) {
 
     const registro: Record<string, unknown> = {
       funcionario_id: funcionarioId,
+      maquina_id: maquinaId,
       ordem_id: body.ordem_id ? Number(body.ordem_id) : null,
       ordem_item_id: body.ordem_item_id ? Number(body.ordem_item_id) : null,
       etapa_id: body.etapa_id ? Number(body.etapa_id) : null,
@@ -52,29 +60,37 @@ export async function POST(request: Request) {
     }
 
     if (origem === 'cronometro') {
-      // já existe cronômetro aberto? o índice único barra, mas a mensagem fica melhor aqui
-      const { data: aberto } = await db
-        .from('producao_apontamentos')
-        .select('id')
-        .eq('funcionario_id', funcionarioId)
-        .is('fim', null)
-        .not('inicio', 'is', null)
-        .maybeSingle()
+      // já existe cronômetro aberto? os índices únicos barram, mas a mensagem
+      // fica melhor aqui — e o recurso ocupado precisa ser nomeado
+      for (const [coluna, id, rotulo] of [
+        ['funcionario_id', funcionarioId, 'Este funcionário'],
+        ['maquina_id', maquinaId, 'Esta máquina'],
+      ] as const) {
+        if (!id) continue
+        const { data: aberto } = await db
+          .from('producao_apontamentos')
+          .select('id')
+          .eq(coluna, id)
+          .is('fim', null)
+          .not('inicio', 'is', null)
+          .maybeSingle()
 
-      if (aberto) {
-        return NextResponse.json(
-          { error: 'Este funcionário já tem um apontamento em andamento. Finalize antes de iniciar outro.' },
-          { status: 409 }
-        )
+        if (aberto) {
+          return NextResponse.json(
+            { error: `${rotulo} já tem um apontamento em andamento. Finalize antes de iniciar outro.` },
+            { status: 409 }
+          )
+        }
       }
 
       const agora = new Date()
       registro.inicio = agora.toISOString()
       registro.data_ref = agora.toISOString().slice(0, 10)
-      registro.pecas = 0
     } else {
       const horas = Number(body.horas)
-      const pecas = Number(body.pecas)
+      const pecas = Number(body.pecas) || 0
+      const metros = Number(body.metros) || 0
+      const chapas = Number(body.chapas) || 0
 
       if (!Number.isFinite(horas) || horas <= 0) {
         return NextResponse.json({ error: 'Informe as horas trabalhadas.' }, { status: 400 })
@@ -82,14 +98,27 @@ export async function POST(request: Request) {
       if (horas > 24) {
         return NextResponse.json({ error: 'Horas não pode passar de 24 em um dia.' }, { status: 400 })
       }
-      if (!Number.isFinite(pecas) || pecas < 0) {
-        return NextResponse.json({ error: 'Informe a quantidade de peças.' }, { status: 400 })
+      if ([pecas, metros, chapas].some((v) => v < 0)) {
+        return NextResponse.json({ error: 'Quantidade não pode ser negativa.' }, { status: 400 })
+      }
+      // Cada etapa rende na sua própria unidade: peças (montagem), metros
+      // (coladeira) ou chapas (CNC). Ao menos uma precisa vir preenchida.
+      if (pecas === 0 && metros === 0 && chapas === 0) {
+        return NextResponse.json(
+          { error: 'Informe a produção: peças, metros de fita ou chapas.' },
+          { status: 400 }
+        )
       }
 
       registro.horas = horas
-      registro.pecas = pecas
       registro.data_ref = body.data_ref || new Date().toISOString().slice(0, 10)
     }
+
+    // valem para os dois modos: no cronômetro entram zerados e são preenchidos
+    // ao finalizar; no lançamento vêm do formulário
+    registro.pecas = Number(body.pecas) || 0
+    registro.metros = Number(body.metros) || 0
+    registro.chapas = Number(body.chapas) || 0
 
     const { data, error } = await db
       .from('producao_apontamentos')
@@ -112,11 +141,19 @@ export async function PATCH(request: Request) {
 
     const body = await request.json()
     const id = Number(body.id)
-    const pecas = Number(body.pecas)
+    const pecas = Number(body.pecas) || 0
+    const metros = Number(body.metros) || 0
+    const chapas = Number(body.chapas) || 0
 
     if (!id) return NextResponse.json({ error: 'Apontamento inválido.' }, { status: 400 })
-    if (!Number.isFinite(pecas) || pecas < 0) {
-      return NextResponse.json({ error: 'Informe a quantidade de peças.' }, { status: 400 })
+    if ([pecas, metros, chapas].some((v) => v < 0)) {
+      return NextResponse.json({ error: 'Quantidade não pode ser negativa.' }, { status: 400 })
+    }
+    if (pecas === 0 && metros === 0 && chapas === 0) {
+      return NextResponse.json(
+        { error: 'Informe a produção: peças, metros de fita ou chapas.' },
+        { status: 400 }
+      )
     }
 
     const db = admin()
@@ -134,6 +171,8 @@ export async function PATCH(request: Request) {
       .update({
         fim: new Date().toISOString(),
         pecas,
+        metros,
+        chapas,
         observacao: body.observacao ?? undefined,
       })
       .eq('id', id)

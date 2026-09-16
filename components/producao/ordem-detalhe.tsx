@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/browser-client'
 import Link from 'next/link'
 import { calcularQuantidade } from '@/lib/producao/calcular-materiais'
 import OrdemItens from '@/components/producao/ordem-itens'
+import OrdemPecas from '@/components/producao/ordem-pecas'
 
 type Etapa = { id: number; nome: string; sequencia: number; status: string; responsavel: string | null; data_inicio: string | null; data_conclusao: string | null; observacoes: string | null }
 type Ordem = {
@@ -13,6 +14,7 @@ type Ordem = {
   produto_id: number | null; pedido_id: number | null
   comprimento_pedido: number | null; largura_pedido: number | null; altura_pedido: number | null
   materiais_calculados: MaterialSnapshot[] | null
+  producao_tipos_produto: { nome: string } | null
   leads: { id: number; nome_cliente: string; nome_empresa: string | null; telefone: string | null; vendedor: string | null; produto_interesse: string | null; valor_orcamento: number | null } | null
   pos_vendas: { id: number; status_pos_venda: string } | null
 }
@@ -63,7 +65,7 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
   async function carregar() {
     const { data: ordemData } = await supabase
       .from('producao_ordens')
-      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,produto_id,pedido_id,comprimento_pedido,largura_pedido,altura_pedido,materiais_calculados,leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
+      .select('id,numero,status,produto,responsavel,data_prevista,data_conclusao,observacoes,created_at,produto_id,pedido_id,comprimento_pedido,largura_pedido,altura_pedido,materiais_calculados,producao_tipos_produto(nome),leads(id,nome_cliente,nome_empresa,telefone,vendedor,produto_interesse,valor_orcamento),pos_vendas(id,status_pos_venda)')
       .eq('id', ordemId)
       .single()
 
@@ -214,6 +216,10 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
   const card = 'bg-white border border-slate-200 rounded-2xl p-5 shadow-sm'
   const progresso = etapas.length ? Math.round((etapas.filter(e => e.status === 'CONCLUIDA' || e.status === 'PULADA').length / etapas.length) * 100) : 0
 
+  // Marcenaria pelo tipo do produto; ordens antigas caem no nome do tipo mesmo
+  const nomeTipo = ordem.producao_tipos_produto?.nome?.toLowerCase() || ''
+  const eMarcenaria = nomeTipo.includes('marcenaria') || nomeTipo.includes('móvel') || nomeTipo.includes('movel')
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -240,6 +246,9 @@ export default function OrdemDetalhe({ ordemId }: { ordemId: number }) {
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="space-y-5">
           <OrdemItens ordemId={ordemId} temPedido={ordem.pedido_id != null} />
+
+          {/* Peças — só marcenaria. Uma cadeira é uma coisa só; um móvel são N painéis. */}
+          {eMarcenaria && <OrdemPecas ordemId={ordemId} />}
 
           {/* Etapas */}
           <div className={card}>

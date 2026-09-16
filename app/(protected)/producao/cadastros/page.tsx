@@ -3,18 +3,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/browser-client'
 import CadastrosIndicadores from '@/components/producao/cadastros-indicadores'
+import CadastrosMarcenaria from '@/components/producao/cadastros-marcenaria'
 
 type TipoProduto = { id: number; nome: string; ativo: boolean }
 type Processo = { id: number; tipo_produto_id: number; nome: string; sequencia: number; ativo: boolean }
 
 const SECOES = [
-  { chave: 'processos', label: 'Tipos & Processos' },
-  { chave: 'revestimentos', label: 'Revestimentos' },
-  { chave: 'estofadores', label: 'Estofadores' },
-  { chave: 'motivos', label: 'Motivos de perda' },
+  { chave: 'processos', label: 'Tipos & Processos', grupo: 'Geral' },
+  { chave: 'estofadores', label: 'Estofadores', grupo: 'Geral' },
+  { chave: 'motivos', label: 'Motivos de perda', grupo: 'Geral' },
+  { chave: 'revestimentos', label: 'Revestimentos', grupo: 'Estofaria' },
+  { chave: 'chapas', label: 'Chapas', grupo: 'Marcenaria' },
+  { chave: 'fitas', label: 'Fitas de borda', grupo: 'Marcenaria' },
+  { chave: 'maquinas', label: 'Máquinas', grupo: 'Marcenaria' },
 ] as const
 
 type Secao = (typeof SECOES)[number]['chave']
+
+const GRUPOS = ['Geral', 'Estofaria', 'Marcenaria'] as const
+const SECOES_MARCENARIA = ['chapas', 'fitas', 'maquinas'] as const
+const SECOES_INDICADORES = ['revestimentos', 'estofadores', 'motivos'] as const
 
 export default function CadastrosProducaoPage() {
   const supabase = useMemo(() => createClient(), [])
@@ -131,23 +139,33 @@ export default function CadastrosProducaoPage() {
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {SECOES.map((s) => (
-          <button
-            key={s.chave}
-            onClick={() => setSecao(s.chave)}
-            className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
-              secao === s.chave
-                ? 'bg-[#0b1733] text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {s.label}
-          </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        {GRUPOS.map((grupo) => (
+          <div key={grupo} className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">{grupo}</span>
+            {SECOES.filter((s) => s.grupo === grupo).map((s) => (
+              <button
+                key={s.chave}
+                onClick={() => setSecao(s.chave)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                  secao === s.chave
+                    ? 'bg-[#0b1733] text-white'
+                    : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         ))}
       </div>
 
-      {secao !== 'processos' && <CadastrosIndicadores secao={secao} />}
+      {SECOES_INDICADORES.includes(secao as (typeof SECOES_INDICADORES)[number]) && (
+        <CadastrosIndicadores secao={secao as 'revestimentos' | 'estofadores' | 'motivos'} />
+      )}
+      {SECOES_MARCENARIA.includes(secao as (typeof SECOES_MARCENARIA)[number]) && (
+        <CadastrosMarcenaria secao={secao as 'chapas' | 'fitas' | 'maquinas'} />
+      )}
 
       <div className={`grid gap-5 lg:grid-cols-[340px_1fr] ${secao === 'processos' ? '' : 'hidden'}`}>
         {/* Tipos de produto */}

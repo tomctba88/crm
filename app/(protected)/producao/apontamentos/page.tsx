@@ -20,6 +20,7 @@ import {
  */
 
 type Funcionario = { id: number; nome: string; funcao: string; ativo: boolean }
+type Maquina = { id: number; nome: string; tipo: string; unidade_capacidade: string }
 type Ordem = { id: number; numero: string; status: string; produto: string | null }
 type ItemOrdem = { id: number; ordem_id: number; descricao: string | null; qtd_planejada: number | string }
 type Etapa = { id: number; ordem_id: number; nome: string; sequencia: number; status: string }
@@ -30,7 +31,11 @@ type Revestimento = { id: number; nome: string; cor: string }
 type ApontamentoLinha = ApontamentoIndicador & {
   origem: string
   observacao: string | null
+  maquina_id: number | null
+  metros: number | string
+  chapas: number | string
   producao_funcionarios: { nome: string } | null
+  producao_maquinas: { nome: string } | null
   producao_ordens: { numero: string } | null
 }
 
@@ -63,6 +68,7 @@ export default function ApontamentosPage() {
   const [aba, setAba] = useState<'producao' | 'perda'>('producao')
 
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([])
+  const [maquinas, setMaquinas] = useState<Maquina[]>([])
   const [ordens, setOrdens] = useState<Ordem[]>([])
   const [itens, setItens] = useState<ItemOrdem[]>([])
   const [etapas, setEtapas] = useState<Etapa[]>([])
@@ -74,8 +80,9 @@ export default function ApontamentosPage() {
   const [carregando, setCarregando] = useState(true)
 
   const carregar = useCallback(async () => {
-    const [f, o, i, e, m, ins, rev, ap, pe] = await Promise.all([
+    const [f, mq, o, i, e, m, ins, rev, ap, pe] = await Promise.all([
       supabase.from('producao_funcionarios').select('id,nome,funcao,ativo').eq('ativo', true).order('nome'),
+      supabase.from('producao_maquinas').select('id,nome,tipo,unidade_capacidade').eq('ativo', true).order('nome'),
       supabase.from('producao_ordens').select('id,numero,status,produto').in('status', STATUS_ABERTOS).order('id', { ascending: false }),
       supabase.from('producao_ordem_itens').select('id,ordem_id,descricao,qtd_planejada'),
       supabase.from('producao_etapas').select('id,ordem_id,nome,sequencia,status').order('sequencia'),
@@ -83,7 +90,7 @@ export default function ApontamentosPage() {
       supabase.from('producao_insumos').select('id,nome,unidade').eq('ativo', true).order('nome'),
       supabase.from('producao_revestimentos').select('id,nome,cor').eq('ativo', true).order('nome'),
       supabase.from('producao_apontamentos')
-        .select('*, producao_funcionarios(nome), producao_ordens(numero)')
+        .select('*, producao_funcionarios(nome), producao_maquinas(nome), producao_ordens(numero)')
         .order('id', { ascending: false }).limit(40),
       supabase.from('producao_perdas')
         .select('*, producao_motivos_perda(nome), producao_funcionarios(nome), producao_ordens(numero)')
@@ -91,6 +98,7 @@ export default function ApontamentosPage() {
     ])
 
     setFuncionarios(f.data || [])
+    setMaquinas(mq.data || [])
     setOrdens(o.data || [])
     setItens(i.data || [])
     setEtapas(e.data || [])
@@ -104,7 +112,7 @@ export default function ApontamentosPage() {
 
   useEffect(() => { carregar() }, [carregar])
 
-  const semCadastro = !carregando && funcionarios.length === 0
+  const semCadastro = !carregando && funcionarios.length === 0 && maquinas.length === 0
 
   return (
     <div className="space-y-6">
@@ -118,10 +126,11 @@ export default function ApontamentosPage() {
       {semCadastro && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
           <p className="text-sm font-semibold text-amber-900">
-            Nenhum estofador cadastrado ainda.
+            Nenhum estofador nem máquina cadastrados ainda.
           </p>
           <p className="mt-1 text-sm text-amber-800">
-            Cadastre a equipe em <span className="font-semibold">Cadastros → Estofadores</span> antes de apontar produção.
+            Cadastre a equipe em <span className="font-semibold">Cadastros → Estofadores</span> e,
+            para a marcenaria, os equipamentos em <span className="font-semibold">Cadastros → Máquinas</span>.
           </p>
         </div>
       )}
@@ -139,10 +148,10 @@ export default function ApontamentosPage() {
 
       {aba === 'producao' ? (
         <>
-          <Cronometro funcionarios={funcionarios} ordens={ordens} itens={itens} etapas={etapas}
-            apontamentos={apontamentos} onMudou={carregar} />
-          <LancamentoDiario funcionarios={funcionarios} ordens={ordens} itens={itens} etapas={etapas}
-            onMudou={carregar} />
+          <Cronometro funcionarios={funcionarios} maquinas={maquinas} ordens={ordens} itens={itens}
+            etapas={etapas} apontamentos={apontamentos} onMudou={carregar} />
+          <LancamentoDiario funcionarios={funcionarios} maquinas={maquinas} ordens={ordens} itens={itens}
+            etapas={etapas} onMudou={carregar} />
           <ListaApontamentos apontamentos={apontamentos} onMudou={carregar} />
         </>
       ) : (
@@ -160,8 +169,9 @@ export default function ApontamentosPage() {
  * Cronômetro — tablet no chão de fábrica
  * ======================================================================== */
 
-function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou }: {
+function Cronometro({ funcionarios, maquinas, ordens, itens, etapas, apontamentos, onMudou }: {
   funcionarios: Funcionario[]
+  maquinas: Maquina[]
   ordens: Ordem[]
   itens: ItemOrdem[]
   etapas: Etapa[]
@@ -169,10 +179,11 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
   onMudou: () => Promise<void>
 }) {
   const [funcionarioId, setFuncionarioId] = useState('')
+  const [maquinaId, setMaquinaId] = useState('')
   const [ordemId, setOrdemId] = useState('')
   const [itemId, setItemId] = useState('')
   const [etapaId, setEtapaId] = useState('')
-  const [pecas, setPecas] = useState('')
+  const [producao, setProducao] = useState({ pecas: '', metros: '', chapas: '' })
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [agora, setAgora] = useState(() => Date.now())
@@ -188,13 +199,17 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
   const etapasDaOrdem = etapas.filter((e) => String(e.ordem_id) === ordemId)
 
   async function iniciar() {
-    if (!funcionarioId) { setErro('Selecione o estofador.'); return }
+    if (!funcionarioId && !maquinaId) {
+      setErro('Selecione o estofador ou a máquina.')
+      return
+    }
     setSalvando(true); setErro('')
     const resp = await fetch('/api/producao/apontamentos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        funcionario_id: Number(funcionarioId),
+        funcionario_id: funcionarioId || null,
+        maquina_id: maquinaId || null,
         origem: 'cronometro',
         ordem_id: ordemId || null,
         ordem_item_id: itemId || null,
@@ -208,17 +223,24 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
   }
 
   async function finalizar(id: number) {
-    const qtd = Number(pecas)
-    if (!Number.isFinite(qtd) || qtd < 0) { setErro('Informe quantas peças saíram.'); return }
+    const valores = {
+      pecas: Number(producao.pecas) || 0,
+      metros: Number(producao.metros) || 0,
+      chapas: Number(producao.chapas) || 0,
+    }
+    if (Object.values(valores).every((v) => v === 0)) {
+      setErro('Informe a produção: peças, metros de fita ou chapas.')
+      return
+    }
     setSalvando(true); setErro('')
     const resp = await fetch('/api/producao/apontamentos', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, pecas: qtd }),
+      body: JSON.stringify({ id, ...valores }),
     })
     const json = await resp.json()
     if (!resp.ok) setErro(json.error || 'Não foi possível finalizar.')
-    else { setPecas(''); await onMudou() }
+    else { setProducao({ pecas: '', metros: '', chapas: '' }); await onMudou() }
     setSalvando(false)
   }
 
@@ -243,7 +265,9 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
             <div key={a.id} className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-bold text-[#0b1733]">{a.producao_funcionarios?.nome || '—'}</p>
+                  <p className="text-sm font-bold text-[#0b1733]">
+                    {[a.producao_funcionarios?.nome, a.producao_maquinas?.nome].filter(Boolean).join(' · ') || '—'}
+                  </p>
                   <p className="text-xs text-slate-600">
                     {a.producao_ordens?.numero ? `OP ${a.producao_ordens.numero} · ` : ''}
                     iniciado às {new Date(a.inicio!).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
@@ -252,10 +276,13 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
                 <span className="font-mono text-2xl font-black tabular-nums text-[#1b4fd6]">
                   {decorrido(a.inicio!)}
                 </span>
-                <div className="flex items-center gap-2">
-                  <input value={pecas} onChange={(e) => setPecas(e.target.value)}
-                    type="number" step="1" min="0" placeholder="peças"
-                    className={`${input} w-24`} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <input value={producao.pecas} onChange={(e) => setProducao({ ...producao, pecas: e.target.value })}
+                    type="number" step="1" min="0" placeholder="peças" className={`${input} w-20`} />
+                  <input value={producao.metros} onChange={(e) => setProducao({ ...producao, metros: e.target.value })}
+                    type="number" step="0.1" min="0" placeholder="m fita" className={`${input} w-20`} />
+                  <input value={producao.chapas} onChange={(e) => setProducao({ ...producao, chapas: e.target.value })}
+                    type="number" step="0.5" min="0" placeholder="chapas" className={`${input} w-20`} />
                   <button onClick={() => finalizar(a.id)} disabled={salvando}
                     className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
                     Finalizar
@@ -267,12 +294,19 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <div>
-          <span className={label}>Estofador</span>
+          <span className={label}>Pessoa</span>
           <select value={funcionarioId} onChange={(e) => setFuncionarioId(e.target.value)} className={`${input} w-full`}>
-            <option value="">Selecione...</option>
+            <option value="">Nenhuma</option>
             {funcionarios.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <span className={label}>Máquina</span>
+          <select value={maquinaId} onChange={(e) => setMaquinaId(e.target.value)} className={`${input} w-full`}>
+            <option value="">Nenhuma</option>
+            {maquinas.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
           </select>
         </div>
         <div>
@@ -298,12 +332,17 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
           </select>
         </div>
         <div className="flex items-end">
-          <button onClick={iniciar} disabled={salvando || !funcionarioId}
+          <button onClick={iniciar} disabled={salvando || (!funcionarioId && !maquinaId)}
             className="w-full rounded-xl bg-[#1b4fd6] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#1741b0] disabled:opacity-50">
             Iniciar
           </button>
         </div>
       </div>
+
+      <p className="mt-3 text-xs text-slate-400">
+        Estofaria aponta pela pessoa. CNC e coladeira apontam pela máquina. Acabamento e
+        montagem podem apontar pelos dois — aí a hora conta para os dois relatórios.
+      </p>
 
       {erro && <p className="mt-3 text-sm font-semibold text-red-600">{erro}</p>}
     </div>
@@ -314,15 +353,17 @@ function Cronometro({ funcionarios, ordens, itens, etapas, apontamentos, onMudou
  * Lançamento diário — encarregado fecha o dia
  * ======================================================================== */
 
-function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
+function LancamentoDiario({ funcionarios, maquinas, ordens, itens, etapas, onMudou }: {
   funcionarios: Funcionario[]
+  maquinas: Maquina[]
   ordens: Ordem[]
   itens: ItemOrdem[]
   etapas: Etapa[]
   onMudou: () => Promise<void>
 }) {
   const [form, setForm] = useState({
-    funcionario_id: '', data_ref: hojeISO(), horas: '8', pecas: '',
+    funcionario_id: '', maquina_id: '', data_ref: hojeISO(), horas: '8',
+    pecas: '', metros: '', chapas: '',
     ordem_id: '', ordem_item_id: '', etapa_id: '', observacao: '',
   })
   const [erro, setErro] = useState('')
@@ -338,11 +379,14 @@ function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        funcionario_id: Number(form.funcionario_id),
+        funcionario_id: form.funcionario_id || null,
+        maquina_id: form.maquina_id || null,
         origem: 'lancamento',
         data_ref: form.data_ref,
         horas: Number(form.horas),
-        pecas: Number(form.pecas),
+        pecas: Number(form.pecas) || 0,
+        metros: Number(form.metros) || 0,
+        chapas: Number(form.chapas) || 0,
         ordem_id: form.ordem_id || null,
         ordem_item_id: form.ordem_item_id || null,
         etapa_id: form.etapa_id || null,
@@ -353,7 +397,7 @@ function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
     if (!resp.ok) setErro(json.error || 'Não foi possível salvar.')
     else {
       setOk('Apontamento registrado.')
-      setForm({ ...form, pecas: '', observacao: '', ordem_item_id: '', etapa_id: '' })
+      setForm({ ...form, pecas: '', metros: '', chapas: '', observacao: '', ordem_item_id: '', etapa_id: '' })
       await onMudou()
     }
     setSalvando(false)
@@ -363,17 +407,25 @@ function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
     <div className={card}>
       <h2 className="mb-1 text-base font-bold text-[#0b1733]">Lançamento do dia</h2>
       <p className="mb-4 text-xs text-slate-500">
-        Para quem não aponta no tablet: horas trabalhadas e peças concluídas no dia.
-        Peças/hora sai como média do dia — menos preciso que o cronômetro, mas suficiente para a tendência.
+        Para quem não aponta no tablet: horas trabalhadas e produção do dia. Preencha a unidade
+        da etapa — peças na montagem, metros na coladeira, chapas na CNC.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <span className={label}>Estofador</span>
+          <span className={label}>Pessoa</span>
           <select value={form.funcionario_id} onChange={(e) => setForm({ ...form, funcionario_id: e.target.value })}
             className={`${input} w-full`}>
-            <option value="">Selecione...</option>
+            <option value="">Nenhuma</option>
             {funcionarios.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <span className={label}>Máquina</span>
+          <select value={form.maquina_id} onChange={(e) => setForm({ ...form, maquina_id: e.target.value })}
+            className={`${input} w-full`}>
+            <option value="">Nenhuma</option>
+            {maquinas.map((m) => <option key={m.id} value={m.id}>{m.nome}</option>)}
           </select>
         </div>
         <div>
@@ -390,6 +442,16 @@ function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
           <span className={label}>Peças concluídas</span>
           <input type="number" step="1" min="0" value={form.pecas} placeholder="0"
             onChange={(e) => setForm({ ...form, pecas: e.target.value })} className={`${input} w-full`} />
+        </div>
+        <div>
+          <span className={label}>Metros de fita</span>
+          <input type="number" step="0.1" min="0" value={form.metros} placeholder="0"
+            onChange={(e) => setForm({ ...form, metros: e.target.value })} className={`${input} w-full`} />
+        </div>
+        <div>
+          <span className={label}>Chapas processadas</span>
+          <input type="number" step="0.5" min="0" value={form.chapas} placeholder="0"
+            onChange={(e) => setForm({ ...form, chapas: e.target.value })} className={`${input} w-full`} />
         </div>
         <div>
           <span className={label}>Ordem (opcional)</span>
@@ -417,7 +479,7 @@ function LancamentoDiario({ funcionarios, ordens, itens, etapas, onMudou }: {
           </select>
         </div>
         <div className="flex items-end">
-          <button onClick={salvar} disabled={salvando || !form.funcionario_id}
+          <button onClick={salvar} disabled={salvando || (!form.funcionario_id && !form.maquina_id)}
             className="w-full rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-900 disabled:opacity-50">
             Lançar
           </button>
@@ -456,22 +518,39 @@ function ListaApontamentos({ apontamentos, onMudou }: {
           <table className="w-full min-w-[700px]">
             <thead className="border-b border-slate-200">
               <tr>
-                <th className={th}>Data</th><th className={th}>Estofador</th><th className={th}>OP</th>
-                <th className={th}>Horas</th><th className={th}>Peças</th><th className={th}>Peças/h</th>
+                <th className={th}>Data</th><th className={th}>Quem / o quê</th><th className={th}>OP</th>
+                <th className={th}>Horas</th><th className={th}>Produção</th><th className={th}>Por hora</th>
                 <th className={th}>Origem</th><th className={th}></th>
               </tr>
             </thead>
             <tbody>
               {finalizados.map((a) => {
                 const horas = horasDoApontamento(a)
+                // cada etapa rende na sua unidade; mostra a que foi preenchida
+                const unidades = [
+                  { valor: num(a.pecas), rotulo: 'peças', casas: 0 },
+                  { valor: num(a.metros), rotulo: 'm de fita', casas: 1 },
+                  { valor: num(a.chapas), rotulo: 'chapas', casas: 1 },
+                ].filter((u) => u.valor > 0)
+
                 return (
                   <tr key={a.id} className="border-b border-slate-100">
                     <td className={td}>{formatarDataBR(a.data_ref)}</td>
-                    <td className={`${td} font-semibold`}>{a.producao_funcionarios?.nome || '—'}</td>
+                    <td className={`${td} font-semibold`}>
+                      {[a.producao_funcionarios?.nome, a.producao_maquinas?.nome].filter(Boolean).join(' · ') || '—'}
+                    </td>
                     <td className={td}>{a.producao_ordens?.numero || '—'}</td>
                     <td className={td}>{formatNumero(horas, 1)}</td>
-                    <td className={td}>{formatNumero(num(a.pecas), 0)}</td>
-                    <td className={`${td} font-semibold`}>{horas > 0 ? formatNumero(num(a.pecas) / horas, 2) : '—'}</td>
+                    <td className={td}>
+                      {unidades.length === 0 ? '—' : unidades
+                        .map((u) => `${formatNumero(u.valor, u.casas)} ${u.rotulo}`)
+                        .join(' · ')}
+                    </td>
+                    <td className={`${td} font-semibold`}>
+                      {horas > 0 && unidades.length > 0
+                        ? `${formatNumero(unidades[0].valor / horas, 2)} ${unidades[0].rotulo}/h`
+                        : '—'}
+                    </td>
                     <td className={td}>
                       <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
                         {a.origem === 'cronometro' ? 'cronômetro' : 'lançamento'}
